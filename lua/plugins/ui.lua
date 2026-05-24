@@ -4,10 +4,12 @@ return {
     lazy = false,
     priority = 1000,
     config = function()
-      vim.g.everforest_background = "medium"
+      vim.g.everforest_background = "hard"
       vim.g.everforest_better_performance = 1
       vim.g.everforest_enable_italic = 1
       vim.cmd.colorscheme("everforest")
+      vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#232a2e", bg = "NONE" })
+      vim.api.nvim_set_hl(0, "TermNormal", { bg = "#1a1f22" })
     end,
   },
 
@@ -64,6 +66,7 @@ return {
       renderer = { group_empty = true, highlight_git = true },
       filters = { dotfiles = true },
       git = { enable = true },
+      actions = { change_dir = { global = true } },
       on_attach = function(bufnr)
         local api = require("nvim-tree.api")
         api.config.mappings.default_on_attach(bufnr)

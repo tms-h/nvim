@@ -10,6 +10,31 @@ vim.api.nvim_create_autocmd("VimEnter", {
   end,
 })
 
+vim.api.nvim_create_autocmd("VimEnter", {
+  nested = true,
+  callback = function()
+    if vim.fn.argc() == 0 then
+      require("persistence").load({ last = true })
+    end
+  end,
+})
+
+vim.api.nvim_create_autocmd("SessionLoadPost", {
+  callback = function()
+    vim.schedule(function()
+      pcall(function() require("lazy").load({ plugins = { "nvim-treesitter" } }) end)
+      for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buflisted then
+          vim.api.nvim_buf_call(buf, function()
+            if vim.bo.filetype == "" then vim.cmd("filetype detect") end
+            pcall(vim.treesitter.start)
+          end)
+        end
+      end
+    end)
+  end,
+})
+
 vim.api.nvim_create_autocmd("TextYankPost", {
   callback = function()
     vim.highlight.on_yank({ timeout = 200 })
@@ -21,6 +46,7 @@ vim.api.nvim_create_autocmd({ "TermOpen", "BufEnter" }, {
   callback = function()
     if vim.bo.buftype == "terminal" then
       vim.cmd("startinsert")
+      vim.cmd("setlocal winhighlight=Normal:TermNormal")
     end
   end,
 })
@@ -39,6 +65,6 @@ vim.api.nvim_create_autocmd("FileType", {
       vim.opt_local.tabstop = 2
       vim.opt_local.softtabstop = -1
     end
-    vim.opt_local.indentexpr = "nvim_treesitter#indent()"
+    pcall(vim.treesitter.start)
   end,
 })

@@ -1,7 +1,10 @@
+local python = vim.fn.trim(vim.fn.system({ vim.o.shell, "-lc", "which python3" }))
+if python == "" then python = "python3" end
+
 local function run_python()
   vim.cmd("w")
   local file = vim.fn.expand("%:p")
-  vim.cmd("split | term python3 " .. vim.fn.shellescape(file))
+  vim.cmd("split | term " .. python .. " " .. vim.fn.shellescape(file))
 end
 
 local key = vim.g.neovide and "<D-r>" or "<F5>"

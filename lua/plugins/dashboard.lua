@@ -89,7 +89,7 @@ return {
 
       dashboard.section.header.val = header
 
-      dashboard.section.buttons.val = {
+      local buttons = {
         dashboard.button("f", "  find file", "<cmd>Telescope find_files<cr>"),
         dashboard.button("r", "  recent", "<cmd>Telescope oldfiles<cr>"),
         dashboard.button("g", "  grep", "<cmd>Telescope live_grep<cr>"),
@@ -98,6 +98,19 @@ return {
         dashboard.button("c", "  config", "<cmd>e $MYVIMRC<cr>"),
         dashboard.button("q", "  quit", "<cmd>qa<cr>"),
       }
+
+      for _, btn in ipairs(buttons) do
+        local sc = btn.opts.shortcut
+        local start = btn.val:find("[%a]")
+        if start then
+          local pos = btn.val:lower():find(sc:lower(), start, true)
+          if pos then
+            btn.opts.hl = { { "AlphaButtonShortcut", pos - 1, pos } }
+          end
+        end
+      end
+
+      dashboard.section.buttons.val = buttons
 
       dashboard.section.footer.val = greeting
 
@@ -108,10 +121,12 @@ return {
 
       vim.api.nvim_set_hl(0, "AlphaHeader", { fg = "#dbbc7f" })
       vim.api.nvim_set_hl(0, "AlphaFooter", { fg = "#7a8478", italic = true })
+      vim.api.nvim_set_hl(0, "AlphaButtonShortcut", { underline = true })
       vim.api.nvim_create_autocmd("ColorScheme", {
         callback = function()
           vim.api.nvim_set_hl(0, "AlphaHeader", { fg = "#dbbc7f" })
           vim.api.nvim_set_hl(0, "AlphaFooter", { fg = "#7a8478", italic = true })
+          vim.api.nvim_set_hl(0, "AlphaButtonShortcut", { underline = true })
         end,
       })
     end,
