@@ -1,5 +1,5 @@
-local python = vim.fn.trim(vim.fn.system({ vim.o.shell, "-lc", "which python3" }))
-if python == "" then python = "python3" end
+local python = vim.fn.trim(vim.fn.system({ vim.o.shell, "-ic", "which python3" }))
+if python == "" or python:find("not found") then python = "python3" end
 
 local function run_python()
   vim.cmd("w")

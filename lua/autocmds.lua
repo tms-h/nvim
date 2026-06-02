@@ -22,6 +22,13 @@ vim.api.nvim_create_autocmd("VimEnter", {
 vim.api.nvim_create_autocmd("SessionLoadPost", {
   callback = function()
     vim.schedule(function()
+      for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_loaded(buf) and vim.api.nvim_buf_get_name(buf) == ""
+          and vim.api.nvim_buf_line_count(buf) <= 1
+          and vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1] == "" then
+          vim.api.nvim_buf_delete(buf, { force = true })
+        end
+      end
       pcall(function() require("lazy").load({ plugins = { "nvim-treesitter" } }) end)
       for _, buf in ipairs(vim.api.nvim_list_bufs()) do
         if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buflisted then

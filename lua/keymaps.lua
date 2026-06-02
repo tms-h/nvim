@@ -110,26 +110,69 @@ local function todo_path()
 end
 
 local function parse_headings(path)
-  local lines, types = {}, {}
   local f = io.open(path, "r")
   if not f then return { "  no todo.md" }, { "open" } end
+
+  -- collect sections: each has a heading and a list of items
+  local sections = {}
+  local cur = nil
   for line in f:lines() do
-    local cb, text = line:match("^%s*- %[([ x])%] (.+)")
-    if cb then
-      text = text:gsub(" %- .+$", ""):gsub(" — .+$", "")
-      lines[#lines + 1] = (cb == "x" and " ✓ " or " ○ ") .. text
-      types[#types + 1] = cb == "x" and "done" or "open"
-    elseif line:match("^#+ ") then
-      if #lines > 0 then
-        lines[#lines + 1] = ""
-        types[#types + 1] = "blank"
+    if line:match("^#+ ") then
+      cur = { heading = line:gsub("^#+ ", ""), items = {}, item_types = {} }
+      sections[#sections + 1] = cur
+    elseif cur then
+      local cb, text = line:match("^%s*- %[([ x])%] (.+)")
+      if cb then
+        text = text:gsub(" %- .+$", ""):gsub(" — .+$", "")
+        cur.items[#cur.items + 1] = { text = text, done = cb == "x" }
       end
-      lines[#lines + 1] = " " .. line:gsub("^#+ ", "")
-      types[#types + 1] = "heading"
     end
   end
   f:close()
-  if #lines == 0 then return { "  no tasks" }, { "open" } end
+
+  -- split into sections with open tasks vs all-done sections
+  local active, done_secs = {}, {}
+  for _, sec in ipairs(sections) do
+    local has_open = false
+    for _, item in ipairs(sec.items) do
+      if not item.done then has_open = true; break end
+    end
+    if has_open then
+      active[#active + 1] = sec
+    else
+      done_secs[#done_secs + 1] = sec
+    end
+  end
+
+  local lines, types = {}, {}
+
+  -- show active sections first (only open tasks)
+  for _, sec in ipairs(active) do
+    if #lines > 0 then
+      lines[#lines + 1] = ""
+      types[#types + 1] = "blank"
+    end
+    lines[#lines + 1] = " " .. sec.heading
+    types[#types + 1] = "heading"
+    for _, item in ipairs(sec.items) do
+      if not item.done then
+        lines[#lines + 1] = " ○ " .. item.text
+        types[#types + 1] = "open"
+      end
+    end
+  end
+
+  -- show completed sections as a single collapsed line each
+  for _, sec in ipairs(done_secs) do
+    if #lines > 0 then
+      lines[#lines + 1] = ""
+      types[#types + 1] = "blank"
+    end
+    lines[#lines + 1] = " ✓ " .. sec.heading
+    types[#types + 1] = "done"
+  end
+
+  if #lines == 0 then return { "  all done!" }, { "done" } end
   return lines, types
 end
 
@@ -139,8 +182,8 @@ local function refresh_widget()
   local ui = vim.api.nvim_list_uis()[1]
   if not ui then return end
   local lines, types = parse_headings(todo_path())
-  local w = 28
-  local h = math.min(#lines, 15)
+  local w = 38
+  local h = math.min(#lines, 25)
   if not widget_buf or not vim.api.nvim_buf_is_valid(widget_buf) then
     widget_buf = vim.api.nvim_create_buf(false, true)
     vim.bo[widget_buf].bufhidden = "hide"

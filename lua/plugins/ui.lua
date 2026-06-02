@@ -8,6 +8,7 @@ return {
       vim.g.everforest_better_performance = 1
       vim.g.everforest_enable_italic = 1
       vim.cmd.colorscheme("everforest")
+      vim.api.nvim_set_hl(0, "NormalFloat", { bg = "#272e33" })
       vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#232a2e", bg = "NONE" })
       vim.api.nvim_set_hl(0, "TermNormal", { bg = "#1a1f22" })
     end,
