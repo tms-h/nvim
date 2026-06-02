@@ -1,31 +1,33 @@
 local map = vim.keymap.set
+local mod = require("util.modifier")
+local super = mod.chord
 
 map("n", ";", ":", { desc = "Command mode" })
 map("i", "jk", "<ESC>")
 map("n", "<Esc>", "<cmd>nohlsearch<cr>")
 
--- ── Undo/Redo (Cmd+Z / Cmd+Shift+Z) ──
-map("n", "<D-z>", "u", { desc = "Undo" })
-map("n", "<D-S-z>", "<C-r>", { desc = "Redo" })
-map("i", "<D-z>", "<C-o>u", { desc = "Undo" })
-map("i", "<D-S-z>", "<C-o><C-r>", { desc = "Redo" })
+-- ── Undo/Redo (Ctrl+Z / Ctrl+Shift+Z on Windows) ──
+map("n", super("z"), "u", { desc = "Undo" })
+map("n", super("S-z"), "<C-r>", { desc = "Redo" })
+map("i", super("z"), "<C-o>u", { desc = "Undo" })
+map("i", super("S-z"), "<C-o><C-r>", { desc = "Redo" })
 
 -- ── Find (VSCode-style) ──
-map("n", "<D-p>", "<cmd>Telescope find_files<cr>", { desc = "Find files" })
-map("n", "<D-S-p>", "<cmd>Telescope commands<cr>", { desc = "Command palette" })
-map("n", "<D-S-f>", "<cmd>Telescope live_grep<cr>", { desc = "Search in project" })
+map("n", super("p"), "<cmd>Telescope find_files<cr>", { desc = "Find files" })
+map("n", super("S-p"), "<cmd>Telescope commands<cr>", { desc = "Command palette" })
+map("n", super("S-f"), "<cmd>Telescope live_grep<cr>", { desc = "Search in project" })
 
--- ── Tabs (Cmd+W close, Cmd+N new, Cmd+Shift+[/] cycle) ──
-map("n", "<D-w>", function() require("mini.bufremove").delete(0, false) end, { desc = "Close tab" })
-map("n", "<D-t>", "<cmd>enew<cr>", { desc = "New tab" })
-map("n", "<D-S-]>", "<cmd>BufferLineCycleNext<cr>", { desc = "Next tab" })
-map("n", "<D-S-[>", "<cmd>BufferLineCyclePrev<cr>", { desc = "Previous tab" })
+-- ── Tabs (Ctrl+W close, Ctrl+T new, Ctrl+Shift+[/] cycle) ──
+map("n", super("w"), function() require("mini.bufremove").delete(0, false) end, { desc = "Close tab" })
+map("n", super("t"), "<cmd>enew<cr>", { desc = "New tab" })
+map("n", super("S-]"), "<cmd>BufferLineCycleNext<cr>", { desc = "Next tab" })
+map("n", super("S-["), "<cmd>BufferLineCyclePrev<cr>", { desc = "Previous tab" })
 for i = 1, 9 do
-  map("n", "<D-" .. i .. ">", "<cmd>BufferLineGoToBuffer " .. i .. "<cr>", { desc = "Tab " .. i })
+  map("n", super(tostring(i)), "<cmd>BufferLineGoToBuffer " .. i .. "<cr>", { desc = "Tab " .. i })
 end
 
--- ── Sidebar (Cmd+B) ──
-map("n", "<D-b>", "<cmd>NvimTreeToggle<cr>", { desc = "Toggle sidebar" })
+-- ── Sidebar (Ctrl+B) ──
+map("n", super("b"), "<cmd>NvimTreeToggle<cr>", { desc = "Toggle sidebar" })
 
 -- ── Leader: Find ──
 map("n", "<leader>ff", "<cmd>Telescope find_files<cr>", { desc = "Find files" })
@@ -41,6 +43,14 @@ map("n", "<leader>e", "<cmd>NvimTreeToggle<cr>", { desc = "File explorer" })
 map("n", "<leader>n", "<cmd>enew<cr>", { desc = "New file" })
 map("n", "<leader>c", function() require("mini.bufremove").delete(0, false) end, { desc = "Close buffer" })
 map("n", "<leader>q", "<cmd>q<cr>", { desc = "Quit window" })
+map("n", "<leader>cf", function()
+  local ft = vim.bo.filetype
+  if (ft == "c" or ft == "cpp") and #vim.lsp.get_clients({ bufnr = 0, name = "clangd" }) > 0 then
+    vim.lsp.buf.format({ timeout_ms = 10000 })
+    return
+  end
+  require("conform").format({ lsp_fallback = true, async = false, timeout_ms = 10000 })
+end, { desc = "Format buffer" })
 
 -- ── Buffer cycling (Shift+H/L) ──
 map("n", "<S-h>", "<cmd>BufferLineCyclePrev<cr>", { desc = "Previous tab" })
@@ -306,11 +316,11 @@ map("n", "<leader>tw", toggle_widget, { desc = "Toggle todo widget" })
 if vim.g.neovide then
   vim.g.neovide_scale_factor = vim.g.neovide_scale_factor or 1.0
   local function paste() vim.api.nvim_paste(vim.fn.getreg("+"), true, -1) end
-  map({ "n", "i", "v", "c", "t" }, "<D-v>", paste, { silent = true })
-  map({ "n", "i", "v", "c", "t" }, "<D-=>", function()
+  map({ "n", "i", "v", "c", "t" }, super("v"), paste, { silent = true })
+  map({ "n", "i", "v", "c", "t" }, super("="), function()
     vim.g.neovide_scale_factor = vim.g.neovide_scale_factor * 1.25
   end, { silent = true })
-  map({ "n", "i", "v", "c", "t" }, "<D-->", function()
+  map({ "n", "i", "v", "c", "t" }, super("-"), function()
     vim.g.neovide_scale_factor = vim.g.neovide_scale_factor / 1.25
   end, { silent = true })
 end

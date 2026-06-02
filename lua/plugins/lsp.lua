@@ -7,6 +7,19 @@ return {
   },
 
   {
+    "WhoIsSethDaniel/mason-tool-installer.nvim",
+    dependencies = { "mason-org/mason.nvim" },
+    opts = {
+      ensure_installed = {
+        "clangd",
+        "lua-language-server",
+        "pyright",
+        "stylua",
+      },
+    },
+  },
+
+  {
     "neovim/nvim-lspconfig",
     event = { "BufReadPost", "BufNewFile" },
     dependencies = { "mason-org/mason.nvim" },
@@ -31,6 +44,9 @@ return {
           m("n", "K", vim.lsp.buf.hover, "Hover")
           m("n", "<leader>rn", vim.lsp.buf.rename, "Rename")
           m("n", "<leader>ca", vim.lsp.buf.code_action, "Code action")
+          m("n", "<leader>cf", function()
+            require("conform").format({ lsp_fallback = true, async = false, timeout_ms = 10000 })
+          end, "Format buffer")
           m("n", "<leader>d", vim.diagnostic.open_float, "Line diagnostics")
           m("n", "[d", function() vim.diagnostic.jump({ count = -1 }) end, "Previous diagnostic")
           m("n", "]d", function() vim.diagnostic.jump({ count = 1 }) end, "Next diagnostic")
@@ -104,10 +120,14 @@ return {
       if vim.fn.executable("ruff") == 1 then
         by_ft.python = { "ruff_format" }
       end
-      if vim.fn.executable("clang-format") == 1 then
-        by_ft.c = { "clang_format" }
-        by_ft.cpp = { "clang_format" }
+      local function c_cpp_formatters()
+        if vim.fn.executable("clang-format") == 1 then
+          return { "clang_format", "clangd" }
+        end
+        return { "clangd" }
       end
+      by_ft.c = c_cpp_formatters()
+      by_ft.cpp = c_cpp_formatters()
       if vim.fn.executable("prettier") == 1 then
         for _, ft in ipairs({
           "javascript", "javascriptreact", "typescript", "typescriptreact",
@@ -136,9 +156,9 @@ return {
           local ft = vim.bo[bufnr].filetype
           if ft == "c" or ft == "cpp" then
             return {
-              timeout_ms = 4000,
+              timeout_ms = 8000,
               stop_after_first = true,
-              lsp_format = vim.fn.executable("clang-format") == 1 and "never" or "prefer",
+              lsp_format = "fallback",
             }
           end
           return { timeout_ms = 1200, lsp_format = "prefer" }

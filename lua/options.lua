@@ -59,7 +59,9 @@ if vim.g.neovide then
   -- QoL
   vim.g.neovide_hide_mouse_when_typing = true
   vim.g.neovide_remember_window_size = true
-  vim.g.neovide_input_macos_option_key_is_meta = "only_left"
+  if vim.fn.has("mac") == 1 then
+    vim.g.neovide_input_macos_option_key_is_meta = "only_left"
+  end
 
   -- Padding so text isn't jammed against the edges
   vim.g.neovide_padding_top = 8
