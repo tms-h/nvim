@@ -15,6 +15,11 @@ local key = vim.g.neovide and "<D-r>" or "<F5>"
 vim.keymap.set("n", key, run_cpp, { buffer = true, desc = "C++: compile and run" })
 vim.keymap.set("n", "<F5>", run_cpp, { buffer = true, desc = "C++: compile and run" })
 
+-- CompetiTest (buffer-local; shadows global <leader>a/<leader>e in c/cpp only)
+vim.keymap.set("n", "<leader>r", "<cmd>CompetiTest run<cr>", { buffer = true, desc = "CompetiTest: run" })
+vim.keymap.set("n", "<leader>a", "<cmd>CompetiTest add_testcase<cr>", { buffer = true, desc = "CompetiTest: add testcase" })
+vim.keymap.set("n", "<leader>e", "<cmd>CompetiTest edit_testcase<cr>", { buffer = true, desc = "CompetiTest: edit testcase" })
+
 -- Close terminal pane with q
 vim.api.nvim_create_autocmd("TermOpen", {
   buffer = 0,
