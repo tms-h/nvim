@@ -18,6 +18,36 @@ return {
       end
 
       vim.lsp.config("*", { capabilities = capabilities })
+
+      local competitive_headers = { "bits/stdcpp.h", "bits/stdc++.h" }
+      local function is_missing_competitive_include(diagnostic)
+        local message = diagnostic.message or ""
+        if not message:find("not found", 1, true) then
+          return false
+        end
+        for _, header in ipairs(competitive_headers) do
+          if message:find(header, 1, true) then
+            return true
+          end
+        end
+        return false
+      end
+
+      local function filter_competitive_include_diagnostics(diagnostics)
+        return vim.tbl_filter(function(diagnostic)
+          return not is_missing_competitive_include(diagnostic)
+        end, diagnostics or {})
+      end
+
+      local publish_diagnostics = vim.lsp.handlers["textDocument/publishDiagnostics"]
+      vim.lsp.handlers["textDocument/publishDiagnostics"] = function(err, result, ctx, config)
+        if result and result.diagnostics then
+          result = vim.deepcopy(result)
+          result.diagnostics = filter_competitive_include_diagnostics(result.diagnostics)
+        end
+        return publish_diagnostics(err, result, ctx, config)
+      end
+
       vim.lsp.enable({ "html", "cssls", "clangd", "pyright", "ts_ls", "lua_ls" })
 
       vim.api.nvim_create_autocmd("LspAttach", {
@@ -108,6 +138,22 @@ return {
     lazy = false,
     config = function()
       local lint = require("lint")
+      local cppcheck = lint.linters.cppcheck
+      local cppcheck_parser = cppcheck.parser
+      cppcheck.parser = function(output, bufnr, linter_cwd)
+        local diagnostics = cppcheck_parser(output, bufnr, linter_cwd)
+        return vim.tbl_filter(function(diagnostic)
+          local message = diagnostic.message or ""
+          return not (
+            message:find("not found", 1, true)
+            and (
+              message:find("bits/stdcpp.h", 1, true)
+              or message:find("bits/stdc++.h", 1, true)
+            )
+          )
+        end, diagnostics or {})
+      end
+
       local by_ft = {}
       local function add(ft, name, exe)
         if vim.fn.executable(exe or name) == 1 then
