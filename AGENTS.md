@@ -1,0 +1,11 @@
+# Neovim configuration guidelines
+
+- Keep one cross-platform configuration on `main`; do not create permanent OS-specific branches.
+- Put shared behavior and keybindings in the existing shared modules.
+- Build Cmd/Ctrl GUI chords with `require("util.modifier").chord(...)` so macOS uses Cmd and Windows uses Ctrl.
+- Detect macOS with `vim.fn.has("macunix")` and Windows with `vim.fn.has("win32")`.
+- Treat `vim.g.neovide` as a GUI check, not an operating-system check.
+- Keep executable discovery and path differences behind small utility modules such as `lua/configs/runner.lua`.
+- Preserve these matching actions on both platforms: file tree, find, command palette, tabs, paste, zoom, and code runner.
+- Keep machine-only paths or preferences out of tracked shared files unless they have a safe runtime fallback.
+- Run Lua formatting and a headless Neovim startup check after configuration changes when those tools are available.

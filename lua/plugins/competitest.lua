@@ -1,3 +1,5 @@
+local runner = require("configs.runner")
+
 return {
   {
     "xeluxee/competitest.nvim",
@@ -8,7 +10,7 @@ return {
       testcases_use_single_file = true,
       compile_command = {
         cpp = {
-          exec = "g++-15",
+          exec = runner.find_cpp_compiler() or "g++",
           args = {
             "-std=c++20", "-Wall", "-Wextra", "-fsanitize=address,undefined",
             "$(FNAME)", "-o", "$(FNOEXT)",

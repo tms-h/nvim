@@ -10,13 +10,14 @@ My Neovim config. Lazy-loaded with [lazy.nvim](https://github.com/folke/lazy.nvi
 | **UI** | bufferline, lualine, nvim-tree, noice, nvim-notify, dressing, which-key, alpha (dashboard) |
 | **Editor** | treesitter, flash, nvim-autopairs, mini (ai, surround, bufremove, bracketed), todo-comments, trouble |
 | **Fuzzy finder** | telescope |
-| **LSP** | mason, nvim-lspconfig, nvim-cmp, LuaSnip, fidget |
+| **LSP** | mason, nvim-lspconfig, blink.cmp, fidget |
 | **Formatting** | conform (stylua, ruff, clang-format, prettier, shfmt) |
 | **Linting** | nvim-lint (luacheck, ruff, cppcheck, shellcheck, eslint_d) |
 | **Git** | gitsigns |
 | **Competitive** | competitest.nvim (+ blink.cmp) |
 | **LeetCode** | leetcode.nvim + custom timer & stats modules |
 | **Sessions** | persistence.nvim |
+| **Activity** | WakaTime |
 
 ## LeetCode Features
 
@@ -26,17 +27,15 @@ My Neovim config. Lazy-loaded with [lazy.nvim](https://github.com/folke/lazy.nvi
 
 Both hook into [kawre/leetcode.nvim](https://github.com/kawre/leetcode.nvim) automatically.
 
-## Platforms / branches
+## Cross-platform setup
 
-| Branch | Platform | GUI modifier |
-|--------|----------|--------------|
-| `main` | macOS | **Cmd** (`<D->`) |
-| `windows` | Windows | **Ctrl** (`<C->`) |
+The same `main` branch runs on macOS and Windows. Platform differences are selected at
+runtime, so shared behavior cannot drift between long-lived branches.
 
-The branches are identical except for the VS Code-style shortcuts: macOS uses **Cmd**,
-and the `windows` branch remaps the same chords to **Ctrl** (via `lua/util/modifier.lua`).
-Everything else is shared. In the tables below, the **Mac** column applies to `main` and
-the **Windows** column applies to the `windows` branch. Leader is `Space`.
+`lua/util/modifier.lua` maps VS Code-style shortcuts to **Cmd** on macOS and **Ctrl** on
+Windows. `lua/configs/runner.lua` handles executable and path differences for C, C++,
+and Python. Neovide-specific settings remain shared, with Mac-only options guarded by
+an OS check. Leader is `Space`.
 
 ## Keybindings
 
@@ -122,8 +121,8 @@ CompetiTest mappings shadow the global `<leader>a` / `<leader>e`.
 
 | Key | Action | Filetypes |
 |-----|--------|-----------|
-| `F5` | Compile & run current file | `cpp`, `python` |
-| `Cmd+R` / `Ctrl+R` | Compile & run (Neovide only) | `cpp`, `python` |
+| `F5` | Compile & run current file | `c`, `cpp`, `python` |
+| `Cmd+R` / `Ctrl+R` | Compile & run (Neovide only) | `c`, `cpp`, `python` |
 | `<leader>r` | CompetiTest: run testcases | `c`, `cpp` |
 | `<leader>a` | CompetiTest: add testcase | `c`, `cpp` |
 | `<leader>e` | CompetiTest: edit testcase | `c`, `cpp` |
@@ -139,8 +138,16 @@ Also driven by commands: `:CompetiTest receive problem`, `:CompetiTest receive c
 git clone https://github.com/tms-h/nvim ~/.config/nvim
 
 # Windows (PowerShell)
-git clone -b windows https://github.com/tms-h/nvim $env:LOCALAPPDATA\nvim
+git clone https://github.com/tms-h/nvim $env:LOCALAPPDATA\nvim
 ```
 
 Open `nvim` and lazy.nvim installs everything on first launch. Needs Neovim >= 0.10.
 Optionally works with [Neovide](https://neovide.dev) (custom cursor, padding, 120Hz configured).
+
+If an existing Windows checkout still uses the old `windows` branch, migrate it once:
+
+```powershell
+git fetch origin
+git switch main
+git pull --ff-only
+```
