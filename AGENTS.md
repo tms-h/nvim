@@ -8,4 +8,5 @@
 - Keep executable discovery and path differences behind small utility modules such as `lua/configs/runner.lua`.
 - Preserve these matching actions on both platforms: file tree, find, command palette, tabs, paste, zoom, and code runner.
 - Keep machine-only paths or preferences out of tracked shared files unless they have a safe runtime fallback.
+- Preserve the OCaml workflow: ocp-indent while typing, ocamlformat with project settings or the Jane Street fallback profile, ocamllsp, and Dune commands.
 - Run Lua formatting and a headless Neovim startup check after configuration changes when those tools are available.

@@ -7,10 +7,11 @@ return {
       ensure_installed = {
         "c", "cpp", "python", "lua", "javascript", "typescript",
         "html", "css", "json", "markdown", "markdown_inline",
-        "vim", "vimdoc",
+        "vim", "vimdoc", "ocaml", "ocaml_interface",
       },
       highlight = { enable = true },
-      indent = { enable = true },
+      -- ocp-indent is more reliable for incomplete OCaml code than Tree-sitter indentation.
+      indent = { enable = true, disable = { "ocaml", "ocaml_interface" } },
     },
     config = function(_, opts)
       require("nvim-treesitter.configs").setup(opts)

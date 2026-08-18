@@ -18,6 +18,7 @@ My Neovim config. Lazy-loaded with [lazy.nvim](https://github.com/folke/lazy.nvi
 | **LeetCode** | leetcode.nvim + custom timer & stats modules |
 | **Sessions** | persistence.nvim |
 | **Activity** | WakaTime |
+| **OCaml** | ocamllsp, ocamlformat (Jane Street profile), ocp-indent, Dune |
 
 ## LeetCode Features
 
@@ -131,6 +132,34 @@ Also driven by commands: `:CompetiTest receive problem`, `:CompetiTest receive c
 `:CompetiTest run`. C++ compiles with `g++ -std=c++20` (`-Wall -Wextra
 -fsanitize=address,undefined` under CompetiTest); template at `~/cp/templates/template.cpp`.
 
+### OCaml / Jane Street workflow
+
+OCaml buffers use `ocp-indent` while typing, so top-level `let` stays at column zero.
+Saving runs `ocamlformat`; project `.ocamlformat` settings win, otherwise the
+`janestreet` profile is used. `ocamllsp` supplies diagnostics, completion, navigation,
+and `.ml`/`.mli` switching.
+
+| Key | Action |
+|-----|--------|
+| `<leader>of` | Format with ocamlformat |
+| `<leader>oi` | Switch between `.ml` and `.mli` |
+| `<leader>ob` | `dune build` |
+| `<leader>ot` | `dune runtest` |
+| `<leader>ow` | `dune build --watch` |
+| `<leader>op` | `dune promote` |
+
+Install the tools in each opam switch used for development:
+
+```sh
+opam install dune ocaml-lsp-server ocamlformat ocp-indent
+```
+
+For a Jane Street-formatted project, commit this `.ocamlformat` file:
+
+```text
+profile=janestreet
+```
+
 ## Setup
 
 ```sh
@@ -141,7 +170,7 @@ git clone https://github.com/tms-h/nvim ~/.config/nvim
 git clone https://github.com/tms-h/nvim $env:LOCALAPPDATA\nvim
 ```
 
-Open `nvim` and lazy.nvim installs everything on first launch. Needs Neovim >= 0.10.
+Open `nvim` and lazy.nvim installs everything on first launch. Needs Neovim >= 0.11.
 Optionally works with [Neovide](https://neovide.dev) (custom cursor, padding, 120Hz configured).
 
 If an existing Windows checkout still uses the old `windows` branch, migrate it once:

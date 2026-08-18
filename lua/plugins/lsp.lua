@@ -48,7 +48,13 @@ return {
         return publish_diagnostics(err, result, ctx, config)
       end
 
-      vim.lsp.enable({ "html", "cssls", "clangd", "pyright", "ts_ls", "lua_ls" })
+      local servers = { "html", "cssls", "clangd", "pyright", "ts_ls", "lua_ls" }
+      local ocamllsp = require("configs.ocaml").find_tool("ocamllsp")
+      if ocamllsp then
+        vim.lsp.config("ocamllsp", { cmd = { ocamllsp } })
+        servers[#servers + 1] = "ocamllsp"
+      end
+      vim.lsp.enable(servers)
 
       vim.api.nvim_create_autocmd("LspAttach", {
         callback = function(ev)
@@ -87,6 +93,10 @@ return {
     lazy = false,
     config = function()
       local by_ft = { lua = { "stylua" } }
+      local ocamlformat = require("configs.ocaml").find_tool("ocamlformat")
+      if ocamlformat then
+        by_ft.ocaml = { "ocamlformat" }
+      end
       if vim.fn.executable("ruff") == 1 then
         by_ft.python = { "ruff_format" }
       end
@@ -111,6 +121,13 @@ return {
       require("conform").setup({
         formatters_by_ft = by_ft,
         formatters = {
+          ocamlformat = {
+            command = ocamlformat or "ocamlformat",
+            prepend_args = function(_, ctx)
+              local project_config = vim.fs.find(".ocamlformat", { path = ctx.dirname, upward = true })[1]
+              return project_config and {} or { "--profile=janestreet" }
+            end,
+          },
           clang_format = {
             prepend_args = {
               "--style",
@@ -126,6 +143,9 @@ return {
               stop_after_first = true,
               lsp_format = vim.fn.executable("clang-format") == 1 and "never" or "prefer",
             }
+          end
+          if ft == "ocaml" then
+            return { timeout_ms = 5000, lsp_format = "never" }
           end
           return { timeout_ms = 1200, lsp_format = "prefer" }
         end,
