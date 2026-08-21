@@ -117,7 +117,7 @@ return {
       vim.cmd.colorscheme "everforest"
       vim.api.nvim_set_hl(0, "NormalFloat", { bg = backgrounds.raised })
       vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#343d3b", bg = backgrounds.editor })
-      vim.api.nvim_set_hl(0, "WinSeparatorHover", { fg = "#56625c", bg = backgrounds.editor, bold = true })
+      vim.api.nvim_set_hl(0, "WinSeparatorHover", { fg = "#56625c", bg = backgrounds.editor })
 
       -- Keep the existing panel colors, including underneath their divider
       -- cells and chrome, so only the one-pixel separator changes surface.
@@ -132,16 +132,16 @@ return {
       vim.api.nvim_set_hl(0, "NvimTreeEndOfBuffer", { fg = backgrounds.dim, bg = backgrounds.dim })
       vim.api.nvim_set_hl(0, "NvimTreeSignColumn", { bg = backgrounds.dim })
       vim.api.nvim_set_hl(0, "NvimTreeWinSeparator", { fg = "#343d3b", bg = backgrounds.dim })
-      vim.api.nvim_set_hl(0, "NvimTreeWinSeparatorHover", { fg = "#56625c", bg = backgrounds.dim, bold = true })
+      vim.api.nvim_set_hl(0, "NvimTreeWinSeparatorHover", { fg = "#56625c", bg = backgrounds.dim })
       -- A darker shade of the editor background keeps terminal panes distinct.
       vim.api.nvim_set_hl(0, "TermNormal", { bg = backgrounds.terminal })
       vim.api.nvim_set_hl(0, "TermWinSeparator", { fg = "#343d3b", bg = backgrounds.terminal })
-      vim.api.nvim_set_hl(0, "TermWinSeparatorHover", { fg = "#56625c", bg = backgrounds.terminal, bold = true })
+      vim.api.nvim_set_hl(0, "TermWinSeparatorHover", { fg = "#56625c", bg = backgrounds.terminal })
       -- Horizontal split separators are a full character cell tall. When a
       -- terminal is directly below an editor, make that cell belong visually
       -- to the terminal so the divider stays a single line instead of a bar.
       vim.api.nvim_set_hl(0, "TerminalBoundary", { fg = "#343d3b", bg = backgrounds.terminal })
-      vim.api.nvim_set_hl(0, "TerminalBoundaryHover", { fg = "#56625c", bg = backgrounds.terminal, bold = true })
+      vim.api.nvim_set_hl(0, "TerminalBoundaryHover", { fg = "#56625c", bg = backgrounds.terminal })
     end,
   },
 
