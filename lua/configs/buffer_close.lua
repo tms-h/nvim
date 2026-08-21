@@ -9,14 +9,27 @@ local function normalize_buffer(bufnr)
   return bufnr
 end
 
-function M.delete(bufnr)
+local function delete_now(bufnr, force, opts)
+  local previous_keyboard_switch = vim.g.nvim_keyboard_buffer_switch
+  if opts and opts.keep_terminal_normal then
+    vim.g.nvim_keyboard_buffer_switch = true
+  end
+
+  local ok, err = pcall(require("mini.bufremove").delete, bufnr, force)
+  vim.g.nvim_keyboard_buffer_switch = previous_keyboard_switch
+  if not ok then
+    error(err)
+  end
+end
+
+function M.delete(bufnr, opts)
   bufnr = normalize_buffer(bufnr)
   if not vim.api.nvim_buf_is_valid(bufnr) or pending[bufnr] then
     return
   end
 
   if not vim.bo[bufnr].modified then
-    require("mini.bufremove").delete(bufnr, false)
+    delete_now(bufnr, false, opts)
     return
   end
 
@@ -38,8 +51,12 @@ function M.delete(bufnr)
     if not choice or not choice.delete or not vim.api.nvim_buf_is_valid(bufnr) then
       return
     end
-    require("mini.bufremove").delete(bufnr, true)
+    delete_now(bufnr, true, opts)
   end)
+end
+
+function M.delete_from_keyboard(bufnr)
+  M.delete(bufnr, { keep_terminal_normal = true })
 end
 
 return M

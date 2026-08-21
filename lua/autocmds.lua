@@ -1,4 +1,5 @@
 local command_line_group = vim.api.nvim_create_augroup("HiddenCommandLine", { clear = true })
+local session = require "configs.session"
 
 local function hide_command_line_row()
   for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
@@ -47,7 +48,7 @@ vim.api.nvim_create_autocmd("VimEnter", {
   nested = true,
   callback = function()
     if vim.fn.argc() == 0 then
-      require("persistence").load { last = true }
+      session.load_last_project()
     end
   end,
 })
@@ -76,6 +77,7 @@ local function session_file_buffer()
       and vim.bo[buf].buftype == ""
       and vim.api.nvim_buf_get_name(buf) ~= ""
       and not is_explorer_buffer(buf)
+      and not session.is_config_buffer(buf)
     then
       return buf
     end
@@ -121,8 +123,9 @@ vim.api.nvim_create_autocmd("User", {
 vim.api.nvim_create_autocmd("SessionLoadPost", {
   callback = function()
     vim.schedule(function()
-      -- Also repairs older sessions that already contain NvimTree_1 or Oil.
+      -- Also repairs older sessions that contain explorer or config buffers.
       remove_explorer_buffers()
+      session.cleanup_restored_config_buffers()
 
       for _, buf in ipairs(vim.api.nvim_list_bufs()) do
         if

@@ -52,7 +52,7 @@ map("n", super "S-p", "<cmd>Telescope commands<cr>", { desc = "Command palette" 
 map("n", super "S-f", "<cmd>Telescope live_grep<cr>", { desc = "Search in project" })
 
 -- ── Tabs (primary modifier + VS Code-style chords) ──
-map("n", super "w", buffer_close.delete, { desc = "Close tab" })
+map("n", super "w", buffer_close.delete_from_keyboard, { desc = "Close tab" })
 map("n", super "t", "<cmd>enew<cr>", { desc = "New tab" })
 map("n", super "S-]", function()
   keyboard_buffer_switch "BufferLineCycleNext"

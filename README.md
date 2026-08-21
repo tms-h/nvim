@@ -60,6 +60,8 @@ an OS check. Leader is `Space`.
 **Neovide only:** paste `Cmd+V` / `Ctrl+V`, zoom in `Cmd+=` / `Ctrl+=`, zoom out `Cmd+-` / `Ctrl+-`.
 Draggable split dividers brighten slightly when hovered. Keyboard buffer shortcuts land
 on terminals in Terminal-Normal mode; clicking a terminal returns it to input mode.
+Automatic startup restores the latest real project session, excluding config and temporary
+QA sessions; config-only buffers are also removed from restored project buffer lists.
 
 On macOS, [`neovide.toml`](./neovide.toml) uses a transparent, titleless native strip. The
 real traffic-light controls remain functional and the window stays movable/resizable;
