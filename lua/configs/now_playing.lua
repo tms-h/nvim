@@ -53,7 +53,8 @@ local function poll()
 
         if title ~= "" then
           local track = artist ~= "" and (title .. " — " .. artist) or title
-          local icon = playback_rate == nil and "" or playback_rate > 0 and "" or ""
+          -- Spotify exposes a numeric rate while playing and null while paused.
+          local icon = playback_rate and playback_rate > 0 and "" or ""
           next_text = icon .. " " .. truncate(track:lower(), 48)
         end
       end
@@ -73,7 +74,7 @@ function M.setup()
 
   poll()
   timer = vim.uv.new_timer()
-  timer:start(5000, 5000, vim.schedule_wrap(poll))
+  timer:start(2000, 2000, vim.schedule_wrap(poll))
 
   vim.api.nvim_create_autocmd("VimLeavePre", {
     once = true,
