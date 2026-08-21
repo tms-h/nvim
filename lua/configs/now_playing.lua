@@ -54,7 +54,7 @@ local function poll()
         if title ~= "" then
           local track = artist ~= "" and (title .. " — " .. artist) or title
           -- Spotify exposes a numeric rate while playing and null while paused.
-          local icon = playback_rate and playback_rate > 0 and "" or ""
+          local icon = playback_rate and playback_rate > 0 and "" or ""
           next_text = icon .. " " .. truncate(track:lower(), 48)
         end
       end
