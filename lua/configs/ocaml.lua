@@ -73,7 +73,7 @@ local function format_ocaml(buffer)
     command = ocamlformat,
     prepend_args = function(_, ctx)
       local config = vim.fs.find(".ocamlformat", { path = ctx.dirname, upward = true })[1]
-      return config and {} or { "--profile=janestreet" }
+      return config and {} or { "--profile=janestreet", "--enable-outside-detected-project" }
     end,
   }
   conform.format {

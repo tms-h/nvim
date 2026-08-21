@@ -192,7 +192,7 @@ return {
             command = ocamlformat or "ocamlformat",
             prepend_args = function(_, ctx)
               local project_config = vim.fs.find(".ocamlformat", { path = ctx.dirname, upward = true })[1]
-              return project_config and {} or { "--profile=janestreet" }
+              return project_config and {} or { "--profile=janestreet", "--enable-outside-detected-project" }
             end,
           },
           clang_format = {
