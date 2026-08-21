@@ -8,12 +8,13 @@ My Neovim config. Lazy-loaded with [lazy.nvim](https://github.com/folke/lazy.nvi
 |----------|---------|
 | **Theme** | everforest |
 | **UI** | bufferline, lualine, nvim-tree, noice, nvim-notify, dressing, which-key, alpha (dashboard) |
-| **Editor** | treesitter, flash, nvim-autopairs, mini (ai, surround, bufremove, bracketed), todo-comments, trouble |
-| **Fuzzy finder** | telescope |
-| **LSP** | mason, nvim-lspconfig, blink.cmp, fidget |
+| **Editor** | treesitter, flash, nvim-autopairs, mini (ai, surround, bufremove, bracketed), Oil, vim-easy-align, todo-comments, trouble |
+| **Fuzzy finder** | telescope + fzf-native |
+| **LSP** | mason, mason-tool-installer, nvim-lspconfig, blink.cmp, fidget |
 | **Formatting** | conform (stylua, ruff, clang-format, prettier, shfmt) |
-| **Linting** | nvim-lint (luacheck, ruff, cppcheck, shellcheck, eslint_d) |
+| **Linting** | nvim-lint (selene, ruff, cppcheck, shellcheck, eslint_d) |
 | **Git** | gitsigns |
+| **Search/replace** | grug-far.nvim |
 | **Competitive** | competitest.nvim (+ blink.cmp) |
 | **LeetCode** | leetcode.nvim + custom timer & stats modules |
 | **Sessions** | persistence.nvim |
@@ -57,6 +58,8 @@ an OS check. Leader is `Space`.
 | Toggle file tree | `Cmd+B` | `Ctrl+B` |
 
 **Neovide only:** paste `Cmd+V` / `Ctrl+V`, zoom in `Cmd+=` / `Ctrl+=`, zoom out `Cmd+-` / `Ctrl+-`.
+Draggable split dividers brighten slightly when hovered. Keyboard buffer shortcuts land
+on terminals in Terminal-Normal mode; clicking a terminal returns it to input mode.
 
 ### Motions & windows (same on both)
 
@@ -68,6 +71,7 @@ an OS check. Leader is `Space`.
 | `s` / `S` | Flash jump |
 | `Shift+H` / `Shift+L` | Previous / next buffer |
 | `Ctrl+H/J/K/L` | Move between windows |
+| `Ctrl+Arrow` | Resize the current split |
 | `Alt+J` / `Alt+K` | Move line down / up (normal, insert, visual) |
 | `<` / `>` (visual) | Indent, keep selection |
 
@@ -81,10 +85,13 @@ an OS check. Leader is `Space`.
 | `<leader>fh` | Help tags |
 | `<leader>ft` | Todos (Telescope) |
 | `<leader>e` | Toggle file explorer |
+| `-` | Edit the parent directory with Oil |
 | `<leader>n` | New file |
 | `<leader>c` | Close buffer |
 | `<leader>q` | Quit window |
-| `<leader>a` | Dashboard |
+
+Oil and nvim-tree have **Name** and **Recently added** sort controls. Oil also provides
+a **More…** menu for modification-time and file-size sorting.
 
 ### Leader — terminal, LSP & diagnostics
 
@@ -102,6 +109,12 @@ an OS check. Leader is `Space`.
 | `<leader>ll` | Run linter |
 | `<leader>ls` | LeetCode stats |
 
+### Project search and replace
+
+| Key | Action |
+|-----|--------|
+| `<leader>sr` | Project search and replace |
+
 ### Leader — sessions & todo
 
 | Key | Action |
@@ -118,7 +131,7 @@ an OS check. Leader is `Space`.
 ### Competitive programming
 
 C/C++ and Python buffers get extra buffer-local mappings. In `c`/`cpp` buffers the
-CompetiTest mappings shadow the global `<leader>a` / `<leader>e`.
+CompetiTest `<leader>e` mapping shadows the global file-explorer mapping.
 
 | Key | Action | Filetypes |
 |-----|--------|-----------|
@@ -135,9 +148,9 @@ Also driven by commands: `:CompetiTest receive problem`, `:CompetiTest receive c
 ### OCaml / Jane Street workflow
 
 OCaml buffers use `ocp-indent` while typing, so top-level `let` stays at column zero.
-Saving runs `ocamlformat`; project `.ocamlformat` settings win, otherwise the
-`janestreet` profile is used. `ocamllsp` supplies diagnostics, completion, navigation,
-and `.ml`/`.mli` switching.
+Manual formatting uses project `.ocamlformat` settings when present and the `janestreet`
+profile otherwise. `ocamllsp` supplies diagnostics, completion, navigation, and
+`.ml`/`.mli` switching.
 
 | Key | Action |
 |-----|--------|
@@ -170,8 +183,9 @@ git clone https://github.com/tms-h/nvim ~/.config/nvim
 git clone https://github.com/tms-h/nvim $env:LOCALAPPDATA\nvim
 ```
 
-Open `nvim` and lazy.nvim installs everything on first launch. Needs Neovim >= 0.11.
-Optionally works with [Neovide](https://neovide.dev) (custom cursor, padding, 120Hz configured).
+Open `nvim` and lazy.nvim installs everything on first launch. Needs Neovim >= 0.12,
+`ripgrep`, `fd`, `make`, and a C compiler. Optionally works with
+[Neovide](https://neovide.dev) (custom cursor, padding, 120Hz configured).
 
 If an existing Windows checkout still uses the old `windows` branch, migrate it once:
 

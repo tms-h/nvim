@@ -13,13 +13,36 @@ opt.scrolloff = 8
 opt.sidescrolloff = 8
 opt.splitbelow = true
 opt.splitright = true
+-- Opening a vertical sidebar must not equalize horizontal split heights.
+opt.eadirection = "hor"
+-- Preserve the first visible line when horizontal splits are resized.
+opt.splitkeep = "topline"
 opt.wrap = true
 opt.termguicolors = true
 opt.showmode = false
+opt.cmdheight = 0
+opt.confirm = true
+-- Keep :substitute from visually rewriting the buffer while it is being typed.
+opt.inccommand = ""
+opt.jumpoptions = "view"
+opt.virtualedit = "block"
+opt.winborder = "rounded"
+
+opt.list = true
+opt.listchars = {
+  tab = "» ",
+  trail = "·",
+  nbsp = "␣",
+}
+
+-- Start files unfolded; zc/zo, za and zM/zR remain available on demand.
+opt.foldlevel = 99
+opt.foldlevelstart = 99
+opt.foldcolumn = "1"
 
 opt.clipboard = "unnamedplus"
 opt.undofile = true
-opt.undodir = vim.fn.stdpath("state") .. "/undo"
+opt.undodir = vim.fn.stdpath "state" .. "/undo"
 opt.updatetime = 250
 opt.timeoutlen = 400
 opt.completeopt = { "menuone", "noselect" }
@@ -28,10 +51,15 @@ opt.ignorecase = true
 opt.smartcase = true
 opt.incsearch = true
 
-vim.cmd("filetype plugin indent on")
+vim.cmd "filetype plugin indent on"
 opt.autoindent = true
 
 if vim.g.neovide then
+  -- Let Neovim report pointer movement so split dividers can react on hover.
+  opt.mousemoveevent = true
+
+  vim.o.guifont = "JetBrainsMono Nerd Font Mono:h14"
+
   -- 120Hz for ProMotion, drop to 5fps when idle (saves battery)
   vim.g.neovide_refresh_rate = 120
   vim.g.neovide_refresh_rate_idle = 5
@@ -50,6 +78,17 @@ if vim.g.neovide then
   vim.g.neovide_scroll_animation_far_lines = 1
   vim.g.neovide_position_animation_length = 0
 
+  -- Subtle frosted-glass effect without sacrificing code contrast.
+  vim.g.neovide_opacity = 0.94
+  vim.g.neovide_normal_opacity = 0.84
+  if vim.fn.has "macunix" == 1 then
+    vim.g.neovide_window_blurred = true
+  end
+  vim.g.neovide_floating_blur_amount_x = 2.0
+  vim.g.neovide_floating_blur_amount_y = 2.0
+  opt.winblend = 8
+  opt.pumblend = 8
+
   -- Floating window shadows
   vim.g.neovide_floating_shadow = true
   vim.g.neovide_floating_z_height = 10
@@ -59,13 +98,15 @@ if vim.g.neovide then
   -- QoL
   vim.g.neovide_hide_mouse_when_typing = true
   vim.g.neovide_remember_window_size = true
-  if vim.fn.has("macunix") == 1 then
+  if vim.fn.has "macunix" == 1 then
+    vim.g.neovide_input_use_logo = true
     vim.g.neovide_input_macos_option_key_is_meta = "only_left"
   end
 
   -- Padding so text isn't jammed against the edges
   vim.g.neovide_padding_top = 8
-  vim.g.neovide_padding_bottom = 4
+  -- Keep the statusline flush with the window edge at every font scale.
+  vim.g.neovide_padding_bottom = 0
   vim.g.neovide_padding_left = 8
   vim.g.neovide_padding_right = 8
 end

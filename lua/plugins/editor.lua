@@ -1,20 +1,63 @@
 return {
   {
     "nvim-treesitter/nvim-treesitter",
+    branch = "main",
+    lazy = false,
     build = ":TSUpdate",
-    event = { "BufReadPost", "BufNewFile" },
-    opts = {
-      ensure_installed = {
-        "c", "cpp", "python", "lua", "javascript", "typescript",
-        "html", "css", "json", "markdown", "markdown_inline",
-        "vim", "vimdoc", "ocaml", "ocaml_interface",
-      },
-      highlight = { enable = true },
-      -- ocp-indent is more reliable for incomplete OCaml code than Tree-sitter indentation.
-      indent = { enable = true, disable = { "ocaml", "ocaml_interface" } },
-    },
-    config = function(_, opts)
-      require("nvim-treesitter.configs").setup(opts)
+    config = function()
+      local parsers = {
+        "c",
+        "cpp",
+        "python",
+        "lua",
+        "javascript",
+        "typescript",
+        "html",
+        "css",
+        "json",
+        "markdown",
+        "markdown_inline",
+        "vim",
+        "vimdoc",
+        "ocaml",
+        "ocaml_interface",
+      }
+
+      local treesitter = require "nvim-treesitter"
+      treesitter.setup()
+      treesitter.install(parsers)
+
+      local filetypes = {
+        "c",
+        "cpp",
+        "python",
+        "lua",
+        "javascript",
+        "javascriptreact",
+        "typescript",
+        "typescriptreact",
+        "html",
+        "css",
+        "json",
+        "jsonc",
+        "markdown",
+        "vim",
+        "help",
+        "ocaml",
+        "ocamlinterface",
+      }
+      vim.api.nvim_create_autocmd("FileType", {
+        group = vim.api.nvim_create_augroup("TreesitterFeatures", { clear = true }),
+        pattern = filetypes,
+        callback = function()
+          if not pcall(vim.treesitter.start) then
+            return
+          end
+          vim.wo.foldmethod = "expr"
+          vim.wo.foldexpr = "v:lua.vim.treesitter.foldexpr()"
+          vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+        end,
+      })
     end,
   },
 
@@ -29,8 +72,22 @@ return {
     event = "VeryLazy",
     opts = {},
     keys = {
-      { "s", mode = { "n", "x", "o" }, function() require("flash").jump() end, desc = "Flash jump" },
-      { "S", mode = { "n", "x", "o" }, function() require("flash").treesitter() end, desc = "Flash treesitter" },
+      {
+        "s",
+        mode = { "n", "x", "o" },
+        function()
+          require("flash").jump()
+        end,
+        desc = "Flash jump",
+      },
+      {
+        "S",
+        mode = { "n", "x", "o" },
+        function()
+          require("flash").treesitter()
+        end,
+        desc = "Flash treesitter",
+      },
     },
   },
 
@@ -62,15 +119,7 @@ return {
   {
     "folke/persistence.nvim",
     event = "BufReadPre",
-    opts = {
-      pre_save = function()
-        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-          if vim.bo[buf].filetype == "NvimTree" then
-            vim.api.nvim_buf_delete(buf, { force = true })
-          end
-        end
-      end,
-    },
+    opts = {},
   },
 
   {
@@ -90,5 +139,13 @@ return {
     ft = { "markdown" },
     dependencies = { "nvim-treesitter/nvim-treesitter" },
     opts = {},
+  },
+
+  {
+    "junegunn/vim-easy-align",
+    cmd = "EasyAlign",
+    keys = {
+      { "ga", "<Plug>(EasyAlign)", mode = { "n", "x" }, desc = "EasyAlign" },
+    },
   },
 }

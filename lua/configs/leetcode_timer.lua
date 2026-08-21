@@ -4,7 +4,7 @@
 
 local M = {}
 
-local patched        = false
+local patched = false
 local result_patched = false
 
 ---@type integer? hrtime ns when current session started
@@ -13,7 +13,7 @@ local session_start_ns = nil
 ---@type table?
 local session_meta = nil
 
-local ns_id = vim.api.nvim_create_namespace("leetcode_timer")
+local ns_id = vim.api.nvim_create_namespace "leetcode_timer"
 
 --- uv_timer updating the display
 local display_timer = nil
@@ -114,7 +114,7 @@ end
 
 local function csv_escape(val)
   local s = tostring(val == nil and "" or val)
-  if s:find('[,"\r\n]') then
+  if s:find '[,"\r\n]' then
     return '"' .. s:gsub('"', '""') .. '"'
   end
   return s
@@ -137,7 +137,7 @@ local function tags_str(q)
 end
 
 local function csv_path()
-  local data = vim.fn.stdpath("data") .. "/leetcode"
+  local data = vim.fn.stdpath "data" .. "/leetcode"
   vim.fn.mkdir(data, "p")
   return data .. "/leetcode_timing_events.csv"
 end
@@ -160,7 +160,7 @@ local function append_row(row)
 end
 
 local function iso_timestamp()
-  return os.date("!%Y-%m-%dT%H:%M:%SZ")
+  return os.date "!%Y-%m-%dT%H:%M:%SZ"
 end
 
 local function new_session_id()
@@ -185,10 +185,10 @@ function M.on_question_enter(question)
   }
 
   local elapsed_ms = 0
-  append_row({
+  append_row {
     csv_escape(iso_timestamp()),
     csv_escape(session_meta.id),
-    csv_escape("start"),
+    csv_escape "start",
     csv_escape(string.format("%.3f", elapsed_ms)),
     csv_escape(string.format("%.6f", elapsed_ms / 1000)),
     csv_escape(session_meta.frontend_id),
@@ -198,13 +198,13 @@ function M.on_question_enter(question)
     csv_escape(session_meta.difficulty),
     csv_escape(session_meta.tags),
     csv_escape(session_meta.lang),
-  })
+  }
 
   start_display_timer(question.bufnr)
 end
 
 ---@param submit boolean
-function M.on_runner_run(question, submit)
+function M.on_runner_run(_question, submit)
   if not session_start_ns or not session_meta then
     return
   end
@@ -212,7 +212,7 @@ function M.on_runner_run(question, submit)
   local elapsed_ms = elapsed_ns / 1e6
   local event = submit and "submit" or "test"
 
-  append_row({
+  append_row {
     csv_escape(iso_timestamp()),
     csv_escape(session_meta.id),
     csv_escape(event),
@@ -225,8 +225,7 @@ function M.on_runner_run(question, submit)
     csv_escape(session_meta.difficulty),
     csv_escape(session_meta.tags),
     csv_escape(session_meta.lang),
-  })
-
+  }
 end
 
 --- Called from hooks.leave when closing leetcode.nvim session.
@@ -253,10 +252,10 @@ function M.patch_result()
     if item._.submission and item.status_code == 10 and session_start_ns and session_meta then
       local elapsed_ns = vim.uv.hrtime() - session_start_ns
       local elapsed_ms = elapsed_ns / 1e6
-      append_row({
+      append_row {
         csv_escape(iso_timestamp()),
         csv_escape(session_meta.id),
-        csv_escape("submit_ac"),
+        csv_escape "submit_ac",
         csv_escape(string.format("%.3f", elapsed_ms)),
         csv_escape(string.format("%.6f", elapsed_ms / 1000)),
         csv_escape(session_meta.frontend_id),
@@ -266,7 +265,7 @@ function M.patch_result()
         csv_escape(session_meta.difficulty),
         csv_escape(session_meta.tags),
         csv_escape(session_meta.lang),
-      })
+      }
       M.freeze_timer_display(elapsed_ns / 1e9)
     end
   end

@@ -20,6 +20,30 @@ function M.find_tool(name)
     return path
   end
 
+  -- GUI launches may not inherit opam's shell environment. Check the switch
+  -- associated with the current buffer before asking opam itself.
+  local buffer_name = vim.api.nvim_buf_get_name(0)
+  local start = buffer_name ~= "" and vim.fs.dirname(buffer_name) or vim.fn.getcwd()
+  local local_switch = vim.fs.find("_opam", { path = start, upward = true, type = "directory" })[1]
+  local candidates = {}
+  if local_switch then
+    candidates[#candidates + 1] = local_switch .. "/bin/" .. executable_name(name)
+  end
+  if vim.env.OPAM_SWITCH_PREFIX then
+    candidates[#candidates + 1] = vim.env.OPAM_SWITCH_PREFIX .. "/bin/" .. executable_name(name)
+  end
+  candidates[#candidates + 1] = vim.fn.expand("~/.opam/default/bin/" .. executable_name(name))
+  if vim.fn.has "macunix" == 1 then
+    candidates[#candidates + 1] = "/opt/homebrew/bin/" .. name
+    candidates[#candidates + 1] = "/usr/local/bin/" .. name
+  end
+  for _, candidate in ipairs(candidates) do
+    if vim.fn.executable(candidate) == 1 then
+      tool_cache[name] = candidate
+      return candidate
+    end
+  end
+
   local opam = vim.fn.exepath "opam"
   if opam == "" then
     return
@@ -34,6 +58,41 @@ function M.find_tool(name)
   if vim.fn.executable(candidate) == 1 then
     tool_cache[name] = candidate
     return candidate
+  end
+end
+
+local function format_ocaml(buffer)
+  local ocamlformat = M.find_tool "ocamlformat"
+  if not ocamlformat then
+    vim.notify("ocamlformat was not found in the active opam switch.", vim.log.levels.ERROR)
+    return
+  end
+
+  local conform = require "conform"
+  conform.formatters.ocamlformat = {
+    command = ocamlformat,
+    prepend_args = function(_, ctx)
+      local config = vim.fs.find(".ocamlformat", { path = ctx.dirname, upward = true })[1]
+      return config and {} or { "--profile=janestreet" }
+    end,
+  }
+  conform.format {
+    bufnr = buffer,
+    formatters = { "ocamlformat" },
+    async = false,
+    timeout_ms = 5000,
+    lsp_format = "never",
+  }
+end
+
+function M.setup_indent()
+  if M.find_tool "ocp-indent" then
+    -- selene: allow(global_usage)
+    _G.CodexOCamlIndent = M.indent
+    vim.opt_local.indentexpr = "v:lua.CodexOCamlIndent(v:lnum)"
+  else
+    -- The bundled OCaml indenter can move top-level `let` in the wrong direction.
+    vim.opt_local.indentkeys:remove "0=let"
   end
 end
 
@@ -120,17 +179,27 @@ end
 
 ---@param buffer integer
 function M.setup(buffer)
+  buffer = buffer == 0 and vim.api.nvim_get_current_buf() or buffer
+
   vim.opt_local.expandtab = true
   vim.opt_local.shiftwidth = 2
   vim.opt_local.tabstop = 2
   vim.opt_local.softtabstop = -1
 
-  if M.find_tool "ocp-indent" then
-    _G.CodexOCamlIndent = M.indent
-    vim.opt_local.indentexpr = "v:lua.CodexOCamlIndent(v:lnum)"
-  else
-    -- The bundled 2017 OCaml indenter can move top-level `let` in the wrong direction.
-    vim.opt_local.indentkeys:remove "0=let"
+  M.setup_indent()
+
+  -- Tree-sitter's FileType callback runs after the standard indent scripts.
+  -- Reassert ocp-indent once all FileType callbacks have completed.
+  vim.schedule(function()
+    if not vim.api.nvim_buf_is_valid(buffer) or vim.bo[buffer].filetype ~= "ocaml" then
+      return
+    end
+    vim.api.nvim_buf_call(buffer, M.setup_indent)
+  end)
+
+  local ok, which_key = pcall(require, "which-key")
+  if ok then
+    which_key.add { { "<leader>o", group = "OCaml", buffer = buffer } }
   end
 
   local map = function(lhs, rhs, description)
@@ -138,7 +207,7 @@ function M.setup(buffer)
   end
 
   map("<leader>of", function()
-    require("conform").format { bufnr = buffer, async = false, timeout_ms = 5000, lsp_format = "fallback" }
+    format_ocaml(buffer)
   end, "OCaml: format")
   map("<leader>oi", function()
     switch_implementation_interface(buffer)

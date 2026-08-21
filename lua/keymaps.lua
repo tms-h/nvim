@@ -1,32 +1,74 @@
 local map = vim.keymap.set
+local buffer_close = require "configs.buffer_close"
+
+-- Treat an exact :q as "close this split". Check only when Enter is pressed so
+-- native commands such as :q!, :qa, and :quit keep their normal behaviour.
+pcall(vim.cmd, "cunabbrev q")
+map("c", "<CR>", function()
+  if vim.fn.getcmdtype() == ":" and vim.fn.getcmdline() == "q" then
+    return "<C-u>silent! close<CR>"
+  end
+  return "<CR>"
+end, { expr = true, desc = "Close current window for exact :q" })
 local super = require("util.modifier").chord
+
+-- Keyboard buffer switches should not trap us in Terminal-mode. BufEnter
+-- checks this flag and leaves terminal buffers in Terminal-Normal mode.
+local function keyboard_buffer_switch(command)
+  vim.g.nvim_keyboard_buffer_switch = true
+  local ok, err = pcall(vim.cmd, command)
+  vim.g.nvim_keyboard_buffer_switch = false
+  if not ok then
+    error(err)
+  end
+end
 
 map("n", ";", ":", { desc = "Command mode" })
 map("i", "jk", "<ESC>")
 map("n", "<Esc>", "<cmd>nohlsearch<cr>")
 
+-- Double-click a word to keep it selected and highlight every exact occurrence.
+map(
+  { "n", "i" },
+  "<2-LeftMouse>",
+  "<Esc><2-LeftMouse><Esc><Cmd>if !empty(expand('<cword>')) | set hlsearch | silent! execute 'keepjumps normal! *N' | execute 'normal! viw' | endif<CR>",
+  { desc = "Select word and highlight occurrences" }
+)
+
+-- ── Comments (Cmd+/ on macOS, Ctrl+/ on Windows) ──
+map("n", super "/", "gcc", { desc = "Toggle comment", remap = true })
+map("x", super "/", "gc", { desc = "Toggle comment", remap = true })
+map("i", super "/", "<C-o>gcc", { desc = "Toggle comment", remap = true })
+
 -- ── Undo/Redo (Cmd on macOS, Ctrl on Windows) ──
-map("n", super("z"), "u", { desc = "Undo" })
-map("n", super("S-z"), "<C-r>", { desc = "Redo" })
-map("i", super("z"), "<C-o>u", { desc = "Undo" })
-map("i", super("S-z"), "<C-o><C-r>", { desc = "Redo" })
+map("n", super "z", "u", { desc = "Undo" })
+map("n", super "S-z", "<C-r>", { desc = "Redo" })
+map("i", super "z", "<C-o>u", { desc = "Undo" })
+map("i", super "S-z", "<C-o><C-r>", { desc = "Redo" })
 
 -- ── Find (VSCode-style) ──
-map("n", super("p"), "<cmd>Telescope find_files<cr>", { desc = "Find files" })
-map("n", super("S-p"), "<cmd>Telescope commands<cr>", { desc = "Command palette" })
-map("n", super("S-f"), "<cmd>Telescope live_grep<cr>", { desc = "Search in project" })
+map("n", super "p", "<cmd>Telescope find_files<cr>", { desc = "Find files" })
+map("n", super "S-p", "<cmd>Telescope commands<cr>", { desc = "Command palette" })
+map("n", super "S-f", "<cmd>Telescope live_grep<cr>", { desc = "Search in project" })
 
 -- ── Tabs (primary modifier + VS Code-style chords) ──
-map("n", super("w"), function() require("mini.bufremove").delete(0, false) end, { desc = "Close tab" })
-map("n", super("t"), "<cmd>enew<cr>", { desc = "New tab" })
-map("n", super("S-]"), "<cmd>BufferLineCycleNext<cr>", { desc = "Next tab" })
-map("n", super("S-["), "<cmd>BufferLineCyclePrev<cr>", { desc = "Previous tab" })
+map("n", super "w", buffer_close.delete, { desc = "Close tab" })
+map("n", super "t", "<cmd>enew<cr>", { desc = "New tab" })
+map("n", super "S-]", function()
+  keyboard_buffer_switch "BufferLineCycleNext"
+end, { desc = "Next tab" })
+map("n", super "S-[", function()
+  keyboard_buffer_switch "BufferLineCyclePrev"
+end, { desc = "Previous tab" })
 for i = 1, 9 do
-  map("n", super(tostring(i)), "<cmd>BufferLineGoToBuffer " .. i .. "<cr>", { desc = "Tab " .. i })
+  local index = i
+  map("n", super(tostring(index)), function()
+    keyboard_buffer_switch("BufferLineGoToBuffer " .. index)
+  end, { desc = "Tab " .. index })
 end
 
 -- ── Sidebar (Cmd+B on macOS, Ctrl+B on Windows) ──
-map("n", super("b"), "<cmd>NvimTreeToggle<cr>", { desc = "Toggle sidebar" })
+map("n", super "b", "<cmd>NvimTreeToggle<cr>", { desc = "Toggle sidebar" })
 
 -- ── Leader: Find ──
 map("n", "<leader>ff", "<cmd>Telescope find_files<cr>", { desc = "Find files" })
@@ -35,17 +77,19 @@ map("n", "<leader>fb", "<cmd>Telescope buffers<cr>", { desc = "Buffers" })
 map("n", "<leader>fh", "<cmd>Telescope help_tags<cr>", { desc = "Help" })
 map("n", "<leader>ft", "<cmd>TodoTelescope<cr>", { desc = "Todos" })
 
-map("n", "<leader>a", "<cmd>Alpha<cr>", { desc = "Dashboard" })
-
 -- ── Leader: Files & buffers ──
 map("n", "<leader>e", "<cmd>NvimTreeToggle<cr>", { desc = "File explorer" })
 map("n", "<leader>n", "<cmd>enew<cr>", { desc = "New file" })
-map("n", "<leader>c", function() require("mini.bufremove").delete(0, false) end, { desc = "Close buffer" })
-map("n", "<leader>q", "<cmd>q<cr>", { desc = "Quit window" })
+map("n", "<leader>c", buffer_close.delete, { desc = "Close buffer" })
+map("n", "<leader>q", "<cmd>silent! close<cr>", { desc = "Close window" })
 
 -- ── Buffer cycling (Shift+H/L) ──
-map("n", "<S-h>", "<cmd>BufferLineCyclePrev<cr>", { desc = "Previous tab" })
-map("n", "<S-l>", "<cmd>BufferLineCycleNext<cr>", { desc = "Next tab" })
+map("n", "<S-h>", function()
+  keyboard_buffer_switch "BufferLineCyclePrev"
+end, { desc = "Previous tab" })
+map("n", "<S-l>", function()
+  keyboard_buffer_switch "BufferLineCycleNext"
+end, { desc = "Next tab" })
 
 -- ── Window navigation ──
 map("n", "<C-h>", "<C-w>h", { desc = "Left window" })
@@ -58,6 +102,12 @@ map("t", "<C-j>", "<C-\\><C-n><C-w>j")
 map("t", "<C-k>", "<C-\\><C-n><C-w>k")
 map("t", "<Esc>", "<C-\\><C-n>", { desc = "Terminal: normal mode" })
 
+-- ── Window resize (Ctrl+Arrow) ──
+map("n", "<C-Up>", "<cmd>resize +2<cr>", { desc = "Increase height" })
+map("n", "<C-Down>", "<cmd>resize -2<cr>", { desc = "Decrease height" })
+map("n", "<C-Left>", "<cmd>vertical resize -2<cr>", { desc = "Decrease width" })
+map("n", "<C-Right>", "<cmd>vertical resize +2<cr>", { desc = "Increase width" })
+
 -- ── Terminal splits ──
 map("n", "<leader>th", "<cmd>belowright split | resize 15 | term<cr>", { desc = "Terminal (bottom)" })
 map("n", "<leader>tv", "<cmd>vsplit | term<cr>", { desc = "Terminal (side)" })
@@ -65,7 +115,10 @@ map("n", "<leader>tv", "<cmd>vsplit | term<cr>", { desc = "Terminal (side)" })
 -- ── Visual ──
 map("v", "<", "<gv")
 map("v", ">", ">gv")
-map("x", ":", ":<C-u>'<,'>s/\\%V/g<Left><Left>", { desc = "Substitute in selection" })
+map("x", "c", '"+y', { desc = "Copy selection" })
+map("x", "C", "c", { desc = "Change selection" })
+map("s", "c", '<C-g>"+y', { desc = "Copy selection" })
+map("s", "C", "<C-g>c", { desc = "Change selection" })
 
 -- ── Move lines (Alt+J/K) ──
 map("n", "<A-j>", "<cmd>m .+1<cr>==", { desc = "Move line down" })
@@ -80,29 +133,39 @@ map("n", "<leader>xx", "<cmd>Trouble diagnostics toggle<cr>", { desc = "Diagnost
 map("n", "<leader>xb", "<cmd>Trouble diagnostics toggle filter.buf=0<cr>", { desc = "Buffer diagnostics" })
 
 -- ── Lint & LeetCode ──
-map("n", "<leader>ll", function() require("lint").try_lint() end, { desc = "Run linter" })
-map("n", "<leader>ls", function() require("configs.leetcode_stats").open() end, { desc = "LeetCode stats" })
+map("n", "<leader>ll", function()
+  require("lint").try_lint()
+end, { desc = "Run linter" })
+map("n", "<leader>ls", function()
+  require("configs.leetcode_stats").open()
+end, { desc = "LeetCode stats" })
 
 -- ── Sessions ──
-map("n", "<leader>qs", function() require("persistence").load() end, { desc = "Restore session" })
-map("n", "<leader>ql", function() require("persistence").load({ last = true }) end, { desc = "Last session" })
-map("n", "<leader>qd", function() require("persistence").stop() end, { desc = "Stop session" })
+map("n", "<leader>qs", function()
+  require("persistence").load()
+end, { desc = "Restore session" })
+map("n", "<leader>ql", function()
+  require("persistence").load { last = true }
+end, { desc = "Last session" })
+map("n", "<leader>qd", function()
+  require("persistence").stop()
+end, { desc = "Stop session" })
 
 -- ── Todo ──
 local todo_buf, todo_win = nil, nil
 local widget_buf, widget_win = nil, nil
 local widget_grp = vim.api.nvim_create_augroup("TodoWidget", { clear = true })
-local widget_ns = vim.api.nvim_create_namespace("todo_widget")
-local todo_ns = vim.api.nvim_create_namespace("todo_hl")
-local widget_visible = true
+local widget_ns = vim.api.nvim_create_namespace "todo_widget"
+local todo_ns = vim.api.nvim_create_namespace "todo_hl"
+local widget_visible = false
 
 vim.api.nvim_set_hl(0, "TodoWidgetNormal", { bg = "NONE" })
 vim.api.nvim_set_hl(0, "TodoWidgetBorder", { fg = "#374145", bg = "NONE" })
 vim.api.nvim_set_hl(0, "TodoWidgetHeading", { fg = "#a7c080", bold = true })
 vim.api.nvim_set_hl(0, "TodoWidgetOpen", { fg = "#d3c6aa" })
 vim.api.nvim_set_hl(0, "TodoWidgetDone", { fg = "#5c6a72", strikethrough = true })
-vim.api.nvim_set_hl(0, "TodoFloatNormal", { bg = "#181e21" })
-vim.api.nvim_set_hl(0, "TodoFloatBorder", { fg = "#4a555b", bg = "#181e21" })
+vim.api.nvim_set_hl(0, "TodoFloatNormal", { bg = "#151a1c" })
+vim.api.nvim_set_hl(0, "TodoFloatBorder", { fg = "#404a47", bg = "#151a1c" })
 vim.api.nvim_set_hl(0, "TodoDesc", { fg = "#7a8478", italic = true })
 vim.api.nvim_set_hl(0, "TodoDone", { fg = "#5c6a72", strikethrough = true })
 
@@ -112,17 +175,19 @@ end
 
 local function parse_headings(path)
   local f = io.open(path, "r")
-  if not f then return { "  no todo.md" }, { "open" } end
+  if not f then
+    return { "  no todo.md" }, { "open" }
+  end
 
   -- collect sections: each has a heading and a list of items
   local sections = {}
   local cur = nil
   for line in f:lines() do
-    if line:match("^#+ ") then
+    if line:match "^#+ " then
       cur = { heading = line:gsub("^#+ ", ""), items = {}, item_types = {} }
       sections[#sections + 1] = cur
     elseif cur then
-      local cb, text = line:match("^%s*- %[([ x])%] (.+)")
+      local cb, text = line:match "^%s*- %[([ x])%] (.+)"
       if cb then
         text = text:gsub(" %- .+$", ""):gsub(" — .+$", "")
         cur.items[#cur.items + 1] = { text = text, done = cb == "x" }
@@ -136,7 +201,10 @@ local function parse_headings(path)
   for _, sec in ipairs(sections) do
     local has_open = false
     for _, item in ipairs(sec.items) do
-      if not item.done then has_open = true; break end
+      if not item.done then
+        has_open = true
+        break
+      end
     end
     if has_open then
       active[#active + 1] = sec
@@ -173,15 +241,23 @@ local function parse_headings(path)
     types[#types + 1] = "done"
   end
 
-  if #lines == 0 then return { "  all done!" }, { "done" } end
+  if #lines == 0 then
+    return { "  all done!" }, { "done" }
+  end
   return lines, types
 end
 
 local function refresh_widget()
-  if not widget_visible then return end
-  if todo_win and vim.api.nvim_win_is_valid(todo_win) then return end
+  if not widget_visible then
+    return
+  end
+  if todo_win and vim.api.nvim_win_is_valid(todo_win) then
+    return
+  end
   local ui = vim.api.nvim_list_uis()[1]
-  if not ui then return end
+  if not ui then
+    return
+  end
   local lines, types = parse_headings(todo_path())
   local w = 38
   local h = math.min(#lines, 25)
@@ -205,17 +281,22 @@ local function refresh_widget()
   if widget_win and vim.api.nvim_win_is_valid(widget_win) then
     vim.api.nvim_win_set_config(widget_win, {
       relative = "editor",
-      row = 1, col = ui.width - w - 2,
-      width = w, height = h,
+      row = 1,
+      col = ui.width - w - 2,
+      width = w,
+      height = h,
     })
   else
     widget_win = vim.api.nvim_open_win(widget_buf, false, {
       relative = "editor",
-      row = 1, col = ui.width - w - 2,
-      width = w, height = h,
+      row = 1,
+      col = ui.width - w - 2,
+      width = w,
+      height = h,
       style = "minimal",
       border = "rounded",
-      title = " todo ", title_pos = "center",
+      title = " todo ",
+      title_pos = "center",
       focusable = false,
       zindex = 1,
     })
@@ -233,16 +314,22 @@ end
 
 local function toggle_widget()
   widget_visible = not widget_visible
-  if widget_visible then refresh_widget() else close_widget() end
+  if widget_visible then
+    refresh_widget()
+  else
+    close_widget()
+  end
 end
 
 local function toggle_checkbox()
   local line = vim.api.nvim_get_current_line()
   local new = line:gsub("- %[ %]", "- [x]")
-  if new == line then new = line:gsub("- %[x%]", "- [ ]") end
+  if new == line then
+    new = line:gsub("- %[x%]", "- [ ]")
+  end
   if new ~= line then
     vim.api.nvim_set_current_line(new)
-    vim.cmd("silent write!")
+    vim.cmd "silent write!"
   end
 end
 
@@ -270,10 +357,12 @@ local function toggle_todo()
     relative = "editor",
     row = math.floor((ui.height - h) / 2),
     col = math.floor((ui.width - w) / 2),
-    width = w, height = h,
+    width = w,
+    height = h,
     style = "minimal",
     border = "rounded",
-    title = " todo ", title_pos = "center",
+    title = " todo ",
+    title_pos = "center",
   })
   vim.wo[todo_win].winblend = 10
   vim.wo[todo_win].wrap = true
@@ -282,13 +371,17 @@ local function toggle_todo()
   vim.wo[todo_win].breakindentopt = "shift:6"
   vim.wo[todo_win].winhighlight = "Normal:TodoFloatNormal,FloatBorder:TodoFloatBorder"
   vim.schedule(function()
-    pcall(function() vim.cmd("RenderMarkdown buf_disable") end)
+    pcall(function()
+      vim.cmd "RenderMarkdown buf_disable"
+    end)
   end)
   local function apply_todo_hl()
-    if not todo_buf or not vim.api.nvim_buf_is_valid(todo_buf) then return end
+    if not todo_buf or not vim.api.nvim_buf_is_valid(todo_buf) then
+      return
+    end
     vim.api.nvim_buf_clear_namespace(todo_buf, todo_ns, 0, -1)
     for i, line in ipairs(vim.api.nvim_buf_get_lines(todo_buf, 0, -1, false)) do
-      if line:match("^%s*- %[x%]") then
+      if line:match "^%s*- %[x%]" then
         vim.api.nvim_buf_add_highlight(todo_buf, todo_ns, "TodoDone", i - 1, 0, -1)
       else
         local pos = line:find(" — ", 7) or line:find(" %- ", 7)
@@ -300,26 +393,31 @@ local function toggle_todo()
   end
   apply_todo_hl()
   vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
-    group = widget_grp, buffer = todo_buf,
-    callback = function() vim.schedule(apply_todo_hl) end,
+    group = widget_grp,
+    buffer = todo_buf,
+    callback = function()
+      vim.schedule(apply_todo_hl)
+    end,
   })
   vim.keymap.set("n", "q", toggle_todo, { buffer = todo_buf })
   vim.keymap.set("n", "<CR>", toggle_checkbox, { buffer = todo_buf })
   vim.keymap.set("n", "o", function()
     local line = vim.api.nvim_get_current_line()
-    local prefix = line:match("^(%s*- %[[ x]%] )") or ""
-    if prefix ~= "" then prefix = prefix:gsub("%[x%]", "[ ]") end
-    vim.cmd("normal! o")
+    local prefix = line:match "^(%s*- %[[ x]%] )" or ""
+    if prefix ~= "" then
+      prefix = prefix:gsub("%[x%]", "[ ]")
+    end
+    vim.cmd "normal! o"
     if prefix ~= "" then
       vim.api.nvim_set_current_line(prefix)
-      vim.cmd("startinsert!")
+      vim.cmd "startinsert!"
     else
-      vim.cmd("startinsert")
+      vim.cmd "startinsert"
     end
   end, { buffer = todo_buf })
   vim.keymap.set("i", "<CR>", function()
     local line = vim.api.nvim_get_current_line()
-    local prefix = line:match("^(%s*- %[[ x]%] )")
+    local prefix = line:match "^(%s*- %[[ x]%] )"
     if prefix then
       prefix = prefix:gsub("%[x%]", "[ ]")
       return "<CR>" .. prefix
@@ -331,16 +429,24 @@ end
 vim.api.nvim_create_autocmd("BufWritePost", {
   group = widget_grp,
   pattern = "todo.md",
-  callback = function() vim.schedule(refresh_widget) end,
+  callback = function()
+    vim.schedule(refresh_widget)
+  end,
 })
 vim.api.nvim_create_autocmd("VimResized", {
   group = widget_grp,
-  callback = function() if widget_visible then vim.schedule(refresh_widget) end end,
+  callback = function()
+    if widget_visible then
+      vim.schedule(refresh_widget)
+    end
+  end,
 })
 vim.api.nvim_create_autocmd("VimEnter", {
   group = widget_grp,
   once = true,
-  callback = function() vim.defer_fn(refresh_widget, 100) end,
+  callback = function()
+    vim.defer_fn(refresh_widget, 100)
+  end,
 })
 
 map("n", "<leader>td", toggle_todo, { desc = "Todo list" })
@@ -349,12 +455,23 @@ map("n", "<leader>tw", toggle_widget, { desc = "Toggle todo widget" })
 -- ── Neovide ──
 if vim.g.neovide then
   vim.g.neovide_scale_factor = vim.g.neovide_scale_factor or 1.0
-  local function paste() vim.api.nvim_paste(vim.fn.getreg("+"), true, -1) end
-  map({ "n", "i", "v", "c", "t" }, super("v"), paste, { silent = true })
-  map({ "n", "i", "v", "c", "t" }, super("="), function()
-    vim.g.neovide_scale_factor = vim.g.neovide_scale_factor * 1.25
+
+  local function change_scale_factor(multiplier)
+    vim.g.neovide_scale_factor = vim.g.neovide_scale_factor * multiplier
+  end
+
+  local function paste()
+    vim.api.nvim_paste(vim.fn.getreg "+", true, -1)
+  end
+  map("n", super "c", '"+yy', { desc = "Copy line" })
+  map("i", super "c", '<C-o>"+yy', { desc = "Copy line" })
+  map("v", super "c", '"+y', { desc = "Copy selection" })
+  map("s", super "c", '<C-g>"+y', { desc = "Copy selection" })
+  map({ "n", "i", "v", "c", "t" }, super "v", paste, { silent = true })
+  map({ "n", "i", "v", "c", "t" }, super "=", function()
+    change_scale_factor(1.25)
   end, { silent = true })
-  map({ "n", "i", "v", "c", "t" }, super("-"), function()
-    vim.g.neovide_scale_factor = vim.g.neovide_scale_factor / 1.25
+  map({ "n", "i", "v", "c", "t" }, super "-", function()
+    change_scale_factor(1 / 1.25)
   end, { silent = true })
 end
