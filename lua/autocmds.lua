@@ -168,11 +168,12 @@ local function enter_terminal_input()
 
   local entries = {}
   for entry in vim.wo.winhighlight:gmatch "[^,]+" do
-    if not vim.startswith(entry, "Normal:") then
+    if not vim.startswith(entry, "Normal:") and not vim.startswith(entry, "WinSeparator:") then
       entries[#entries + 1] = entry
     end
   end
   entries[#entries + 1] = "Normal:TermNormal"
+  entries[#entries + 1] = "WinSeparator:TermWinSeparator"
   vim.wo.winhighlight = table.concat(entries, ",")
   vim.wo.cursorline = false
 
@@ -191,7 +192,7 @@ local function restore_editor_background()
     -- tracked: a normal editor must never inherit the terminal background.
     local entries = {}
     for entry in vim.wo.winhighlight:gmatch "[^,]+" do
-      if entry ~= "Normal:TermNormal" then
+      if entry ~= "Normal:TermNormal" and entry ~= "WinSeparator:TermWinSeparator" then
         entries[#entries + 1] = entry
       end
     end
@@ -266,12 +267,18 @@ if vim.g.neovide then
 
   local function add_separator_hover(winhl)
     local entries = {}
+    local hover_group = "WinSeparatorHover"
     for entry in winhl:gmatch "[^,]+" do
+      if entry == "WinSeparator:NvimTreeWinSeparator" then
+        hover_group = "NvimTreeWinSeparatorHover"
+      elseif entry == "WinSeparator:TermWinSeparator" then
+        hover_group = "TermWinSeparatorHover"
+      end
       if not vim.startswith(entry, "WinSeparator:") then
         entries[#entries + 1] = entry
       end
     end
-    entries[#entries + 1] = "WinSeparator:WinSeparatorHover"
+    entries[#entries + 1] = "WinSeparator:" .. hover_group
     return table.concat(entries, ",")
   end
 

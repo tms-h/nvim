@@ -1,0 +1,5 @@
+# Startup-only window chrome. Runtime rendering options live in lua/options.lua.
+# On macOS the transparent frame keeps the real traffic-light controls while
+# removing the opaque title strip and redundant centered file path.
+frame = "transparent"
+title-hidden = true

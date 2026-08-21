@@ -61,6 +61,10 @@ an OS check. Leader is `Space`.
 Draggable split dividers brighten slightly when hovered. Keyboard buffer shortcuts land
 on terminals in Terminal-Normal mode; clicking a terminal returns it to input mode.
 
+On macOS, [`neovide.toml`](./neovide.toml) uses a transparent, titleless native strip. The
+real traffic-light controls remain functional and the window stays movable/resizable;
+zero outer padding removes the extra inset around the Neovim grid.
+
 ### Motions & windows (same on both)
 
 | Key | Action |

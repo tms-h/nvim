@@ -116,13 +116,27 @@ return {
       vim.g.everforest_enable_italic = 1
       vim.cmd.colorscheme "everforest"
       vim.api.nvim_set_hl(0, "NormalFloat", { bg = backgrounds.raised })
-      vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#343d3b", bg = "NONE" })
-      vim.api.nvim_set_hl(0, "WinSeparatorHover", { fg = "#56625c", bg = "NONE", bold = true })
+      vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#343d3b", bg = backgrounds.editor })
+      vim.api.nvim_set_hl(0, "WinSeparatorHover", { fg = "#56625c", bg = backgrounds.editor, bold = true })
+
+      -- Keep the existing panel colors, including underneath their divider
+      -- cells and chrome, so only the one-pixel separator changes surface.
+      vim.api.nvim_set_hl(0, "ExplorerHeader", { fg = "#a7c080", bg = backgrounds.dim })
       vim.api.nvim_set_hl(0, "ExplorerSortTitle", { fg = "#859289", bg = backgrounds.dim })
-      vim.api.nvim_set_hl(0, "ExplorerSortButton", { fg = "#d3c6aa", bg = backgrounds.tab_selected })
-      vim.api.nvim_set_hl(0, "ExplorerSortActive", { fg = "#a7c080", bg = "#2c3538", bold = true })
+      vim.api.nvim_set_hl(0, "ExplorerSortButton", { fg = "#d3c6aa", bg = backgrounds.dim })
+      vim.api.nvim_set_hl(0, "ExplorerSortActive", { fg = "#a7c080", bg = backgrounds.dim, bold = true })
+      vim.api.nvim_set_hl(0, "WinBar", { bg = backgrounds.dim })
+      vim.api.nvim_set_hl(0, "WinBarNC", { bg = backgrounds.dim })
+      vim.api.nvim_set_hl(0, "NvimTreeNormal", { bg = backgrounds.dim })
+      vim.api.nvim_set_hl(0, "NvimTreeNormalNC", { bg = backgrounds.dim })
+      vim.api.nvim_set_hl(0, "NvimTreeEndOfBuffer", { fg = backgrounds.dim, bg = backgrounds.dim })
+      vim.api.nvim_set_hl(0, "NvimTreeSignColumn", { bg = backgrounds.dim })
+      vim.api.nvim_set_hl(0, "NvimTreeWinSeparator", { fg = "#343d3b", bg = backgrounds.dim })
+      vim.api.nvim_set_hl(0, "NvimTreeWinSeparatorHover", { fg = "#56625c", bg = backgrounds.dim, bold = true })
       -- A darker shade of the editor background keeps terminal panes distinct.
       vim.api.nvim_set_hl(0, "TermNormal", { bg = backgrounds.terminal })
+      vim.api.nvim_set_hl(0, "TermWinSeparator", { fg = "#343d3b", bg = backgrounds.terminal })
+      vim.api.nvim_set_hl(0, "TermWinSeparatorHover", { fg = "#56625c", bg = backgrounds.terminal, bold = true })
     end,
   },
 
@@ -141,7 +155,7 @@ return {
         show_buffer_close_icons = true,
         separator_style = "thin",
         offsets = {
-          { filetype = "NvimTree", text = "Explorer", highlight = "Directory", padding = 1 },
+          { filetype = "NvimTree", text = "Explorer", highlight = "ExplorerHeader", padding = 1 },
         },
       },
     },

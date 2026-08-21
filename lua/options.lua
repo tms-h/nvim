@@ -103,10 +103,10 @@ if vim.g.neovide then
     vim.g.neovide_input_macos_option_key_is_meta = "only_left"
   end
 
-  -- Padding so text isn't jammed against the edges
-  vim.g.neovide_padding_top = 8
-  -- Keep the statusline flush with the window edge at every font scale.
+  -- Remove the extra inset around the grid. macOS window chrome is handled by
+  -- neovide.toml so its real traffic lights remain movable and functional.
+  vim.g.neovide_padding_top = 0
   vim.g.neovide_padding_bottom = 0
-  vim.g.neovide_padding_left = 8
-  vim.g.neovide_padding_right = 8
+  vim.g.neovide_padding_left = 0
+  vim.g.neovide_padding_right = 0
 end
