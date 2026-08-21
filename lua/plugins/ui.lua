@@ -137,6 +137,11 @@ return {
       vim.api.nvim_set_hl(0, "TermNormal", { bg = backgrounds.terminal })
       vim.api.nvim_set_hl(0, "TermWinSeparator", { fg = "#343d3b", bg = backgrounds.terminal })
       vim.api.nvim_set_hl(0, "TermWinSeparatorHover", { fg = "#56625c", bg = backgrounds.terminal, bold = true })
+      -- Horizontal split separators are a full character cell tall. When a
+      -- terminal is directly below an editor, make that cell belong visually
+      -- to the terminal so the divider stays a single line instead of a bar.
+      vim.api.nvim_set_hl(0, "TerminalBoundary", { fg = "#343d3b", bg = backgrounds.terminal })
+      vim.api.nvim_set_hl(0, "TerminalBoundaryHover", { fg = "#56625c", bg = backgrounds.terminal, bold = true })
     end,
   },
 

@@ -210,6 +210,93 @@ local function restore_editor_background()
 end
 
 local terminal_group = vim.api.nvim_create_augroup("TerminalBehavior", { clear = true })
+local terminal_boundary_windows = {}
+local terminal_boundary_update_scheduled = false
+local clear_separator_hover = function() end
+
+local function separator_highlight(winhl)
+  for entry in winhl:gmatch "[^,]+" do
+    local group = entry:match "^WinSeparator:(.+)$"
+    if group then
+      return group
+    end
+  end
+end
+
+local function with_separator_highlight(winhl, group)
+  local entries = {}
+  for entry in winhl:gmatch "[^,]+" do
+    if not vim.startswith(entry, "WinSeparator:") then
+      entries[#entries + 1] = entry
+    end
+  end
+  if group then
+    entries[#entries + 1] = "WinSeparator:" .. group
+  end
+  return table.concat(entries, ",")
+end
+
+local function update_terminal_boundaries()
+  clear_separator_hover()
+
+  local windows = vim.tbl_filter(function(win)
+    return vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_config(win).relative == ""
+  end, vim.api.nvim_tabpage_list_wins(0))
+  local terminals = vim.tbl_filter(function(win)
+    return vim.bo[vim.api.nvim_win_get_buf(win)].buftype == "terminal"
+  end, windows)
+  local should_use_terminal_background = {}
+
+  for _, terminal in ipairs(terminals) do
+    local terminal_position = vim.api.nvim_win_get_position(terminal)
+    local terminal_left = terminal_position[2]
+    local terminal_right = terminal_left + vim.api.nvim_win_get_width(terminal) - 1
+
+    for _, win in ipairs(windows) do
+      if win ~= terminal and vim.bo[vim.api.nvim_win_get_buf(win)].buftype ~= "terminal" then
+        local position = vim.api.nvim_win_get_position(win)
+        local right = position[2] + vim.api.nvim_win_get_width(win) - 1
+        local separator_row = position[1] + vim.api.nvim_win_get_height(win)
+        local overlaps_terminal = position[2] <= terminal_right and terminal_left <= right
+
+        if separator_row + 1 == terminal_position[1] and overlaps_terminal then
+          should_use_terminal_background[win] = true
+        end
+      end
+    end
+  end
+
+  for win, state in pairs(terminal_boundary_windows) do
+    if not vim.api.nvim_win_is_valid(win) then
+      terminal_boundary_windows[win] = nil
+    elseif not should_use_terminal_background[win] then
+      local current = vim.wo[win].winhighlight
+      if separator_highlight(current) == "TerminalBoundary" then
+        vim.wo[win].winhighlight = with_separator_highlight(current, state.original or nil)
+      end
+      terminal_boundary_windows[win] = nil
+    end
+  end
+
+  for win in pairs(should_use_terminal_background) do
+    if not terminal_boundary_windows[win] then
+      local current = vim.wo[win].winhighlight
+      terminal_boundary_windows[win] = { original = separator_highlight(current) or false }
+      vim.wo[win].winhighlight = with_separator_highlight(current, "TerminalBoundary")
+    end
+  end
+end
+
+local function schedule_terminal_boundary_update()
+  if terminal_boundary_update_scheduled then
+    return
+  end
+  terminal_boundary_update_scheduled = true
+  vim.schedule(function()
+    terminal_boundary_update_scheduled = false
+    update_terminal_boundaries()
+  end)
+end
 
 vim.api.nvim_create_autocmd("TermOpen", {
   group = terminal_group,
@@ -223,6 +310,7 @@ vim.api.nvim_create_autocmd("TermOpen", {
       desc = "Terminal: focus input",
     })
     enter_terminal_input()
+    schedule_terminal_boundary_update()
   end,
 })
 
@@ -234,22 +322,27 @@ vim.api.nvim_create_autocmd("BufEnter", {
     else
       restore_editor_background()
     end
+    schedule_terminal_boundary_update()
   end,
 })
 
-vim.api.nvim_create_autocmd("WinResized", {
-  group = terminal_group,
-  callback = function()
-    for _, win in ipairs(vim.api.nvim_list_wins()) do
-      if vim.bo[vim.api.nvim_win_get_buf(win)].buftype == "terminal" then
-        vim.schedule(function()
-          pcall(vim.cmd, "redraw!")
-        end)
-        return
+vim.api.nvim_create_autocmd(
+  { "VimEnter", "TabEnter", "WinNew", "WinClosed", "WinResized", "VimResized", "TermClose" },
+  {
+    group = terminal_group,
+    callback = function()
+      schedule_terminal_boundary_update()
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(win)].buftype == "terminal" then
+          vim.schedule(function()
+            pcall(vim.cmd, "redraw!")
+          end)
+          return
+        end
       end
-    end
-  end,
-})
+    end,
+  }
+)
 
 -- Neovide cannot change the system pointer shape contextually, but Neovim can
 -- tell us when the pointer is over a draggable window separator. Highlight
@@ -257,7 +350,7 @@ vim.api.nvim_create_autocmd("WinResized", {
 if vim.g.neovide then
   local hovered
 
-  local function clear_separator_hover()
+  clear_separator_hover = function()
     if not hovered then
       return
     end
@@ -276,6 +369,8 @@ if vim.g.neovide then
         hover_group = "NvimTreeWinSeparatorHover"
       elseif entry == "WinSeparator:TermWinSeparator" then
         hover_group = "TermWinSeparatorHover"
+      elseif entry == "WinSeparator:TerminalBoundary" then
+        hover_group = "TerminalBoundaryHover"
       end
       if not vim.startswith(entry, "WinSeparator:") then
         entries[#entries + 1] = entry
