@@ -148,9 +148,9 @@ Also driven by commands: `:CompetiTest receive problem`, `:CompetiTest receive c
 ### OCaml / Jane Street workflow
 
 OCaml buffers use `ocp-indent` while typing, so top-level `let` stays at column zero.
-Manual formatting uses project `.ocamlformat` settings when present and the `janestreet`
-profile otherwise. `ocamllsp` supplies diagnostics, completion, navigation, and
-`.ml`/`.mli` switching.
+`:w` runs `ocamlformat`, using project `.ocamlformat` settings when present and the
+`janestreet` profile otherwise. `ocamllsp` supplies diagnostics, completion, navigation,
+and `.ml`/`.mli` switching.
 
 | Key | Action |
 |-----|--------|

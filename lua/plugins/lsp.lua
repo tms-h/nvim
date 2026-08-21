@@ -192,7 +192,7 @@ return {
             command = ocamlformat or "ocamlformat",
             prepend_args = function(_, ctx)
               local project_config = vim.fs.find(".ocamlformat", { path = ctx.dirname, upward = true })[1]
-              return project_config and {} or { "--profile=janestreet", "--enable-outside-detected-project" }
+              return project_config and {} or { "--profile=janestreet" }
             end,
           },
           clang_format = {
@@ -205,7 +205,7 @@ return {
         format_on_save = function(bufnr)
           local ft = vim.bo[bufnr].filetype
           if ft == "ocaml" then
-            return nil
+            return ocamlformat and { timeout_ms = 5000, lsp_format = "never" } or nil
           end
           if ft == "c" or ft == "cpp" then
             return {
