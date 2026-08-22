@@ -3,3 +3,15 @@
 # removing the opaque title strip and redundant centered file path.
 frame = "transparent"
 title-hidden = true
+
+# A title-bar double-click is macOS Zoom, not fullscreen. Keep the native
+# Enter Full Screen action explicit so Ctrl+Cmd+F always enters a real Space.
+system-fullscreen-hotkey = "cmd+ctrl+f"
+
+# Render split lines as geometry instead of font glyphs. This keeps vertical,
+# horizontal, T-junction, and edge segments aligned at exactly the same width.
+[box-drawing]
+mode = "native"
+
+[box-drawing.sizes]
+default = [2, 4]

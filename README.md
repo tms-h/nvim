@@ -65,7 +65,9 @@ QA sessions; config-only buffers are also removed from restored project buffer l
 
 On macOS, [`neovide.toml`](./neovide.toml) uses a transparent, titleless native strip. The
 real traffic-light controls remain functional and the window stays movable/resizable;
-zero outer padding removes the extra inset around the Neovim grid.
+zero outer padding removes the extra inset around the Neovim grid. Double-clicking that
+strip performs macOS Zoom; use the green traffic light or `Ctrl+Cmd+F` for native
+fullscreen. Split borders use Neovide's native box renderer so junctions stay aligned.
 
 ### Motions & windows (same on both)
 
