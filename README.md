@@ -10,7 +10,7 @@ My Neovim config. Lazy-loaded with [lazy.nvim](https://github.com/folke/lazy.nvi
 | **UI** | bufferline, lualine, nvim-tree, noice, nvim-notify, dressing, which-key, alpha (dashboard) |
 | **Editor** | treesitter, flash, nvim-autopairs, mini (ai, surround, bufremove, bracketed), Oil, vim-easy-align, todo-comments, trouble |
 | **Fuzzy finder** | telescope + fzf-native |
-| **LSP** | mason, mason-tool-installer, nvim-lspconfig, blink.cmp, fidget |
+| **LSP** | mason, mason-tool-installer, nvim-lspconfig, blink.cmp, LuaSnip, friendly-snippets, fidget |
 | **Formatting** | conform (stylua, ruff, clang-format, prettier, shfmt) |
 | **Linting** | nvim-lint (selene, ruff, cppcheck, shellcheck, eslint_d) |
 | **Git** | gitsigns |
@@ -40,6 +40,48 @@ and Python. Neovide-specific settings remain shared, with Mac-only options guard
 an OS check. Leader is `Space`.
 
 ## Keybindings
+
+### Multicursor and faster editing
+
+Start in Normal mode (`Esc`). Press `Space m` and pause to see the multicursor menu.
+
+| Keys | Action |
+|------|--------|
+| `Space m n` | Add the next occurrence of the word or visual selection |
+| `Space m s` | Skip the next occurrence |
+| `Space m a` | Add all occurrences in this buffer |
+| `Space m j` / `Space m k` | Add a cursor below / above |
+| `Space m x` | Clear extra cursors |
+| `Space m r` | Restore the previous cursors |
+| `Cmd+D` (Mac) / `Ctrl+D` (Windows) | Add next occurrence in Neovide, Normal or Visual mode |
+| `Cmd+click` (Mac) / `Ctrl+click` (Windows) | Add or remove a cursor in Neovide, Normal mode |
+| `Space f k` | Search all keyboard shortcuts |
+
+Try this in a scratch buffer: put `apple + apple + apple` on a line, place the
+cursor on the first `apple`, then press `Space m n` twice. Type `ciw`, type
+`pear`, and press `Esc`. All three words change together. Press `Esc` again to
+clear the extra cursors. `u` undoes the edit. To target a phrase, select it with
+`v` first, add matches, then use `c` to replace the selections.
+
+For several lines with different lengths, add cursors with `Space m j`, then
+press `A` to append to every line. Press `Esc` twice when finished.
+
+Other useful approaches already installed:
+
+- **Jump by sight:** press `s`, type a few characters of a visible target, then
+  its displayed label. This uses Flash to avoid repeated arrow presses.
+- **Edit a whole unit:** `ciw` changes a word, `ci"` changes text inside quotes,
+  and `ci(` changes text inside parentheses. Type the replacement, then `Esc`.
+- **Repeat an edit:** after `ciwpear<Esc>`, move to another word and press `.`.
+- **Wrap text:** on a word, `saiw)` wraps it in parentheses. `sd)` removes the
+  surrounding parentheses. These are mini.surround mappings.
+- **Rename a code symbol:** `Space r n` asks the language server to rename its
+  references. Use this for a variable or function; multicursor matches text.
+- **Discover shortcuts:** `Space f k` searches their descriptions. `Space o s`
+  browses the OCaml snippets in an OCaml buffer.
+
+Multicursor is supplied by [multicursor.nvim](https://github.com/jake-stewart/multicursor.nvim).
+Its full reference is available with `:help multicursor`.
 
 ### VS Code-style shortcuts
 
@@ -160,10 +202,21 @@ OCaml buffers use `ocp-indent` while typing, so top-level `let` stays at column 
 `janestreet` profile otherwise. `ocamllsp` supplies diagnostics, completion, navigation,
 and `.ml`/`.mli` switching.
 
+Typing `mod_board ` at the start of a line expands to a `module Board = struct`
+block and places the cursor inside it. Underscored names become PascalCase, so
+`mod_game_board ` creates `GameBoard`. Blink also offers the friendly-snippets
+OCaml templates for `module`, `struct`, `sig`, `match`, `type`, `let`, and `val`.
+Custom named snippets also include `rec_name `, `test_name `, `expect_name `,
+`record_name `, and `orerror_name `. Type any prefix ending in `_` to see its
+description in Blink. Press Enter to accept a completion and Tab or Shift-Tab to
+move through its fields. Use `<leader>os` to browse every snippet available in an
+OCaml buffer.
+
 | Key | Action |
 |-----|--------|
 | `<leader>of` | Format with ocamlformat |
 | `<leader>oi` | Switch between `.ml` and `.mli` |
+| `<leader>os` | Show available OCaml snippets |
 | `<leader>ob` | `dune build` |
 | `<leader>ot` | `dune runtest` |
 | `<leader>ow` | `dune build --watch` |

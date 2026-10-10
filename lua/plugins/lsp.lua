@@ -139,10 +139,35 @@ return {
     "saghen/blink.cmp",
     version = "1.*",
     event = "InsertEnter",
+    dependencies = {
+      {
+        "L3MON4D3/LuaSnip",
+        version = "v2.*",
+        dependencies = { "rafamadriz/friendly-snippets" },
+        config = function()
+          local luasnip = require "luasnip"
+          luasnip.config.setup {
+            enable_autosnippets = true,
+            update_events = "TextChanged,TextChangedI",
+          }
+
+          require("luasnip.loaders.from_vscode").lazy_load()
+          require("luasnip.loaders.from_lua").lazy_load {
+            paths = vim.fs.joinpath(vim.fn.stdpath "config", "lua", "snippets"),
+          }
+        end,
+      },
+    },
     opts = {
       keymap = { preset = "enter" },
+      snippets = { preset = "luasnip" },
       sources = {
         default = { "lsp", "path", "snippets", "buffer" },
+        providers = {
+          snippets = {
+            opts = { use_label_description = true },
+          },
+        },
       },
     },
   },

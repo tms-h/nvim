@@ -46,8 +46,9 @@ return {
         "ocaml",
         "ocamlinterface",
       }
+      local group = vim.api.nvim_create_augroup("TreesitterFeatures", { clear = true })
       vim.api.nvim_create_autocmd("FileType", {
-        group = vim.api.nvim_create_augroup("TreesitterFeatures", { clear = true }),
+        group = group,
         pattern = filetypes,
         callback = function()
           if not pcall(vim.treesitter.start) then
@@ -58,13 +59,38 @@ return {
           vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
         end,
       })
+
+      -- Re-entered headers may retain their filetype without an active highlighter.
+      vim.api.nvim_create_autocmd("BufWinEnter", {
+        group = group,
+        pattern = { "*.h", "*.hh", "*.hpp", "*.hxx" },
+        callback = function(args)
+          local filetype = vim.bo[args.buf].filetype
+          if filetype ~= "c" and filetype ~= "cpp" then
+            return
+          end
+          if not pcall(vim.treesitter.start, args.buf) then
+            vim.bo[args.buf].syntax = filetype
+          end
+        end,
+      })
     end,
   },
 
   {
     "windwp/nvim-autopairs",
     event = "InsertEnter",
-    opts = {},
+    config = function()
+      local autopairs = require "nvim-autopairs"
+      autopairs.setup()
+
+      -- OCaml uses a leading apostrophe for type variables, e.g. ['a].
+      -- Keep pairing characters generally, but do not insert a second
+      -- apostrophe in implementation or interface buffers.
+      for _, rule in ipairs(autopairs.get_rules "'") do
+        rule.not_filetypes = { "ocaml", "ocamlinterface" }
+      end
+    end,
   },
 
   {

@@ -206,7 +206,7 @@ return {
       sort = { sorter = explorer_sort.nvim_tree_sorter },
       view = { width = 30, side = "left", preserve_window_proportions = true },
       renderer = { group_empty = true, highlight_git = true },
-      filters = { dotfiles = true },
+      filters = { dotfiles = false },
       git = { enable = true },
       actions = { change_dir = { global = true } },
       on_attach = function(bufnr)
@@ -260,6 +260,7 @@ return {
     opts = {
       spec = {
         { "<leader>f", group = "Find" },
+        { "<leader>m", group = "Multicursor" },
         { "<leader>x", group = "Diagnostics" },
         { "<leader>q", group = "Session" },
         { "<leader>l", group = "Lint/LeetCode" },

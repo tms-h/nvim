@@ -27,6 +27,33 @@ map("n", ";", ":", { desc = "Command mode" })
 map("i", "jk", "<ESC>")
 map("n", "<Esc>", "<cmd>nohlsearch<cr>")
 
+-- Multicursor: Space m exposes every action, including in terminal Neovim.
+local mc = require "multicursor-nvim"
+map({ "n", "x" }, "<leader>mn", function()
+  mc.matchAddCursor(1)
+end, { desc = "Add next matching cursor" })
+map({ "n", "x" }, "<leader>ms", function()
+  mc.matchSkipCursor(1)
+end, { desc = "Skip next match" })
+map({ "n", "x" }, "<leader>ma", mc.matchAllAddCursors, { desc = "Add all matching cursors" })
+map({ "n", "x" }, "<leader>mj", function()
+  mc.lineAddCursor(1)
+end, { desc = "Add cursor below" })
+map({ "n", "x" }, "<leader>mk", function()
+  mc.lineAddCursor(-1)
+end, { desc = "Add cursor above" })
+map({ "n", "x" }, "<leader>mx", mc.clearCursors, { desc = "Clear extra cursors" })
+map({ "n", "x" }, "<leader>mr", mc.restoreCursors, { desc = "Restore previous cursors" })
+if vim.g.neovide then
+  map({ "n", "x" }, super "d", function()
+    mc.matchAddCursor(1)
+  end, { desc = "Add next matching cursor" })
+  map("n", super "LeftMouse", mc.handleMouse, { desc = "Add or remove cursor at mouse" })
+  map("n", super "LeftDrag", mc.handleMouseDrag)
+  map("n", super "LeftRelease", mc.handleMouseRelease)
+end
+map("n", "<leader>fk", "<cmd>Telescope keymaps<cr>", { desc = "Find keyboard shortcuts" })
+
 -- Double-click a word to keep it selected and highlight every exact occurrence.
 map(
   { "n", "i" },
@@ -36,9 +63,17 @@ map(
 )
 
 -- ── Comments (Cmd+/ on macOS, Ctrl+/ on Windows) ──
-map("n", super "/", "gcc", { desc = "Toggle comment", remap = true })
-map("x", super "/", "gc", { desc = "Toggle comment", remap = true })
-map("i", super "/", "<C-o>gcc", { desc = "Toggle comment", remap = true })
+local function comment_operator()
+  return require("vim._comment").operator()
+end
+
+map("n", super "/", function()
+  return comment_operator() .. "_"
+end, { desc = "Toggle comment on current line", expr = true })
+map("x", super "/", comment_operator, { desc = "Toggle comment on selection", expr = true })
+map("i", super "/", function()
+  return "<C-o>" .. comment_operator() .. "_"
+end, { desc = "Toggle comment on current line", expr = true })
 
 -- ── Undo/Redo (Cmd on macOS, Ctrl on Windows) ──
 map("n", super "z", "u", { desc = "Undo" })

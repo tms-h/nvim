@@ -177,6 +177,72 @@ local function switch_implementation_interface(buffer)
   end
 end
 
+local function show_snippets()
+  local luasnip_ok, luasnip = pcall(require, "luasnip")
+  local pickers_ok, pickers = pcall(require, "telescope.pickers")
+  if not luasnip_ok or not pickers_ok then
+    vim.notify("The OCaml snippet picker is not available yet.", vim.log.levels.WARN)
+    return
+  end
+
+  local finders = require "telescope.finders"
+  local telescope_config = require("telescope.config").values
+  local actions = require "telescope.actions"
+  local action_state = require "telescope.actions.state"
+  local snippets = {}
+
+  for _, info in ipairs(luasnip.available().ocaml or {}) do
+    -- The automatic regex snippets duplicate the readable hint entries.
+    if not info.trigger:find("(", 1, true) then
+      snippets[#snippets + 1] = {
+        trigger = info.trigger,
+        name = info.name,
+        description = table.concat(info.description or {}, " "),
+      }
+    end
+  end
+
+  table.sort(snippets, function(left, right)
+    if left.trigger == right.trigger then
+      return left.name < right.name
+    end
+    return left.trigger < right.trigger
+  end)
+
+  local target_window = vim.api.nvim_get_current_win()
+  pickers
+    .new({}, {
+      prompt_title = "OCaml snippets (Enter inserts the trigger)",
+      finder = finders.new_table {
+        results = snippets,
+        entry_maker = function(item)
+          local display = string.format("%-10s  %-32s  %s", item.trigger, item.name, item.description)
+          return {
+            value = item,
+            display = display,
+            ordinal = table.concat({ item.trigger, item.name, item.description }, " "),
+          }
+        end,
+      },
+      sorter = telescope_config.generic_sorter {},
+      attach_mappings = function(prompt_buffer)
+        actions.select_default:replace(function()
+          local selection = action_state.get_selected_entry()
+          actions.close(prompt_buffer)
+          if not selection or not vim.api.nvim_win_is_valid(target_window) then
+            return
+          end
+
+          vim.api.nvim_set_current_win(target_window)
+          vim.api.nvim_put({ selection.value.trigger }, "c", true, true)
+          vim.cmd "startinsert"
+        end)
+        return true
+      end,
+    })
+    :find()
+end
+
 ---@param buffer integer
 function M.setup(buffer)
   buffer = buffer == 0 and vim.api.nvim_get_current_buf() or buffer
@@ -212,6 +278,7 @@ function M.setup(buffer)
   map("<leader>oi", function()
     switch_implementation_interface(buffer)
   end, "OCaml: switch .ml/.mli")
+  map("<leader>os", show_snippets, "OCaml: show snippets")
   map("<leader>ob", function()
     run_dune(buffer, { "build" })
   end, "OCaml: dune build")
