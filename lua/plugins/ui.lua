@@ -265,6 +265,7 @@ return {
         { "<leader>q", group = "Session" },
         { "<leader>l", group = "Lint/LeetCode" },
         { "<leader>s", group = "Search" },
+        { "<leader>g", group = "Git" },
       },
     },
   },

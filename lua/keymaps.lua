@@ -510,3 +510,7 @@ if vim.g.neovide then
     change_scale_factor(1 / 1.25)
   end, { silent = true })
 end
+
+map("n", "<leader>gs", function()
+  require("configs.config_sync").sync()
+end, { desc = "Sync config to GitHub" })

@@ -414,3 +414,11 @@ if vim.g.neovide then
     callback = clear_separator_hover,
   })
 end
+
+-- Pull config changes made on other machines without delaying startup.
+vim.api.nvim_create_autocmd("VimEnter", {
+  once = true,
+  callback = function()
+    vim.defer_fn(require("configs.config_sync").pull, 1000)
+  end,
+})

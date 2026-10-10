@@ -63,6 +63,10 @@ if vim.g.neovide then
   -- 120Hz for ProMotion, drop to 5fps when idle (saves battery)
   vim.g.neovide_refresh_rate = 120
   vim.g.neovide_refresh_rate_idle = 5
+  -- The Linux desktop drives a 240Hz monitor.
+  if vim.fn.has "linux" == 1 then
+    vim.g.neovide_refresh_rate = 240
+  end
 
   -- Snappy cursor: fast animation, tight trail
   vim.g.neovide_cursor_animation_length = 0.04

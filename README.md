@@ -165,6 +165,15 @@ a **More…** menu for modification-time and file-size sorting.
 |-----|--------|
 | `<leader>sr` | Project search and replace |
 
+### Config sync
+
+On startup the config pulls new commits from GitHub in the background, but only when
+this checkout has no local edits. Restart Neovim to apply a pulled update.
+
+| Key | Action |
+|-----|--------|
+| `<leader>gs` | Commit local config changes, pull, and push to GitHub |
+
 ### Leader — sessions & todo
 
 | Key | Action |
