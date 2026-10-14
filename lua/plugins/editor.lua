@@ -96,7 +96,8 @@ return {
   {
     "folke/flash.nvim",
     event = "VeryLazy",
-    opts = {},
+    -- `;` is command mode; repeat f/t by pressing f/t again instead.
+    opts = { modes = { char = { keys = { "f", "F", "t", "T", "," } } } },
     keys = {
       {
         "s",
@@ -123,7 +124,19 @@ return {
     event = "VeryLazy",
     config = function()
       require("mini.ai").setup()
-      require("mini.surround").setup()
+      -- Default s-prefixed mappings make Flash's `s` wait for timeoutlen and
+      -- steal jumps whose first character is a, d, r, f, h or n.
+      require("mini.surround").setup {
+        mappings = {
+          add = "gsa",
+          delete = "gsd",
+          find = "gsf",
+          find_left = "gsF",
+          highlight = "gsh",
+          replace = "gsr",
+          update_n_lines = "gsn",
+        },
+      }
       require("mini.bufremove").setup()
       require("mini.bracketed").setup()
     end,

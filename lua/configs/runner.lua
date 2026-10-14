@@ -42,7 +42,26 @@ local function shell_quote(value)
   return vim.fn.shellescape(value)
 end
 
+-- Run in a separate terminal window so the editor layout stays untouched. The
+-- window waits for a key after the program exits so its output stays readable.
+local function open_external_terminal(command)
+  if modifier.is_windows or modifier.is_macos or vim.fn.executable "xdg-terminal-exec" == 0 then
+    return false
+  end
+
+  local script = command .. '; printf "\\n[exit %d] press any key to close" $?; read -rsn1'
+  local job = vim.fn.jobstart({ "xdg-terminal-exec", "bash", "-c", script }, {
+    cwd = vim.fn.expand "%:p:h",
+    detach = true,
+  })
+  return job > 0
+end
+
 local function open_terminal(command)
+  if open_external_terminal(command) then
+    return
+  end
+
   vim.cmd "belowright split"
   vim.cmd "resize 15"
   local terminal_buffer = vim.api.nvim_get_current_buf()
@@ -119,7 +138,8 @@ end
 
 local function bind_run(buffer, run, description)
   local keys = { "<F5>" }
-  if vim.g.neovide then
+  -- Only Cmd+R on macOS: Ctrl+R is Vim's redo everywhere else.
+  if vim.g.neovide and modifier.is_macos then
     keys[#keys + 1] = modifier.chord "r"
   end
 
@@ -136,9 +156,9 @@ local function bind_competitest(buffer)
   local opts = function(description)
     return { buffer = buffer, desc = description, silent = true }
   end
-  vim.keymap.set("n", "<leader>r", "<cmd>CompetiTest run<cr>", opts "CompetiTest: run")
-  vim.keymap.set("n", "<leader>a", "<cmd>CompetiTest add_testcase<cr>", opts "CompetiTest: add testcase")
-  vim.keymap.set("n", "<leader>e", "<cmd>CompetiTest edit_testcase<cr>", opts "CompetiTest: edit testcase")
+  vim.keymap.set("n", "<leader>jr", "<cmd>CompetiTest run<cr>", opts "CompetiTest: run")
+  vim.keymap.set("n", "<leader>ja", "<cmd>CompetiTest add_testcase<cr>", opts "CompetiTest: add testcase")
+  vim.keymap.set("n", "<leader>je", "<cmd>CompetiTest edit_testcase<cr>", opts "CompetiTest: edit testcase")
 end
 
 function M.setup_ft(buffer, filetype)

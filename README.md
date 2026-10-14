@@ -34,8 +34,8 @@ Both hook into [kawre/leetcode.nvim](https://github.com/kawre/leetcode.nvim) aut
 The same `main` branch runs on macOS and Windows. Platform differences are selected at
 runtime, so shared behavior cannot drift between long-lived branches.
 
-`lua/util/modifier.lua` maps VS Code-style shortcuts to **Cmd** on macOS and **Ctrl** on
-Windows. `lua/configs/runner.lua` handles executable and path differences for C, C++,
+`lua/util/modifier.lua` maps VS Code-style shortcuts to **Cmd** on macOS and **Alt** on
+Linux and Windows (Ctrl would shadow core Vim keys such as `Ctrl+W`, `Ctrl+B` and `Ctrl+T`). `lua/configs/runner.lua` handles executable and path differences for C, C++,
 and Python. Neovide-specific settings remain shared, with Mac-only options guarded by
 an OS check. Leader is `Space`.
 
@@ -53,8 +53,8 @@ Start in Normal mode (`Esc`). Press `Space m` and pause to see the multicursor m
 | `Space m j` / `Space m k` | Add a cursor below / above |
 | `Space m x` | Clear extra cursors |
 | `Space m r` | Restore the previous cursors |
-| `Cmd+D` (Mac) / `Ctrl+D` (Windows) | Add next occurrence in Neovide, Normal or Visual mode |
-| `Cmd+click` (Mac) / `Ctrl+click` (Windows) | Add or remove a cursor in Neovide, Normal mode |
+| `Cmd+D` (Mac) / `Alt+D` (Linux/Windows) | Add next occurrence in Neovide, Normal or Visual mode |
+| `Cmd+click` (Mac) / `Alt+click` (Linux/Windows) | Add or remove a cursor in Neovide, Normal mode |
 | `Space f k` | Search all keyboard shortcuts |
 
 Try this in a scratch buffer: put `apple + apple + apple` on a line, place the
@@ -73,7 +73,7 @@ Other useful approaches already installed:
 - **Edit a whole unit:** `ciw` changes a word, `ci"` changes text inside quotes,
   and `ci(` changes text inside parentheses. Type the replacement, then `Esc`.
 - **Repeat an edit:** after `ciwpear<Esc>`, move to another word and press `.`.
-- **Wrap text:** on a word, `saiw)` wraps it in parentheses. `sd)` removes the
+- **Wrap text:** on a word, `gsaiw)` wraps it in parentheses. `gsd)` removes the
   surrounding parentheses. These are mini.surround mappings.
 - **Rename a code symbol:** `Space r n` asks the language server to rename its
   references. Use this for a variable or function; multicursor matches text.
@@ -85,21 +85,21 @@ Its full reference is available with `:help multicursor`.
 
 ### VS Code-style shortcuts
 
-| Action | Mac | Windows |
+| Action | Mac | Linux/Windows |
 |--------|-----|---------|
-| Undo | `Cmd+Z` | `Ctrl+Z` |
-| Redo | `Cmd+Shift+Z` | `Ctrl+Shift+Z` |
-| Find files | `Cmd+P` | `Ctrl+P` |
-| Command palette | `Cmd+Shift+P` | `Ctrl+Shift+P` |
-| Search in project (grep) | `Cmd+Shift+F` | `Ctrl+Shift+F` |
-| Close tab/buffer | `Cmd+W` | `Ctrl+W` |
-| New tab/file | `Cmd+T` | `Ctrl+T` |
-| Next tab | `Cmd+Shift+]` | `Ctrl+Shift+]` |
-| Previous tab | `Cmd+Shift+[` | `Ctrl+Shift+[` |
-| Go to tab 1–9 | `Cmd+1`…`Cmd+9` | `Ctrl+1`…`Ctrl+9` |
-| Toggle file tree | `Cmd+B` | `Ctrl+B` |
+| Undo | `Cmd+Z` | `Alt+Z` |
+| Redo | `Cmd+Shift+Z` | `Alt+Shift+Z` |
+| Find files | `Cmd+P` | `Alt+P` |
+| Command palette | `Cmd+Shift+P` | `Alt+Shift+P` |
+| Search in project (grep) | `Cmd+Shift+F` | `Alt+Shift+F` |
+| Close tab/buffer | `Cmd+W` | `Alt+W` |
+| New tab/file | `Cmd+T` | `Alt+T` |
+| Next tab | `Cmd+Shift+]` | `Alt+Shift+]` |
+| Previous tab | `Cmd+Shift+[` | `Alt+Shift+[` |
+| Go to tab 1–9 | `Cmd+1`…`Cmd+9` | `Alt+1`…`Alt+9` |
+| Toggle file tree | `Cmd+B` | `Alt+B` |
 
-**Neovide only:** paste `Cmd+V` / `Ctrl+V`, zoom in `Cmd+=` / `Ctrl+=`, zoom out `Cmd+-` / `Ctrl+-`.
+**Neovide only:** paste `Cmd+V` / `Alt+V`, zoom in `Cmd+=` / `Alt+=`, zoom out `Cmd+-` / `Alt+-`.
 Draggable split dividers brighten slightly when hovered. Keyboard buffer shortcuts land
 on terminals in Terminal-Normal mode; clicking a terminal returns it to input mode.
 Automatic startup restores the latest real project session, excluding config and temporary
@@ -148,12 +148,13 @@ a **More…** menu for modification-time and file-size sorting.
 | Key | Action |
 |-----|--------|
 | `<leader>th` / `<leader>tv` | Terminal (bottom / side split) |
+| `Esc Esc` (in terminal) | Leave terminal input; a single `Esc` goes to the program |
 | `q` (in run pane) | Close terminal/run pane |
 | `gd` / `gD` | Go to definition / declaration |
 | `gr` / `gi` | References / implementation |
 | `K` | Hover docs |
 | `<leader>rn` | Rename symbol |
-| `<leader>ca` | Code action |
+| `<leader>a` | Code action |
 | `<leader>d` | Line diagnostics (float) |
 | `<leader>xx` / `<leader>xb` | Diagnostics list / buffer diagnostics (Trouble) |
 | `<leader>ll` | Run linter |
@@ -178,9 +179,9 @@ this checkout has no local edits. Restart Neovim to apply a pulled update.
 
 | Key | Action |
 |-----|--------|
-| `<leader>qs` | Restore session |
-| `<leader>ql` | Restore last session |
-| `<leader>qd` | Stop session recording |
+| `<leader>Ss` | Restore session |
+| `<leader>Sl` | Restore last session |
+| `<leader>Sd` | Stop session recording |
 | `<leader>td` | Open todo list (floating `todo.md`) |
 | `<leader>tw` | Toggle the corner todo widget |
 | `<CR>` (in todo) | Toggle checkbox |
@@ -189,16 +190,15 @@ this checkout has no local edits. Restart Neovim to apply a pulled update.
 
 ### Competitive programming
 
-C/C++ and Python buffers get extra buffer-local mappings. In `c`/`cpp` buffers the
-CompetiTest `<leader>e` mapping shadows the global file-explorer mapping.
+C/C++ and Python buffers get extra buffer-local mappings.
 
 | Key | Action | Filetypes |
 |-----|--------|-----------|
-| `F5` | Compile & run current file | `c`, `cpp`, `python` |
-| `Cmd+R` / `Ctrl+R` | Compile & run (Neovide only) | `c`, `cpp`, `python` |
-| `<leader>r` | CompetiTest: run testcases | `c`, `cpp` |
-| `<leader>a` | CompetiTest: add testcase | `c`, `cpp` |
-| `<leader>e` | CompetiTest: edit testcase | `c`, `cpp` |
+| `F5` | Compile & run current file in a new terminal window | `c`, `cpp`, `python` |
+| `Cmd+R` | Compile & run (Neovide on macOS only) | `c`, `cpp`, `python` |
+| `<leader>jr` | CompetiTest: run testcases | `c`, `cpp` |
+| `<leader>ja` | CompetiTest: add testcase | `c`, `cpp` |
+| `<leader>je` | CompetiTest: edit testcase | `c`, `cpp` |
 
 Also driven by commands: `:CompetiTest receive problem`, `:CompetiTest receive contest`,
 `:CompetiTest run`. C++ compiles with `g++ -std=c++20` (`-Wall -Wextra

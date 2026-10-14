@@ -114,7 +114,7 @@ return {
       vim.api.nvim_create_autocmd("LspAttach", {
         callback = function(ev)
           local m = function(mode, lhs, rhs, desc)
-            vim.keymap.set(mode, lhs, rhs, { buffer = ev.buf, desc = desc })
+            vim.keymap.set(mode, lhs, rhs, { buffer = ev.buf, desc = desc, nowait = true })
           end
           m("n", "gd", vim.lsp.buf.definition, "Go to definition")
           m("n", "gD", vim.lsp.buf.declaration, "Go to declaration")
@@ -122,7 +122,7 @@ return {
           m("n", "gi", vim.lsp.buf.implementation, "Implementation")
           m("n", "K", vim.lsp.buf.hover, "Hover")
           m("n", "<leader>rn", vim.lsp.buf.rename, "Rename")
-          m("n", "<leader>ca", vim.lsp.buf.code_action, "Code action")
+          m({ "n", "x" }, "<leader>a", vim.lsp.buf.code_action, "Code action")
           m("n", "<leader>d", vim.diagnostic.open_float, "Line diagnostics")
           m("n", "[d", function()
             vim.diagnostic.jump { count = -1 }
@@ -221,10 +221,14 @@ return {
             end,
           },
           clang_format = {
-            prepend_args = {
-              "--style",
-              "{BasedOnStyle: LLVM, IndentWidth: 2, TabWidth: 2, UseTab: Never, ColumnLimit: 100, BreakBeforeBinaryOperators: NonAssignment, AllowShortFunctionsOnASingleLine: None, DerivePointerAlignment: false, PointerAlignment: Left, ReferenceAlignment: Left, AlwaysBreakTemplateDeclarations: Yes, AlignConsecutiveDeclarations: true, AlignConsecutiveAssignments: true}",
-            },
+            -- A project .clang-format wins; otherwise use this default style.
+            prepend_args = function(_, ctx)
+              local project_config = vim.fs.find(".clang-format", { path = ctx.dirname, upward = true })[1]
+              return project_config and {} or {
+                "--style",
+                "{BasedOnStyle: LLVM, IndentWidth: 2, TabWidth: 2, UseTab: Never, ColumnLimit: 100, BreakBeforeBinaryOperators: NonAssignment, AllowShortFunctionsOnASingleLine: None, DerivePointerAlignment: false, PointerAlignment: Left, ReferenceAlignment: Left, AlwaysBreakTemplateDeclarations: Yes, AlignConsecutiveDeclarations: true, AlignConsecutiveAssignments: true}",
+              }
+            end,
           },
         },
         format_on_save = function(bufnr)

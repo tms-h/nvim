@@ -32,23 +32,22 @@ vim.api.nvim_create_autocmd("OptionSet", {
   end,
 })
 
+-- Bare `nvim` in a project restores that project's session. Only a launch from
+-- $HOME or / (e.g. a GUI launcher) jumps to the most recent project instead.
 vim.api.nvim_create_autocmd("VimEnter", {
+  nested = true,
   callback = function()
+    if vim.fn.argc() ~= 0 then
+      return
+    end
     local cwd = vim.fn.getcwd()
-    if cwd == vim.env.HOME or cwd == "/" then
+    if cwd ~= vim.env.HOME and cwd ~= "/" then
+      require("persistence").load()
+    elseif not session.load_last_project() then
       local projects = vim.env.HOME .. "/Desktop/Projects"
       if vim.fn.isdirectory(projects) == 1 then
         vim.cmd("cd " .. vim.fn.fnameescape(projects))
       end
-    end
-  end,
-})
-
-vim.api.nvim_create_autocmd("VimEnter", {
-  nested = true,
-  callback = function()
-    if vim.fn.argc() == 0 then
-      session.load_last_project()
     end
   end,
 })
@@ -179,6 +178,9 @@ local function enter_terminal_input()
   entries[#entries + 1] = "WinSeparator:TermWinSeparator"
   vim.wo.winhighlight = table.concat(entries, ",")
   vim.wo.cursorline = false
+  -- A global scrolloff larger than half a short split pins the view to the
+  -- terminal cursor, which makes the scrollback impossible to scroll.
+  vim.wo.scrolloff = 0
 
   if not vim.g.nvim_keyboard_buffer_switch then
     vim.cmd "startinsert"
@@ -207,6 +209,9 @@ local function restore_editor_background()
     vim.wo.cursorline = original_cursorline
     vim.w.nvim_terminal_original_cursorline = nil
   end
+
+  -- Drop the terminal-only override so the window follows the global value.
+  vim.wo.scrolloff = -1
 end
 
 local terminal_group = vim.api.nvim_create_augroup("TerminalBehavior", { clear = true })
@@ -314,6 +319,21 @@ vim.api.nvim_create_autocmd("TermOpen", {
   end,
 })
 
+-- Window-local highlights stay with the window, not the buffer. When a file
+-- lands in a window that last showed nvim-tree or a terminal, drop their
+-- overrides so the file gets the normal editor background.
+local function strip_foreign_highlights()
+  local entries = {}
+  for entry in vim.wo.winhighlight:gmatch "[^,]+" do
+    local group = entry:match ":(.+)$" or ""
+    local foreign = vim.startswith(group, "NvimTree") or vim.startswith(group, "StatusLineTerm")
+    if not foreign and not vim.tbl_contains(entries, entry) then
+      entries[#entries + 1] = entry
+    end
+  end
+  vim.wo.winhighlight = table.concat(entries, ",")
+end
+
 vim.api.nvim_create_autocmd("BufEnter", {
   group = terminal_group,
   callback = function()
@@ -321,6 +341,9 @@ vim.api.nvim_create_autocmd("BufEnter", {
       enter_terminal_input()
     else
       restore_editor_background()
+      if vim.bo.buftype == "" and vim.api.nvim_win_get_config(0).relative == "" then
+        strip_foreign_highlights()
+      end
     end
     schedule_terminal_boundary_update()
   end,

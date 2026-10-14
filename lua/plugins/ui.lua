@@ -16,6 +16,17 @@ local function wakatime_statusline()
     :gsub("(%d+)%s*mins?", "%1m")
 end
 
+-- cmdheight=0 hides Vim's own "recording @q" message, so show it here.
+local recording_component = {
+  function()
+    return "recording @" .. vim.fn.reg_recording()
+  end,
+  cond = function()
+    return vim.fn.reg_recording() ~= ""
+  end,
+  color = { fg = "#ff9f74", gui = "bold" },
+}
+
 local wakatime_component = {
   wakatime_statusline,
   cond = function()
@@ -25,14 +36,14 @@ local wakatime_component = {
 }
 
 local backgrounds = {
-  dim = "#181d20",
-  editor = "#202629",
-  raised = "#252c30",
-  status = "#14191b",
-  terminal = "#111517",
-  tab_inactive = "#171b1e",
-  tab_selected = "#242b2f",
-  tab_fill = "#101315",
+  dim = "#0e1113",
+  editor = "#161a1c",
+  raised = "#1b2023",
+  status = "#0a0d0e",
+  terminal = "#07090a",
+  tab_inactive = "#0d0f11",
+  tab_selected = "#1a1f22",
+  tab_fill = "#060708",
 }
 
 local function bufferline_highlights()
@@ -44,7 +55,7 @@ local function bufferline_highlights()
     background = { fg = "#7a8478", bg = inactive_bg },
     buffer = { fg = "#7a8478", bg = inactive_bg },
     buffer_visible = { fg = "#7a8478", bg = inactive_bg },
-    buffer_selected = { fg = "#d3c6aa", bg = selected_bg, bold = true, italic = false },
+    buffer_selected = { fg = "#e6dcc3", bg = selected_bg, bold = true, italic = false },
     close_button = { fg = "#4f5b58", bg = inactive_bg },
     close_button_visible = { fg = "#4f5b58", bg = inactive_bg },
     close_button_selected = { fg = "#9da9a0", bg = selected_bg },
@@ -52,13 +63,13 @@ local function bufferline_highlights()
     separator_visible = { fg = inactive_bg, bg = inactive_bg },
     separator_selected = { fg = selected_bg, bg = selected_bg },
     indicator_visible = { fg = inactive_bg, bg = inactive_bg },
-    indicator_selected = { fg = "#b7d28b", bg = selected_bg },
+    indicator_selected = { fg = "#c5e396", bg = selected_bg },
     modified = { fg = "#859289", bg = inactive_bg },
     modified_visible = { fg = "#859289", bg = inactive_bg },
-    modified_selected = { fg = "#a7c080", bg = selected_bg },
+    modified_selected = { fg = "#b5db7a", bg = selected_bg },
     duplicate = { fg = "#7a8478", bg = inactive_bg, italic = true },
     duplicate_visible = { fg = "#7a8478", bg = inactive_bg, italic = true },
-    duplicate_selected = { fg = "#d3c6aa", bg = selected_bg, italic = true },
+    duplicate_selected = { fg = "#e6dcc3", bg = selected_bg, italic = true },
   }
 
   for _, name in ipairs { "diagnostic", "hint_diagnostic", "info_diagnostic", "warning_diagnostic", "error_diagnostic" } do
@@ -100,47 +111,60 @@ return {
       vim.g.everforest_colors_override = {
         bg_dim = { backgrounds.dim, "233" },
         bg0 = { backgrounds.editor, "235" },
-        bg1 = { "#272f33", "236" },
-        bg2 = { "#30393d", "237" },
-        bg3 = { "#394246", "238" },
-        bg4 = { "#41494d", "239" },
-        bg5 = { "#46514e", "240" },
-        bg_visual = { "#3d2d36", "52" },
-        bg_red = { "#3a3034", "52" },
-        bg_yellow = { "#36362f", "136" },
-        bg_green = { "#303a34", "22" },
-        bg_blue = { "#2d3c44", "17" },
-        bg_purple = { "#38333a", "54" },
+        bg1 = { "#1d2326", "236" },
+        bg2 = { "#262d30", "237" },
+        bg3 = { "#2f3639", "238" },
+        bg4 = { "#373d40", "239" },
+        bg5 = { "#3c4541", "240" },
+        bg_visual = { "#4a3440", "52" },
+        bg_red = { "#302427", "52" },
+        bg_yellow = { "#2c2a22", "136" },
+        bg_green = { "#262e27", "22" },
+        bg_blue = { "#233037", "17" },
+        bg_purple = { "#2e272d", "54" },
+        -- Everforest Night: same hues as the desktop theme
+        -- (~/.config/omarchy/themes/everforest/colors.toml).
+        fg = { "#e6dcc3", "223" },
+        red = { "#ff797c", "167" },
+        orange = { "#ff9f74", "208" },
+        yellow = { "#fcce73", "214" },
+        green = { "#b5db7a", "142" },
+        aqua = { "#7eda94", "108" },
+        blue = { "#7ad5c9", "109" },
+        purple = { "#ee95c0", "175" },
+        statusline1 = { "#b5db7a", "142" },
+        statusline2 = { "#e6dcc3", "223" },
+        statusline3 = { "#ff797c", "167" },
       }
       vim.g.everforest_better_performance = 1
       vim.g.everforest_enable_italic = 1
       vim.cmd.colorscheme "everforest"
       vim.api.nvim_set_hl(0, "NormalFloat", { bg = backgrounds.raised })
-      vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#343d3b", bg = backgrounds.editor })
+      vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#2a312e", bg = backgrounds.editor })
       vim.api.nvim_set_hl(0, "WinSeparatorHover", { fg = "#56625c", bg = backgrounds.editor })
 
       -- Keep the existing panel colors, including underneath their divider
       -- cells and chrome, so only the one-pixel separator changes surface.
-      vim.api.nvim_set_hl(0, "ExplorerHeader", { fg = "#a7c080", bg = backgrounds.dim })
+      vim.api.nvim_set_hl(0, "ExplorerHeader", { fg = "#b5db7a", bg = backgrounds.dim })
       vim.api.nvim_set_hl(0, "ExplorerSortTitle", { fg = "#859289", bg = backgrounds.dim })
-      vim.api.nvim_set_hl(0, "ExplorerSortButton", { fg = "#d3c6aa", bg = backgrounds.dim })
-      vim.api.nvim_set_hl(0, "ExplorerSortActive", { fg = "#a7c080", bg = backgrounds.dim, bold = true })
+      vim.api.nvim_set_hl(0, "ExplorerSortButton", { fg = "#e6dcc3", bg = backgrounds.dim })
+      vim.api.nvim_set_hl(0, "ExplorerSortActive", { fg = "#b5db7a", bg = backgrounds.dim, bold = true })
       vim.api.nvim_set_hl(0, "WinBar", { bg = backgrounds.dim })
       vim.api.nvim_set_hl(0, "WinBarNC", { bg = backgrounds.dim })
       vim.api.nvim_set_hl(0, "NvimTreeNormal", { bg = backgrounds.dim })
       vim.api.nvim_set_hl(0, "NvimTreeNormalNC", { bg = backgrounds.dim })
       vim.api.nvim_set_hl(0, "NvimTreeEndOfBuffer", { fg = backgrounds.dim, bg = backgrounds.dim })
       vim.api.nvim_set_hl(0, "NvimTreeSignColumn", { bg = backgrounds.dim })
-      vim.api.nvim_set_hl(0, "NvimTreeWinSeparator", { fg = "#343d3b", bg = backgrounds.dim })
+      vim.api.nvim_set_hl(0, "NvimTreeWinSeparator", { fg = "#2a312e", bg = backgrounds.dim })
       vim.api.nvim_set_hl(0, "NvimTreeWinSeparatorHover", { fg = "#56625c", bg = backgrounds.dim })
       -- A darker shade of the editor background keeps terminal panes distinct.
       vim.api.nvim_set_hl(0, "TermNormal", { bg = backgrounds.terminal })
-      vim.api.nvim_set_hl(0, "TermWinSeparator", { fg = "#343d3b", bg = backgrounds.terminal })
+      vim.api.nvim_set_hl(0, "TermWinSeparator", { fg = "#2a312e", bg = backgrounds.terminal })
       vim.api.nvim_set_hl(0, "TermWinSeparatorHover", { fg = "#56625c", bg = backgrounds.terminal })
       -- Horizontal split separators are a full character cell tall. When a
       -- terminal is directly below an editor, make that cell belong visually
       -- to the terminal so the divider stays a single line instead of a bar.
-      vim.api.nvim_set_hl(0, "TerminalBoundary", { fg = "#343d3b", bg = backgrounds.terminal })
+      vim.api.nvim_set_hl(0, "TerminalBoundary", { fg = "#2a312e", bg = backgrounds.terminal })
       vim.api.nvim_set_hl(0, "TerminalBoundaryHover", { fg = "#56625c", bg = backgrounds.terminal })
     end,
   },
@@ -172,6 +196,15 @@ return {
     dependencies = { "nvim-tree/nvim-web-devicons" },
     opts = function()
       now_playing.setup()
+      vim.api.nvim_create_autocmd({ "RecordingEnter", "RecordingLeave" }, {
+        group = vim.api.nvim_create_augroup("LualineRecording", { clear = true }),
+        callback = function()
+          -- reg_recording() is still set during RecordingLeave; refresh after it clears.
+          vim.schedule(function()
+            require("lualine").refresh()
+          end)
+        end,
+      })
       return {
         options = {
           theme = dark_lualine_theme(),
@@ -184,8 +217,9 @@ return {
           lualine_b = { "branch", "diff" },
           lualine_c = { { "filename", path = 1 } },
           lualine_x = {
+            recording_component,
             "diagnostics",
-            { now_playing.statusline, color = { fg = "#a7c080" } },
+            { now_playing.statusline, color = { fg = "#b5db7a" } },
             "filetype",
             wakatime_component,
           },
@@ -262,8 +296,9 @@ return {
         { "<leader>f", group = "Find" },
         { "<leader>m", group = "Multicursor" },
         { "<leader>x", group = "Diagnostics" },
-        { "<leader>q", group = "Session" },
+        { "<leader>S", group = "Session" },
         { "<leader>l", group = "Lint/LeetCode" },
+        { "<leader>j", group = "Judge (CompetiTest)" },
         { "<leader>s", group = "Search" },
         { "<leader>g", group = "Git" },
       },
