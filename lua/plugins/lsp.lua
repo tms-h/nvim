@@ -106,7 +106,11 @@ return {
       local servers = { "html", "cssls", "clangd", "pyright", "ts_ls", "lua_ls" }
       local ocamllsp = require("configs.ocaml").find_tool "ocamllsp"
       if ocamllsp then
-        vim.lsp.config("ocamllsp", { cmd = { ocamllsp } })
+        -- GUI launches (Neovide) lack opam's PATH, and ocamllsp shells out to `dune` for hover and go-to-definition.
+        vim.lsp.config("ocamllsp", {
+          cmd = { ocamllsp },
+          cmd_env = { PATH = vim.fs.dirname(ocamllsp) .. ":" .. vim.env.PATH },
+        })
         servers[#servers + 1] = "ocamllsp"
       end
       vim.lsp.enable(servers)
