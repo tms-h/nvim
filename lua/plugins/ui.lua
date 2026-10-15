@@ -1,6 +1,7 @@
 local explorer_sort = require "configs.explorer_sort"
 local now_playing = require "configs.now_playing"
 local buffer_close = require "configs.buffer_close"
+local bufferline_fit = require "configs.bufferline_fit"
 
 local function wakatime_statusline()
   local ok, wakatime = pcall(require, "wakatime")
@@ -183,11 +184,16 @@ return {
         show_close_icon = false,
         show_buffer_close_icons = true,
         separator_style = "thin",
+        name_formatter = bufferline_fit.name_formatter,
         offsets = {
           { filetype = "NvimTree", text = "Explorer", highlight = "ExplorerHeader", padding = 1 },
         },
       },
     },
+    config = function(_, opts)
+      require("bufferline").setup(opts)
+      bufferline_fit.setup()
+    end,
   },
 
   {

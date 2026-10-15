@@ -215,6 +215,9 @@ if vim.g.neovide then
   map({ "n", "i", "v", "c", "t" }, super "-", function()
     change_scale_factor(1 / 1.25)
   end, { silent = true })
+  map({ "n", "i", "v", "c", "t" }, super "0", function()
+    vim.g.neovide_scale_factor = 1 / 1.25
+  end, { silent = true, desc = "Reset zoom" })
 end
 
 map("n", "<leader>gs", function()
