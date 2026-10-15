@@ -81,6 +81,7 @@ map("n", super "S-f", "<cmd>Telescope live_grep<cr>", { desc = "Search in projec
 map("n", super "w", buffer_close.delete_from_keyboard, { desc = "Close tab" })
 map("n", super "S-w", buffer_close.close_window_and_buffer, { desc = "Close split and tab" })
 map("n", super "t", "<cmd>enew<cr>", { desc = "New tab" })
+map("n", super "S-t", buffer_close.reopen, { desc = "Reopen closed tab" })
 map("n", super "S-]", function()
   keyboard_buffer_switch "BufferLineCycleNext"
 end, { desc = "Next tab" })
