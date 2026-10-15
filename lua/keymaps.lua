@@ -88,11 +88,21 @@ end, { desc = "Next tab" })
 map("n", super "S-[", function()
   keyboard_buffer_switch "BufferLineCyclePrev"
 end, { desc = "Previous tab" })
+-- Ctrl+Tab and Ctrl+PageDown are Ctrl on every OS in Chrome and VS Code alike.
+for _, keys in ipairs { { "<C-Tab>", "<C-S-Tab>" }, { "<C-PageDown>", "<C-PageUp>" } } do
+  map({ "n", "i", "t" }, keys[1], function()
+    keyboard_buffer_switch "BufferLineCycleNext"
+  end, { desc = "Next tab" })
+  map({ "n", "i", "t" }, keys[2], function()
+    keyboard_buffer_switch "BufferLineCyclePrev"
+  end, { desc = "Previous tab" })
+end
+-- Like Chrome, 1-8 jump to that tab and 9 jumps to the last one.
 for i = 1, 9 do
-  local index = i
-  map("n", super(tostring(index)), function()
+  local index = i == 9 and -1 or i
+  map("n", super(tostring(i)), function()
     keyboard_buffer_switch("BufferLineGoToBuffer " .. index)
-  end, { desc = "Tab " .. index })
+  end, { desc = i == 9 and "Last tab" or "Tab " .. i })
 end
 
 -- ── Sidebar (Cmd+B on macOS, Ctrl+B on Windows) ──
