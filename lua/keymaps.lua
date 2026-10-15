@@ -121,6 +121,18 @@ map("n", "<leader>n", "<cmd>enew<cr>", { desc = "New file" })
 map("n", "<leader>c", buffer_close.delete, { desc = "Close buffer" })
 map("n", "<leader>q", "<cmd>silent! close<cr>", { desc = "Close window" })
 map("n", "<leader>Q", buffer_close.close_window_and_buffer, { desc = "Close window and buffer" })
+-- OCaml: jump between foo.ml and foo.mli (VS Code's OCaml extension uses Alt+O).
+map("n", "<leader>i", function()
+  local name = vim.api.nvim_buf_get_name(0)
+  local other = name:match "%.mli$" and name:sub(1, -2) or name:match "%.ml$" and name .. "i" or nil
+  if not other then
+    vim.notify("Not an .ml or .mli file", vim.log.levels.WARN)
+  elseif vim.uv.fs_stat(other) == nil then
+    vim.notify("No " .. vim.fn.fnamemodify(other, ":t"), vim.log.levels.WARN)
+  else
+    vim.cmd.edit(vim.fn.fnameescape(other))
+  end
+end, { desc = "Toggle .ml / .mli" })
 
 -- ── Buffer cycling (Shift+H/L) ──
 map("n", "<S-h>", function()
