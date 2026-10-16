@@ -115,6 +115,24 @@ return {
       end
       vim.lsp.enable(servers)
 
+      -- ocamllsp's plain hover on a value of a record or variant type shows only the type's name (`ctx`).
+      -- Its extended hover at verbosity 1 prints the whole definition, every field included.
+      local function ocaml_hover(client, buf)
+        local params = vim.lsp.util.make_position_params(0, client.offset_encoding)
+        params.verbosity = 1
+        client:request("ocamllsp/hoverExtended", params, function(err, result)
+          if err or not result or not result.contents then
+            return
+          end
+          local contents = result.contents
+          if contents.kind == "plaintext" then
+            contents = { kind = "markdown", value = "```ocaml\n" .. contents.value .. "\n```" }
+          end
+          local lines = vim.lsp.util.convert_input_to_markdown_lines(contents)
+          vim.lsp.util.open_floating_preview(lines, "markdown", { focus_id = "ocaml_hover" })
+        end, buf)
+      end
+
       vim.api.nvim_create_autocmd("LspAttach", {
         callback = function(ev)
           local m = function(mode, lhs, rhs, desc)
@@ -124,7 +142,14 @@ return {
           m("n", "gD", vim.lsp.buf.declaration, "Go to declaration")
           m("n", "gr", vim.lsp.buf.references, "References")
           m("n", "gi", vim.lsp.buf.implementation, "Implementation")
-          m("n", "K", vim.lsp.buf.hover, "Hover")
+          local client = vim.lsp.get_client_by_id(ev.data.client_id)
+          if client and client.name == "ocamllsp" then
+            m("n", "K", function()
+              ocaml_hover(client, ev.buf)
+            end, "Hover (full type definition)")
+          else
+            m("n", "K", vim.lsp.buf.hover, "Hover")
+          end
           m("n", "<leader>rn", vim.lsp.buf.rename, "Rename")
           m({ "n", "x" }, "<leader>a", vim.lsp.buf.code_action, "Code action")
           m("n", "<leader>d", vim.diagnostic.open_float, "Line diagnostics")
