@@ -177,7 +177,50 @@ return {
     "MeanderingProgrammer/render-markdown.nvim",
     ft = { "markdown" },
     dependencies = { "nvim-treesitter/nvim-treesitter" },
-    opts = {},
+    opts = {
+      -- Render in every mode; only the cursor line shows raw markdown.
+      render_modes = true,
+      heading = {
+        sign = false,
+        width = "block",
+        left_pad = 1,
+        right_pad = 2,
+        border = true,
+        border_virtual = true,
+      },
+      code = {
+        sign = false,
+        width = "block",
+        left_pad = 1,
+        right_pad = 2,
+        border = "thin",
+      },
+      pipe_table = { preset = "round", cell = "trimmed" },
+      latex = { enabled = false },
+      checkbox = { checked = { scope_highlight = "@markup.strikethrough" } },
+    },
+    config = function(_, opts)
+      require("render-markdown").setup(opts)
+      -- Prose reads better soft-wrapped at word boundaries, but wrapped
+      -- tables render as garbage (neovim conceal + wrap limitation), so files
+      -- with a pipe table stay unwrapped and scroll sideways instead.
+      vim.api.nvim_create_autocmd("FileType", {
+        group = vim.api.nvim_create_augroup("MarkdownReading", { clear = true }),
+        pattern = "markdown",
+        callback = function(args)
+          local has_table = false
+          for _, line in ipairs(vim.api.nvim_buf_get_lines(args.buf, 0, 2000, false)) do
+            if line:match "^%s*|.*|%s*$" then
+              has_table = true
+              break
+            end
+          end
+          vim.opt_local.wrap = not has_table
+          vim.opt_local.linebreak = true
+          vim.opt_local.breakindent = true
+        end,
+      })
+    end,
   },
 
   {
