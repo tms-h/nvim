@@ -236,3 +236,17 @@ end
 map("n", "<leader>gs", function()
   require("configs.config_sync").sync()
 end, { desc = "Sync config to GitHub" })
+
+-- ── Reload from disk (Chrome-style: reload, Shift = hard reload) ──
+-- Plain reload keeps unsaved edits and asks if the file changed under them;
+-- hard reload throws local edits away and takes the file on disk.
+local function reload_all()
+  vim.cmd "checktime"
+end
+local function hard_reload()
+  vim.cmd "edit!"
+end
+map("n", super "r", reload_all, { desc = "Reload buffers from disk" })
+map("n", super "S-r", hard_reload, { desc = "Reload buffer, discard edits" })
+map("n", "<leader>br", reload_all, { desc = "Reload buffers from disk" })
+map("n", "<leader>bR", hard_reload, { desc = "Reload buffer, discard edits" })

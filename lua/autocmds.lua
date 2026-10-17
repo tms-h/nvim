@@ -445,3 +445,14 @@ vim.api.nvim_create_autocmd("VimEnter", {
     vim.defer_fn(require("configs.config_sync").pull, 1000)
   end,
 })
+
+-- Pick up files changed outside Neovim (agents, git pulls) without a keypress.
+vim.o.autoread = true
+vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "TermLeave" }, {
+  group = vim.api.nvim_create_augroup("ReloadFromDisk", { clear = true }),
+  callback = function()
+    if vim.fn.getcmdwintype() == "" and vim.bo.buftype == "" then
+      vim.cmd "silent! checktime"
+    end
+  end,
+})
