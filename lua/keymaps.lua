@@ -206,8 +206,9 @@ map("n", "<leader>tw", todo.toggle_widget, { desc = "Toggle todo widget" })
 
 -- ── Neovide ──
 if vim.g.neovide then
-  -- Start one zoom step (Super+-) below the base font size.
-  vim.g.neovide_scale_factor = vim.g.neovide_scale_factor or 1 / 1.25
+  -- Start two zoom steps (Super+-) below the base font size; Super+0 returns here.
+  local default_scale = 1 / 1.25 ^ 2
+  vim.g.neovide_scale_factor = default_scale
 
   local function change_scale_factor(multiplier)
     vim.g.neovide_scale_factor = vim.g.neovide_scale_factor * multiplier
@@ -228,7 +229,7 @@ if vim.g.neovide then
     change_scale_factor(1 / 1.25)
   end, { silent = true })
   map({ "n", "i", "v", "c", "t" }, super "0", function()
-    vim.g.neovide_scale_factor = 1 / 1.25
+    vim.g.neovide_scale_factor = default_scale
   end, { silent = true, desc = "Reset zoom" })
 end
 
