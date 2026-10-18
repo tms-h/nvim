@@ -221,6 +221,8 @@ if vim.g.neovide then
   map("i", super "c", '<C-o>"+yy', { desc = "Copy line" })
   map("v", super "c", '"+y', { desc = "Copy selection" })
   map("s", super "c", '<C-g>"+y', { desc = "Copy selection" })
+  map("v", super "x", '"+d', { desc = "Cut selection" })
+  map("s", super "x", '<C-g>"+d', { desc = "Cut selection" })
   map({ "n", "i", "v", "c", "t" }, super "v", paste, { silent = true })
   map({ "n", "i", "v", "c", "t" }, super "=", function()
     change_scale_factor(1.25)
