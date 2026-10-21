@@ -82,9 +82,20 @@ if vim.g.neovide then
   vim.g.neovide_scroll_animation_far_lines = 1
   vim.g.neovide_position_animation_length = 0
 
-  -- Subtle frosted-glass effect without sacrificing code contrast.
+  -- Frosted glass: same recipe as kitty, Files and the shell popups. Opacity,
+  -- background and neutral text come from shell.toml [menu] through the
+  -- surface-recipe theme hook (lua/surface.lua); falls back to the old values.
+  local ok_surface, surface = pcall(require, "surface")
   vim.g.neovide_opacity = 0.94
-  vim.g.neovide_normal_opacity = 0.84
+  vim.g.neovide_normal_opacity = ok_surface and surface.opacity or 0.84
+  if ok_surface then
+    local function apply_surface()
+      local normal = vim.api.nvim_get_hl(0, { name = "Normal" })
+      vim.api.nvim_set_hl(0, "Normal", vim.tbl_extend("force", normal, { bg = surface.bg, fg = surface.fg }))
+    end
+    vim.api.nvim_create_autocmd("ColorScheme", { callback = apply_surface })
+    apply_surface()
+  end
   if vim.fn.has "macunix" == 1 then
     vim.g.neovide_window_blurred = true
   end
