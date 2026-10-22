@@ -239,6 +239,15 @@ return {
       vim.api.nvim_set_hl(0, "NvimTreeWinSeparator", { link = "WinSeparator" })
       -- The divider under the pointer (lua/autocmds.lua, configs/focus_dim.lua).
       vim.api.nvim_set_hl(0, "WinSeparatorHover", { fg = "#b5db7a" })
+      -- Marks that used a background box (configs/one_surface.lua keeps boxes
+      -- for selection, search and the cursor line only) draw as underlines.
+      -- A double-clicked word's other occurrences mean the same as LSP's
+      -- "other references to this symbol", so they share its mark.
+      for _, group in ipairs { "LspReferenceText", "LspReferenceRead", "LspReferenceWrite" } do
+        vim.api.nvim_set_hl(0, group, { underline = true })
+      end
+      vim.api.nvim_set_hl(0, "WordOccurrence", { link = "LspReferenceText" })
+      vim.api.nvim_set_hl(0, "MatchParen", { bold = true, underline = true })
 
       vim.api.nvim_set_hl(0, "ExplorerHeader", { fg = "#b5db7a", bold = true })
       vim.api.nvim_set_hl(0, "NvimTreeRootFolder", { fg = "#859289", italic = true })

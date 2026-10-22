@@ -26,18 +26,22 @@ local function mix(fg, bg, t)
   return channel(16) + channel(8) + channel(0)
 end
 
-local built_count = 0
-
 ---Copy every highlight group into the dim namespace with its colours pulled
 ---toward the background. Run again when plugins add groups.
 function M.build()
+  -- Backgrounds first, so the dimmed copies inherit the one surface.
+  require("configs.one_surface").apply()
   local all = api.nvim_get_hl(0, {})
   local base = api.nvim_get_hl(0, { name = "Normal" }).bg or 0x111416
-  local count = 0
   for name in pairs(all) do
-    count = count + 1
     if not KEEP[name] then
       local hl = api.nvim_get_hl(0, { name = name, link = false })
+      -- A colour equal to the pane surface is left unset, so the cell keeps
+      -- the shared surface. An explicit copy is a second, opaque paint:
+      -- Neovide drew dimmed panes as a darker box.
+      if hl.bg == base then
+        hl.bg = nil
+      end
       if hl.fg then
         hl.fg = mix(hl.fg, base, STRENGTH)
       end
@@ -52,17 +56,20 @@ function M.build()
   for name in pairs(KEEP) do
     api.nvim_set_hl(ns, name, api.nvim_get_hl(0, { name = name, link = false }))
   end
-  -- The cursor line marks the pane you are typing in, not every pane.
+  -- The cursor line and search hits belong to the pane you are typing in,
+  -- not every pane.
   for _, space in ipairs { ns, ns_hover } do
     api.nvim_set_hl(space, "CursorLine", {})
     api.nvim_set_hl(space, "CursorLineNr", api.nvim_get_hl(ns, { name = "LineNr" }))
+    for _, group in ipairs { "Search", "CurSearch", "IncSearch" } do
+      api.nvim_set_hl(space, group, {})
+    end
   end
   local hover = api.nvim_get_hl(0, { name = "WinSeparatorHover", link = false })
   for _, name in ipairs(SEPARATORS) do
     api.nvim_set_hl(ns_hover, name, hover)
     api.nvim_set_hl(ns_bright_hover, name, hover)
   end
-  built_count = count
 end
 
 local active_pane
@@ -103,25 +110,27 @@ end
 function M.setup()
   M.build()
   local group = api.nvim_create_augroup("FocusDim", { clear = true })
-  api.nvim_create_autocmd("ColorScheme", { group = group, callback = M.build })
-  -- Lazy-loaded plugins define their groups late; rebuild when the set grows.
-  api.nvim_create_autocmd({ "FileType", "LspAttach", "User" }, {
+  -- Themes and plugins set colours late and again later: lazy loads, LSP,
+  -- and syntax files (everforest's NvimTree syntax repaints the explorer's
+  -- background each time it opens). Rebuild once those settle, after every
+  -- other handler. A build takes ~15 ms, so bursts share one.
+  local settle = vim.uv.new_timer()
+  api.nvim_create_autocmd({ "ColorScheme", "FileType", "Syntax", "LspAttach", "User" }, {
     group = group,
     callback = function(args)
       if args.event == "User" and args.match ~= "LazyLoad" and args.match ~= "VeryLazy" then
         return
       end
-      vim.schedule(function()
-        if vim.tbl_count(api.nvim_get_hl(0, {})) ~= built_count then
-          M.build()
-        end
-      end)
+      settle:start(30, 0, vim.schedule_wrap(M.build))
     end,
   })
-  api.nvim_create_autocmd({ "WinEnter", "BufWinEnter", "WinNew", "TabEnter", "VimEnter" }, {
-    group = group,
-    callback = M.apply,
-  })
+  -- Focus can move without WinEnter (a mouse click in some modes, a session
+  -- restore), so recheck on every event that comes with a focus change. A
+  -- pass that changes nothing is a short loop with no redraw.
+  api.nvim_create_autocmd(
+    { "WinEnter", "BufWinEnter", "WinNew", "TabEnter", "VimEnter", "ModeChanged", "CursorMoved", "FocusGained" },
+    { group = group, callback = M.apply }
+  )
   api.nvim_create_autocmd("WinClosed", {
     group = group,
     callback = function(args)

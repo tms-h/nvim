@@ -146,7 +146,9 @@ return {
     "folke/todo-comments.nvim",
     event = "VeryLazy",
     dependencies = { "nvim-lua/plenary.nvim" },
-    opts = {},
+    -- TODO/FIX/NOTE read as coloured words, never a filled block: a filled
+    -- block is what a search hit looks like.
+    opts = { highlight = { keyword = "fg", before = "", after = "fg" } },
   },
 
   {
@@ -179,15 +181,18 @@ return {
         width = "block",
         left_pad = 1,
         right_pad = 2,
-        border = true,
-        border_virtual = true,
+        -- No box: a heading is its coloured text on the pane's own surface
+        -- (configs/one_surface.lua). The box border was drawn in the box colour.
+        border = false,
       },
       code = {
         sign = false,
         width = "block",
         left_pad = 1,
         right_pad = 2,
-        border = "thin",
+        -- Code sits on the pane's surface too; the language label stays.
+        disable_background = true,
+        border = "none",
       },
       pipe_table = { preset = "round", cell = "trimmed" },
       latex = { enabled = false },

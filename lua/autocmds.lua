@@ -231,8 +231,14 @@ vim.api.nvim_create_autocmd("TermOpen", {
   pattern = "term://*",
   callback = function(args)
     -- A click means the user wants to interact with the terminal, even when a
-    -- keyboard buffer switch deliberately left it in Terminal-Normal mode.
-    vim.keymap.set("n", "<LeftMouse>", "<LeftMouse><cmd>startinsert<cr>", {
+    -- keyboard buffer switch deliberately left it in Terminal-Normal mode. A
+    -- click that lands in another pane is just a click there (it used to
+    -- start insert mode in that editor).
+    local click = "<LeftMouse><cmd>if &buftype ==# 'terminal' | startinsert | endif<cr>"
+    vim.keymap.set("n", "<LeftMouse>", click, { buffer = args.buf, silent = true, desc = "Terminal: focus input" })
+    -- A terminal takes no extra cursors: Alt/Cmd+click is an ordinary click
+    -- (multicursor's mouse handler left it in a block selection).
+    vim.keymap.set("n", require("util.modifier").chord "LeftMouse", click, {
       buffer = args.buf,
       silent = true,
       desc = "Terminal: focus input",

@@ -42,15 +42,23 @@ if vim.g.neovide then
   map("n", super "LeftMouse", mc.handleMouse, { desc = "Add or remove cursor at mouse" })
   map("n", super "LeftDrag", mc.handleMouseDrag)
   map("n", super "LeftRelease", mc.handleMouseRelease)
+  -- Same click from insert or a selection: leave it first. Unmapped, Vim's own
+  -- Alt+click started a block selection there (the stray V-BLOCK).
+  map({ "i", "x", "s" }, super "LeftMouse", "<Esc><Cmd>lua require('multicursor-nvim').handleMouse()<CR>", {
+    desc = "Add or remove cursor at mouse",
+  })
 end
 map("n", "<leader>fk", "<cmd>Telescope keymaps<cr>", { desc = "Find keyboard shortcuts" })
 
--- Double-click a word to keep it selected and highlight every exact occurrence.
+-- Double-click a word to keep it selected and mark its other occurrences in
+-- that pane (configs/word_occurrences.lua). It used to run `*`, which left a
+-- search for the word on in every pane after the selection was gone.
+require("configs.word_occurrences").setup()
 map(
   { "n", "i" },
   "<2-LeftMouse>",
-  "<Esc><2-LeftMouse><Esc><Cmd>if !empty(expand('<cword>')) | set hlsearch | silent! execute 'keepjumps normal! *N' | execute 'normal! viw' | endif<CR>",
-  { desc = "Select word and highlight occurrences" }
+  "<Esc><2-LeftMouse><Esc><Cmd>lua require('configs.word_occurrences').select_word()<CR>",
+  { desc = "Select word and mark occurrences" }
 )
 
 -- ── Comments (Cmd+/ on macOS, Ctrl+/ on Windows) ──
