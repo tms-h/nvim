@@ -3,6 +3,40 @@ local now_playing = require "configs.now_playing"
 local buffer_close = require "configs.buffer_close"
 local bufferline_fit = require "configs.bufferline_fit"
 
+-- Files opened from the explorer land in the editor window you were last in:
+-- never a terminal or panel, and never a "pick a window" prompt.
+-- Recorded on WinLeave: a window entered by a split still shows the old file
+-- for a moment (the tree's own window starts that way).
+local last_file_win
+local function is_file_window(win)
+  return vim.api.nvim_win_is_valid(win)
+    and vim.bo[vim.api.nvim_win_get_buf(win)].buftype == ""
+    and vim.api.nvim_win_get_config(win).relative == ""
+end
+vim.api.nvim_create_autocmd("WinLeave", {
+  group = vim.api.nvim_create_augroup("ExplorerTarget", { clear = true }),
+  callback = function()
+    if is_file_window(0) then
+      last_file_win = vim.api.nvim_get_current_win()
+    end
+  end,
+})
+
+local function explorer_target_window()
+  local tab_wins = vim.api.nvim_tabpage_list_wins(0)
+  if last_file_win and vim.tbl_contains(tab_wins, last_file_win) and is_file_window(last_file_win) then
+    return last_file_win
+  end
+  for _, win in ipairs(tab_wins) do
+    if is_file_window(win) then
+      return win
+    end
+  end
+  -- Only the tree and panels are open: give the file a new window on the right.
+  vim.cmd "botright vnew"
+  return vim.api.nvim_get_current_win()
+end
+
 local function wakatime_statusline()
   local ok, wakatime = pcall(require, "wakatime")
   if not ok then
@@ -271,7 +305,10 @@ return {
       },
       filters = { dotfiles = false },
       git = { enable = true },
-      actions = { change_dir = { global = true } },
+      actions = {
+        change_dir = { global = true },
+        open_file = { window_picker = { picker = explorer_target_window } },
+      },
       -- Name files in notices, not their full path, so a notice fits one line.
       notify = { absolute_path = false },
       on_attach = function(bufnr)
