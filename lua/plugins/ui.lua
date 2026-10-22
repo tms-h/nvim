@@ -188,8 +188,8 @@ return {
     priority = 1000,
     config = function()
       vim.g.everforest_background = "hard"
-      -- One background for every pane: a darker unfocused pane doubled every
-      -- divider next to it.
+      -- Unfocused panes are dimmed by configs/focus_dim.lua instead: a darker
+      -- background was too faint to see and doubled every divider.
       vim.g.everforest_dim_inactive_windows = 0
       vim.g.everforest_colors_override = {
         bg_dim = { backgrounds.dim, "233" },
@@ -251,6 +251,7 @@ return {
         vim.api.nvim_set_hl(0, group, { link = "Normal" })
       end
       vim.api.nvim_set_hl(0, "NvimTreeEndOfBuffer", { link = "EndOfBuffer" })
+      require("configs.focus_dim").setup()
     end,
   },
 
