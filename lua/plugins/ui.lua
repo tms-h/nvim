@@ -146,7 +146,8 @@ return {
 
       -- Keep the existing panel colors, including underneath their divider
       -- cells and chrome, so only the one-pixel separator changes surface.
-      vim.api.nvim_set_hl(0, "ExplorerHeader", { fg = "#b5db7a", bg = backgrounds.dim })
+      vim.api.nvim_set_hl(0, "ExplorerHeader", { fg = "#b5db7a", bg = backgrounds.dim, bold = true })
+      vim.api.nvim_set_hl(0, "NvimTreeRootFolder", { fg = "#859289", bg = backgrounds.dim, italic = true })
       vim.api.nvim_set_hl(0, "ExplorerSortTitle", { fg = "#859289", bg = backgrounds.dim })
       vim.api.nvim_set_hl(0, "ExplorerSortButton", { fg = "#e6dcc3", bg = backgrounds.dim })
       vim.api.nvim_set_hl(0, "ExplorerSortActive", { fg = "#b5db7a", bg = backgrounds.dim, bold = true })
@@ -186,7 +187,16 @@ return {
         separator_style = "thin",
         name_formatter = bufferline_fit.name_formatter,
         offsets = {
-          { filetype = "NvimTree", text = "Explorer", highlight = "ExplorerHeader", padding = 1 },
+          -- The open folder's name heads the explorer, so you always know
+          -- which project you are in; the tree's root line shows where it lives.
+          {
+            filetype = "NvimTree",
+            text = function()
+              return "\u{f07c}  " .. vim.fn.fnamemodify(vim.fn.getcwd(), ":t")
+            end,
+            highlight = "ExplorerHeader",
+            padding = 1,
+          },
         },
       },
     },
@@ -245,7 +255,20 @@ return {
       respect_buf_cwd = true,
       sort = { sorter = explorer_sort.nvim_tree_sorter },
       view = { width = 30, side = "left", preserve_window_proportions = true },
-      renderer = { group_empty = true, highlight_git = true },
+      renderer = {
+        group_empty = true,
+        highlight_git = true,
+        -- The folder's name is in the header above; the root line says where
+        -- it lives ("in ~/Work/project"), shortened so it never runs off.
+        root_folder_label = function(path)
+          local parent = vim.fn.fnamemodify(path, ":~:h")
+          local width = 30 - 4
+          if vim.fn.strdisplaywidth(parent) > width then
+            parent = vim.fn.pathshorten(parent)
+          end
+          return "in " .. parent
+        end,
+      },
       filters = { dotfiles = false },
       git = { enable = true },
       actions = { change_dir = { global = true } },
