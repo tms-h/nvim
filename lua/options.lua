@@ -56,6 +56,9 @@ vim.cmd "filetype plugin indent on"
 opt.autoindent = true
 
 if vim.g.neovide then
+  -- Let Neovim report pointer movement so the divider under it can light.
+  opt.mousemoveevent = true
+
   vim.o.guifont = "JetBrainsMono Nerd Font Mono:h14"
 
   -- 120Hz for ProMotion, drop to 5fps when idle (saves battery)

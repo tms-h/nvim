@@ -237,6 +237,8 @@ return {
       -- panes of different shades left a strip of one beside the other.
       vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#2f3639" })
       vim.api.nvim_set_hl(0, "NvimTreeWinSeparator", { link = "WinSeparator" })
+      -- The divider under the pointer (lua/autocmds.lua, configs/focus_dim.lua).
+      vim.api.nvim_set_hl(0, "WinSeparatorHover", { fg = "#b5db7a" })
 
       vim.api.nvim_set_hl(0, "ExplorerHeader", { fg = "#b5db7a", bold = true })
       vim.api.nvim_set_hl(0, "NvimTreeRootFolder", { fg = "#859289", italic = true })

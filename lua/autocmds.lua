@@ -270,6 +270,10 @@ vim.api.nvim_create_autocmd("BufEnter", {
   end,
 })
 
+-- A layout change with a terminal on screen gets one full redraw, once the
+-- layout settles. Redrawing on every event redrew the whole screen at every
+-- step of a divider drag.
+local settle_redraw = vim.uv.new_timer()
 vim.api.nvim_create_autocmd(
   { "VimEnter", "TabEnter", "WinNew", "WinClosed", "WinResized", "VimResized", "TermClose" },
   {
@@ -277,15 +281,127 @@ vim.api.nvim_create_autocmd(
     callback = function()
       for _, win in ipairs(vim.api.nvim_list_wins()) do
         if vim.bo[vim.api.nvim_win_get_buf(win)].buftype == "terminal" then
-          vim.schedule(function()
-            pcall(vim.cmd, "redraw!")
-          end)
+          settle_redraw:start(
+            80,
+            0,
+            vim.schedule_wrap(function()
+              pcall(vim.cmd, "redraw!")
+            end)
+          )
           return
         end
       end
     end,
   }
 )
+
+-- Neovide cannot change the pointer shape, but Neovim says when the pointer is
+-- over a split divider. Light that divider on the real line, no copy drawn on
+-- top: every window whose separator lies on the divider a drag would move
+-- gets the hover colour (configs/focus_dim.lua swaps its namespace). Neovim
+-- colours a window's side and bottom separator with one group, so a lit
+-- window's other edge lights with it.
+if vim.g.neovide then
+  local api = vim.api
+  local focus_dim = require "configs.focus_dim"
+  local lit_key
+
+  local function leaves(node, out)
+    if node[1] == "leaf" then
+      out[#out + 1] = node[2]
+    else
+      for _, child in ipairs(node[2]) do
+        leaves(child, out)
+      end
+    end
+    return out
+  end
+
+  local function far_edge(win, vertical)
+    local pos = api.nvim_win_get_position(win)
+    return vertical and pos[2] + api.nvim_win_get_width(win) or pos[1] + api.nvim_win_get_height(win)
+  end
+
+  -- The windows drawing the divider a drag on `winid`'s separator moves: the
+  -- innermost split of that direction where the window's side of the split
+  -- ends on that line, and in it every window whose edge sits on the line.
+  local function windows_on_divider(winid, vertical)
+    local edge = far_edge(winid, vertical)
+    local function side_ends_on_edge(child)
+      for _, win in ipairs(leaves(child, {})) do
+        if far_edge(win, vertical) > edge then
+          return false
+        end
+      end
+      return true
+    end
+    local found
+    local function walk(node)
+      if node[1] == "leaf" then
+        return node[2] == winid
+      end
+      for index, child in ipairs(node[2]) do
+        if walk(child) then
+          if
+            not found
+            and node[1] == (vertical and "row" or "col")
+            and index < #node[2]
+            and side_ends_on_edge(child)
+          then
+            found = {}
+            for _, win in ipairs(leaves(node, {})) do
+              if far_edge(win, vertical) == edge then
+                found[win] = true
+              end
+            end
+          end
+          return true
+        end
+      end
+      return false
+    end
+    walk(vim.fn.winlayout())
+    return found
+  end
+
+  local function update_divider_hover()
+    local mouse = vim.fn.getmousepos()
+    local winid = mouse.winid
+    local on_divider = winid ~= 0
+      and mouse.line == 0
+      and mouse.column == 0
+      and api.nvim_win_is_valid(winid)
+      and api.nvim_win_get_config(winid).relative == ""
+    if not on_divider then
+      if lit_key then
+        lit_key = nil
+        focus_dim.set_hovered {}
+      end
+      return
+    end
+    local vertical = mouse.screencol - 1 == far_edge(winid, true)
+    local key = winid .. (vertical and "v" or "h")
+    if key == lit_key then
+      return
+    end
+    lit_key = key
+    focus_dim.set_hovered(windows_on_divider(winid, vertical) or {})
+  end
+
+  vim.keymap.set({ "n", "i", "v", "s", "o", "c", "t" }, "<MouseMove>", update_divider_hover, {
+    silent = true,
+    desc = "Light the divider under the pointer",
+  })
+  -- A drag or a layout change moves the line: light it where it now is.
+  api.nvim_create_autocmd({ "WinResized", "WinClosed", "WinNew", "TabEnter", "VimResized" }, {
+    callback = function()
+      if lit_key then
+        lit_key = nil
+        vim.schedule(update_divider_hover)
+      end
+    end,
+  })
+end
 
 -- Pull config changes made on other machines without delaying startup.
 vim.api.nvim_create_autocmd("VimEnter", {

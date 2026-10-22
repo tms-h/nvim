@@ -6,6 +6,13 @@ local M = {}
 
 local api = vim.api
 local ns = api.nvim_create_namespace "focus_dim"
+-- A hovered divider is drawn by the separators of the windows along it, so
+-- those windows swap to a namespace that colours their separator: the dimmed
+-- copy plus the hover colour, or (focused) only the hover colour on top of the
+-- global groups. 'winhighlight' cannot do it: a window namespace overrides it.
+local ns_hover = api.nvim_create_namespace "focus_dim_hover"
+local ns_bright_hover = api.nvim_create_namespace "focus_bright_hover"
+local SEPARATORS = { "WinSeparator", "NvimTreeWinSeparator" }
 -- Share of the way each colour moves toward the background.
 local STRENGTH = 0.45
 -- Lines belong to two panes at once, so they never dim.
@@ -39,18 +46,30 @@ function M.build()
       end
       hl.link, hl.default = nil, nil
       pcall(api.nvim_set_hl, ns, name, hl)
+      pcall(api.nvim_set_hl, ns_hover, name, hl)
     end
   end
   for name in pairs(KEEP) do
     api.nvim_set_hl(ns, name, api.nvim_get_hl(0, { name = name, link = false }))
   end
   -- The cursor line marks the pane you are typing in, not every pane.
-  api.nvim_set_hl(ns, "CursorLine", {})
-  api.nvim_set_hl(ns, "CursorLineNr", api.nvim_get_hl(ns, { name = "LineNr" }))
+  for _, space in ipairs { ns, ns_hover } do
+    api.nvim_set_hl(space, "CursorLine", {})
+    api.nvim_set_hl(space, "CursorLineNr", api.nvim_get_hl(ns, { name = "LineNr" }))
+  end
+  local hover = api.nvim_get_hl(0, { name = "WinSeparatorHover", link = false })
+  for _, name in ipairs(SEPARATORS) do
+    api.nvim_set_hl(ns_hover, name, hover)
+    api.nvim_set_hl(ns_bright_hover, name, hover)
+  end
   built_count = count
 end
 
 local active_pane
+local hovered = {}
+-- The namespace each pane was last given, so a pass that changes nothing
+-- costs no redraw.
+local given = {}
 
 ---Dim every pane except the focused one. A float (picker, hover) keeps the
 ---pane it came from at full strength.
@@ -61,9 +80,24 @@ function M.apply()
   end
   for _, win in ipairs(api.nvim_tabpage_list_wins(0)) do
     if api.nvim_win_get_config(win).relative == "" then
-      api.nvim_win_set_hl_ns(win, win == active_pane and 0 or ns)
+      local want
+      if win == active_pane then
+        want = hovered[win] and ns_bright_hover or 0
+      else
+        want = hovered[win] and ns_hover or ns
+      end
+      if given[win] ~= want then
+        api.nvim_win_set_hl_ns(win, want)
+        given[win] = want
+      end
     end
   end
+end
+
+---Light the separators of these windows (a set), and only these.
+function M.set_hovered(wins)
+  hovered = wins
+  M.apply()
 end
 
 function M.setup()
@@ -87,6 +121,13 @@ function M.setup()
   api.nvim_create_autocmd({ "WinEnter", "BufWinEnter", "WinNew", "TabEnter", "VimEnter" }, {
     group = group,
     callback = M.apply,
+  })
+  api.nvim_create_autocmd("WinClosed", {
+    group = group,
+    callback = function(args)
+      local win = tonumber(args.match)
+      given[win], hovered[win] = nil, nil
+    end,
   })
 end
 
