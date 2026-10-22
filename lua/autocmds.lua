@@ -42,17 +42,10 @@ vim.api.nvim_create_autocmd("VimEnter", {
     -- nothing else claims the folder and it would show as a blank buffer.
     if vim.fn.argc() == 1 and vim.fn.isdirectory(vim.fn.argv(0)) == 1 then
       local folder_buf = vim.api.nvim_get_current_buf()
-      vim.cmd("cd " .. vim.fn.fnameescape(vim.fn.argv(0)))
-      vim.cmd "silent! %argdelete"
-      require("persistence").load()
+      session.open_folder(vim.fn.argv(0), { startup = true })
       if vim.api.nvim_buf_is_valid(folder_buf) and vim.fn.isdirectory(vim.api.nvim_buf_get_name(folder_buf)) == 1 then
         pcall(vim.api.nvim_buf_delete, folder_buf, { force = true })
       end
-      -- After SessionLoadPost's scheduled cleanup, which closes explorer windows.
-      vim.schedule(function()
-        vim.cmd "NvimTreeFocus"
-        vim.cmd "wincmd p"
-      end)
       return
     end
     if vim.fn.argc() ~= 0 then

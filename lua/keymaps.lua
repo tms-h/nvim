@@ -105,6 +105,20 @@ for i = 1, 9 do
   end, { desc = i == 9 and "Last tab" or "Tab " .. i })
 end
 
+-- ── Open Folder (VS Code's Cmd+O on macOS; Alt+O here) ──
+-- VS Code's Linux chord Ctrl+K Ctrl+O would become Alt+K Alt+O, and Alt+K
+-- already moves the line up, so use the macOS key on every OS.
+map({ "n", "i", "x", "t" }, super "o", function()
+  require("configs.session").pick_folder()
+end, { desc = "Open folder" })
+vim.api.nvim_create_user_command("OpenFolder", function(args)
+  if args.args ~= "" then
+    require("configs.session").open_folder(args.args)
+  else
+    require("configs.session").pick_folder()
+  end
+end, { nargs = "?", complete = "dir", desc = "Open a folder with its session and explorer" })
+
 -- ── Sidebar (Cmd+B on macOS, Ctrl+B on Windows) ──
 map("n", super "b", "<cmd>NvimTreeToggle<cr>", { desc = "Toggle sidebar" })
 

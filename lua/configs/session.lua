@@ -133,4 +133,90 @@ function M.cleanup_restored_config_buffers()
   end
 end
 
+-- Open a project folder the way `nvim some/folder` does (VS Code's Open
+-- Folder): save this folder's session, close its buffers, cd in, restore the
+-- new folder's session and show the explorer.
+---@param opts? { startup: boolean } startup: Neovim is just opening, nothing to save
+function M.open_folder(path, opts)
+  path = vim.fn.fnamemodify(vim.fn.expand(path), ":p"):gsub("[/\\]+$", "")
+  if vim.fn.isdirectory(path) ~= 1 then
+    vim.notify("Not a folder: " .. path, vim.log.levels.WARN)
+    return
+  end
+  if not (opts and opts.startup) then
+    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.bo[bufnr].buflisted and vim.bo[bufnr].modified and vim.bo[bufnr].buftype == "" then
+        local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":t")
+        vim.notify("Save or close " .. (name ~= "" and name or "[No Name]") .. " first", vim.log.levels.WARN)
+        return
+      end
+    end
+    local persistence = require "persistence"
+    if persistence.active() then
+      persistence.save()
+    end
+    vim.cmd "silent! %bwipeout!"
+  end
+  vim.cmd("cd " .. vim.fn.fnameescape(path))
+  vim.cmd "silent! %argdelete"
+  require("persistence").load()
+  -- After SessionLoadPost's scheduled cleanup, which closes explorer windows.
+  vim.schedule(function()
+    vim.cmd "NvimTreeFocus"
+    vim.cmd "wincmd p"
+  end)
+end
+
+-- Fuzzy-pick a folder to open: recent projects first, then folders under ~.
+function M.pick_folder()
+  local seen, folders = {}, {}
+  local function add(dir)
+    dir = dir and vim.fn.fnamemodify(dir, ":p"):gsub("[/\\]+$", "")
+    if dir and dir ~= "" and not seen[dir] and vim.fn.isdirectory(dir) == 1 then
+      seen[dir] = true
+      folders[#folders + 1] = dir
+    end
+  end
+  for _, file in ipairs(require("persistence").list()) do
+    add(session_directory(file))
+  end
+  if vim.fn.executable "fd" == 1 then
+    local home = vim.fn.expand "~"
+    local fd = { "fd", "--type", "d", "--max-depth", "4", "--absolute-path" }
+    for _, skip in ipairs { "node_modules", "_build", "_opam", "target", ".git" } do
+      vim.list_extend(fd, { "--exclude", skip })
+    end
+    vim.list_extend(fd, { ".", home })
+    for _, dir in ipairs(vim.split(vim.system(fd, { text = true }):wait().stdout or "", "\n", { trimempty = true })) do
+      add(dir)
+    end
+  end
+
+  local home = vim.fn.expand "~"
+  require("telescope.pickers")
+    .new({}, {
+      prompt_title = "Open Folder",
+      finder = require("telescope.finders").new_table {
+        results = folders,
+        entry_maker = function(dir)
+          local shown = vim.startswith(dir, home) and "~" .. dir:sub(#home + 1) or dir
+          return { value = dir, display = shown, ordinal = shown }
+        end,
+      },
+      sorter = require("telescope.config").values.generic_sorter {},
+      attach_mappings = function(prompt_bufnr)
+        local actions = require "telescope.actions"
+        actions.select_default:replace(function()
+          local entry = require("telescope.actions.state").get_selected_entry()
+          actions.close(prompt_bufnr)
+          if entry then
+            M.open_folder(entry.value)
+          end
+        end)
+        return true
+      end,
+    })
+    :find()
+end
+
 return M
