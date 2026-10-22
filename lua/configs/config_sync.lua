@@ -33,16 +33,17 @@ function M.pull()
       return
     end
 
-    git({ "pull", "--ff-only", "--quiet" }, function(pull)
-      if pull.code ~= 0 then
-        notify("Pull failed: " .. first_line(pull), vim.log.levels.WARN)
-        return
-      end
-      git({ "rev-parse", "HEAD@{1}", "HEAD" }, function(revs)
-        local before, after = unpack(vim.split(vim.trim(revs.stdout), "\n"))
-        if revs.code == 0 and before ~= after then
-          notify "Config updated from GitHub. Restart Neovim to apply."
+    git({ "rev-parse", "HEAD" }, function(before)
+      git({ "pull", "--ff-only", "--quiet" }, function(pull)
+        if pull.code ~= 0 then
+          notify("Pull failed: " .. first_line(pull), vim.log.levels.WARN)
+          return
         end
+        git({ "rev-parse", "HEAD" }, function(after)
+          if before.code == 0 and after.code == 0 and before.stdout ~= after.stdout then
+            notify "Config updated from GitHub. Restart Neovim to apply."
+          end
+        end)
       end)
     end)
   end)
