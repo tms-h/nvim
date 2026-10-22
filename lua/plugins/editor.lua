@@ -192,6 +192,9 @@ return {
       pipe_table = { preset = "round", cell = "trimmed" },
       latex = { enabled = false },
       checkbox = { checked = { scope_highlight = "@markup.strikethrough" } },
+      -- Rendering hides markup, never words you wrote: an HTML comment
+      -- (a note to self, a TODO) stays on screen in the comment colour.
+      html = { comment = { conceal = false } },
     },
     config = function(_, opts)
       require("render-markdown").setup(opts)
