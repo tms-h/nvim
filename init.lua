@@ -105,3 +105,5 @@ require("lazy").setup("plugins", {
 require "options"
 require "keymaps"
 require "autocmds"
+-- Installed and generated code is read-only reference (lua/util/library.lua).
+require("util.library").setup()

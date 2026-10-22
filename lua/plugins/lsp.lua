@@ -235,6 +235,9 @@ return {
           },
         },
         format_on_save = function(bufnr)
+          if require("util.library").is_library(bufnr) then
+            return nil
+          end
           local ft = vim.bo[bufnr].filetype
           if ft == "ocaml" then
             return ocamlformat and { timeout_ms = 5000, lsp_format = "never" } or nil
@@ -294,7 +297,11 @@ return {
 
       local lint_group = vim.api.nvim_create_augroup("lint", { clear = true })
       local function try_lint(args)
-        if not vim.api.nvim_buf_is_valid(args.buf) or vim.bo[args.buf].buftype ~= "" then
+        if
+          not vim.api.nvim_buf_is_valid(args.buf)
+          or vim.bo[args.buf].buftype ~= ""
+          or require("util.library").is_library(args.buf)
+        then
           return
         end
         vim.api.nvim_buf_call(args.buf, function()
