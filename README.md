@@ -111,7 +111,7 @@ fullscreen. Split borders use Neovide's native box renderer so junctions stay al
 | `s` / `S` | Flash jump |
 | `Shift+H` / `Shift+L` | Previous / next buffer |
 | `Ctrl+H/J/K/L` | Move between windows |
-| `Ctrl+Arrow` | Resize the current split |
+| `Ctrl+Arrow` | Move the split divider in the arrow's direction (any mode) |
 | `Alt+J` / `Alt+K` | Move line down / up (normal, insert, visual) |
 | `<` / `>` (visual) | Indent, keep selection |
 

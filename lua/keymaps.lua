@@ -166,11 +166,25 @@ end
 map("t", "<Esc><Esc>", "<C-\\><C-n>", { desc = "Terminal: normal mode" })
 
 -- ── Window resize (Ctrl+Arrow) ──
--- Works in every mode without leaving it, so a focused terminal resizes too.
-map({ "n", "i", "x", "s", "t" }, "<C-Up>", "<Cmd>resize +2<cr>", { desc = "Increase height" })
-map({ "n", "i", "x", "s", "t" }, "<C-Down>", "<Cmd>resize -2<cr>", { desc = "Decrease height" })
-map({ "n", "i", "x", "s", "t" }, "<C-Left>", "<Cmd>vertical resize -2<cr>", { desc = "Decrease width" })
-map({ "n", "i", "x", "s", "t" }, "<C-Right>", "<Cmd>vertical resize +2<cr>", { desc = "Increase width" })
+-- The arrow moves a divider that way, like a tiling window manager: the
+-- window's right (or lower) divider when it has one, else its left (or
+-- upper) one. So Ctrl+Left widens a right-hand terminal and narrows a
+-- left-hand editor. Works in every mode without leaving it.
+local function move_divider(arrow)
+  return function()
+    if vim.api.nvim_win_get_config(0).relative ~= "" then
+      return
+    end
+    local sideways = arrow == "Left" or arrow == "Right"
+    local has_far_neighbour = vim.fn.winnr(sideways and "l" or "j") ~= vim.fn.winnr()
+    local toward_far_side = arrow == "Right" or arrow == "Down"
+    local sign = has_far_neighbour == toward_far_side and "+" or "-"
+    vim.cmd((sideways and "vertical " or "") .. "resize " .. sign .. 2 * vim.v.count1)
+  end
+end
+for _, arrow in ipairs { "Up", "Down", "Left", "Right" } do
+  map({ "n", "i", "x", "s", "t" }, "<C-" .. arrow .. ">", move_divider(arrow), { desc = "Move divider " .. arrow:lower() })
+end
 
 -- ── Terminal splits ──
 map("n", "<leader>th", "<cmd>belowright split | resize 15 | term<cr>", { desc = "Terminal (bottom)" })
