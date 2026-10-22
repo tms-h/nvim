@@ -174,12 +174,26 @@ return {
       vim.g.everforest_better_performance = 1
       vim.g.everforest_enable_italic = 1
       vim.cmd.colorscheme "everforest"
-      vim.api.nvim_set_hl(0, "NormalFloat", { bg = backgrounds.raised })
-      vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#2a312e", bg = backgrounds.editor })
-      vim.api.nvim_set_hl(0, "WinSeparatorHover", { fg = "#56625c", bg = backgrounds.editor })
+      -- One surface for every float (hover, diagnostics, pickers, notices,
+      -- which-key): the window's own card colour and alpha, a soft rounded
+      -- border on that same surface. A second shade inside or around the
+      -- border read as a box drawn in a box.
+      vim.api.nvim_set_hl(0, "NormalFloat", { link = "Normal" })
+      vim.api.nvim_set_hl(0, "FloatBorder", { fg = "#4f5b58" })
+      vim.api.nvim_set_hl(0, "FloatTitle", { fg = "#b5db7a", bold = true })
+      vim.api.nvim_set_hl(0, "TelescopeBorder", { link = "FloatBorder" })
 
-      -- Keep the existing panel colors, including underneath their divider
-      -- cells and chrome, so only the one-pixel separator changes surface.
+      -- Panes are cards on a dark ground, like windows in Hyprland's gaps. A
+      -- split divider is one even gutter of that ground with no glyph: a line
+      -- drawn mid-cell left a strip of one pane's colour beside the other
+      -- pane, which read as a doubled, offset border. Hover lights the gutter.
+      local gutter = { fg = backgrounds.tab_fill, bg = backgrounds.tab_fill }
+      local gutter_hover = { fg = "#3c4541", bg = "#3c4541" }
+      for _, group in ipairs { "WinSeparator", "NvimTreeWinSeparator", "TermWinSeparator", "TerminalBoundary" } do
+        vim.api.nvim_set_hl(0, group, gutter)
+        vim.api.nvim_set_hl(0, group .. "Hover", gutter_hover)
+      end
+
       vim.api.nvim_set_hl(0, "ExplorerHeader", { fg = "#b5db7a", bg = backgrounds.dim, bold = true })
       vim.api.nvim_set_hl(0, "NvimTreeRootFolder", { fg = "#859289", bg = backgrounds.dim, italic = true })
       vim.api.nvim_set_hl(0, "ExplorerSortTitle", { fg = "#859289", bg = backgrounds.dim })
@@ -191,17 +205,8 @@ return {
       vim.api.nvim_set_hl(0, "NvimTreeNormalNC", { bg = backgrounds.dim })
       vim.api.nvim_set_hl(0, "NvimTreeEndOfBuffer", { fg = backgrounds.dim, bg = backgrounds.dim })
       vim.api.nvim_set_hl(0, "NvimTreeSignColumn", { bg = backgrounds.dim })
-      vim.api.nvim_set_hl(0, "NvimTreeWinSeparator", { fg = "#2a312e", bg = backgrounds.dim })
-      vim.api.nvim_set_hl(0, "NvimTreeWinSeparatorHover", { fg = "#56625c", bg = backgrounds.dim })
       -- A darker shade of the editor background keeps terminal panes distinct.
       vim.api.nvim_set_hl(0, "TermNormal", { bg = backgrounds.terminal })
-      vim.api.nvim_set_hl(0, "TermWinSeparator", { fg = "#2a312e", bg = backgrounds.terminal })
-      vim.api.nvim_set_hl(0, "TermWinSeparatorHover", { fg = "#56625c", bg = backgrounds.terminal })
-      -- Horizontal split separators are a full character cell tall. When a
-      -- terminal is directly below an editor, make that cell belong visually
-      -- to the terminal so the divider stays a single line instead of a bar.
-      vim.api.nvim_set_hl(0, "TerminalBoundary", { fg = "#2a312e", bg = backgrounds.terminal })
-      vim.api.nvim_set_hl(0, "TerminalBoundaryHover", { fg = "#56625c", bg = backgrounds.terminal })
     end,
   },
 

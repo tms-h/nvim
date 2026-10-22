@@ -379,39 +379,51 @@ vim.api.nvim_create_autocmd(
 )
 
 -- Neovide cannot change the system pointer shape contextually, but Neovim can
--- tell us when the pointer is over a draggable window separator. Highlight
--- only the separator owned by that window and preserve any existing winhl.
+-- tell us when the pointer is over a draggable window separator. A drag moves
+-- the whole divider line, so light every window's separator along that line
+-- (tree, editor splits and terminals alike), preserving any existing winhl.
 if vim.g.neovide then
-  local hovered
+  local hovered = {}
 
   clear_separator_hover = function()
-    if not hovered then
-      return
+    for _, h in ipairs(hovered) do
+      if vim.api.nvim_win_is_valid(h.winid) and vim.wo[h.winid].winhighlight == h.applied then
+        vim.wo[h.winid].winhighlight = h.original
+      end
     end
-
-    if vim.api.nvim_win_is_valid(hovered.winid) and vim.wo[hovered.winid].winhighlight == hovered.applied then
-      vim.wo[hovered.winid].winhighlight = hovered.original
-    end
-    hovered = nil
+    hovered = {}
   end
 
+  -- Every separator group shares one hover style (lua/plugins/ui.lua).
   local function add_separator_hover(winhl)
     local entries = {}
-    local hover_group = "WinSeparatorHover"
     for entry in winhl:gmatch "[^,]+" do
-      if entry == "WinSeparator:NvimTreeWinSeparator" then
-        hover_group = "NvimTreeWinSeparatorHover"
-      elseif entry == "WinSeparator:TermWinSeparator" then
-        hover_group = "TermWinSeparatorHover"
-      elseif entry == "WinSeparator:TerminalBoundary" then
-        hover_group = "TerminalBoundaryHover"
-      end
       if not vim.startswith(entry, "WinSeparator:") then
         entries[#entries + 1] = entry
       end
     end
-    entries[#entries + 1] = "WinSeparator:" .. hover_group
+    entries[#entries + 1] = "WinSeparator:WinSeparatorHover"
     return table.concat(entries, ",")
+  end
+
+  -- Windows whose separator lies on the divider under the pointer: the same
+  -- column for a vertical divider, the same row for a horizontal one.
+  local function windows_on_divider(winid, mouse)
+    local pos = vim.api.nvim_win_get_position(winid)
+    local vertical = mouse.screencol - 1 == pos[2] + vim.api.nvim_win_get_width(winid)
+    local wins = {}
+    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+      if vim.api.nvim_win_get_config(win).relative == "" then
+        local p = vim.api.nvim_win_get_position(win)
+        local on_line = vertical
+            and p[2] + vim.api.nvim_win_get_width(win) == pos[2] + vim.api.nvim_win_get_width(winid)
+          or not vertical and p[1] + vim.api.nvim_win_get_height(win) == pos[1] + vim.api.nvim_win_get_height(winid)
+        if on_line then
+          wins[#wins + 1] = win
+        end
+      end
+    end
+    return wins, vertical
   end
 
   local function update_separator_hover()
@@ -428,15 +440,20 @@ if vim.g.neovide then
       return
     end
 
-    if hovered and hovered.winid == winid then
+    local wins, vertical = windows_on_divider(winid, mouse)
+    local key = (vertical and "v" or "h") .. table.concat(wins, ",")
+    if hovered.key == key then
       return
     end
     clear_separator_hover()
 
-    local original = vim.wo[winid].winhighlight
-    local applied = add_separator_hover(original)
-    vim.wo[winid].winhighlight = applied
-    hovered = { winid = winid, original = original, applied = applied }
+    for _, win in ipairs(wins) do
+      local original = vim.wo[win].winhighlight
+      local applied = add_separator_hover(original)
+      vim.wo[win].winhighlight = applied
+      hovered[#hovered + 1] = { winid = win, original = original, applied = applied }
+    end
+    hovered.key = key
   end
 
   vim.keymap.set({ "n", "i", "v", "s", "o", "c", "t" }, "<MouseMove>", update_separator_hover, {
