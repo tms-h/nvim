@@ -1,13 +1,13 @@
 # nvim
 
-My Neovim config. Lazy-loaded with [lazy.nvim](https://github.com/folke/lazy.nvim), everforest colorscheme, built around LeetCode/competitive programming in C++ and Python.
+My Neovim config. Lazy-loaded with [lazy.nvim](https://github.com/folke/lazy.nvim), everforest colorscheme, built around OCaml and Python.
 
 ## Plugins
 
 | Category | Plugins |
 |----------|---------|
 | **Theme** | everforest |
-| **UI** | bufferline, lualine, nvim-tree, noice, nvim-notify, dressing, which-key, alpha (dashboard) |
+| **UI** | bufferline, lualine, nvim-tree, noice, nvim-notify, which-key, alpha (dashboard) |
 | **Editor** | treesitter, flash, nvim-autopairs, mini (ai, surround, bufremove, bracketed), Oil, vim-easy-align, todo-comments, trouble |
 | **Fuzzy finder** | telescope + fzf-native |
 | **LSP** | mason, mason-tool-installer, nvim-lspconfig, blink.cmp, LuaSnip, friendly-snippets, fidget |
@@ -15,19 +15,9 @@ My Neovim config. Lazy-loaded with [lazy.nvim](https://github.com/folke/lazy.nvi
 | **Linting** | nvim-lint (selene, ruff, cppcheck, shellcheck, eslint_d) |
 | **Git** | gitsigns |
 | **Search/replace** | grug-far.nvim |
-| **Competitive** | competitest.nvim (+ blink.cmp) |
-| **LeetCode** | leetcode.nvim + custom timer & stats modules |
 | **Sessions** | persistence.nvim |
 | **Activity** | WakaTime |
 | **OCaml** | ocamllsp, ocamlformat (Jane Street profile), ocp-indent, Dune |
-
-## LeetCode Features
-
-**Timer** (`<leader>ls` for stats) — tracks solve time per problem with live display, logs everything to CSV.
-
-**Stats** (`:LeetStats`) — floating chart with solve time trends, difficulty breakdown, and moving average.
-
-Both hook into [kawre/leetcode.nvim](https://github.com/kawre/leetcode.nvim) automatically.
 
 ## Cross-platform setup
 
@@ -35,8 +25,8 @@ The same `main` branch runs on macOS and Windows. Platform differences are selec
 runtime, so shared behavior cannot drift between long-lived branches.
 
 `lua/util/modifier.lua` maps VS Code-style shortcuts to **Cmd** on macOS and **Alt** on
-Linux and Windows (Ctrl would shadow core Vim keys such as `Ctrl+W`, `Ctrl+B` and `Ctrl+T`). `lua/configs/runner.lua` handles executable and path differences for C, C++,
-and Python. Neovide-specific settings remain shared, with Mac-only options guarded by
+Linux and Windows (Ctrl would shadow core Vim keys such as `Ctrl+W`, `Ctrl+B` and `Ctrl+T`). `lua/configs/runner.lua` handles executable and path differences for
+running Python. Neovide-specific settings remain shared, with Mac-only options guarded by
 an OS check. Leader is `Space`.
 
 ## Keybindings
@@ -158,7 +148,6 @@ a **More…** menu for modification-time and file-size sorting.
 | `<leader>d` | Line diagnostics (float) |
 | `<leader>xx` / `<leader>xb` | Diagnostics list / buffer diagnostics (Trouble) |
 | `<leader>ll` | Run linter |
-| `<leader>ls` | LeetCode stats |
 
 ### Project search and replace
 
@@ -188,21 +177,14 @@ this checkout has no local edits. Restart Neovim to apply a pulled update.
 | `o` (in todo) | New checklist item |
 | `q` (in todo) | Close todo |
 
-### Competitive programming
+### Running Python
 
-C/C++ and Python buffers get extra buffer-local mappings.
+Python buffers get buffer-local run mappings.
 
-| Key | Action | Filetypes |
-|-----|--------|-----------|
-| `F5` | Compile & run current file in a new terminal window | `c`, `cpp`, `python` |
-| `Cmd+R` | Compile & run (Neovide on macOS only) | `c`, `cpp`, `python` |
-| `<leader>jr` | CompetiTest: run testcases | `c`, `cpp` |
-| `<leader>ja` | CompetiTest: add testcase | `c`, `cpp` |
-| `<leader>je` | CompetiTest: edit testcase | `c`, `cpp` |
-
-Also driven by commands: `:CompetiTest receive problem`, `:CompetiTest receive contest`,
-`:CompetiTest run`. C++ compiles with `g++ -std=c++20` (`-Wall -Wextra
--fsanitize=address,undefined` under CompetiTest); template at `~/cp/templates/template.cpp`.
+| Key | Action |
+|-----|--------|
+| `F5` | Run the current file in a new terminal window |
+| `Cmd+R` | Run (Neovide on macOS only) |
 
 ### OCaml / Jane Street workflow
 

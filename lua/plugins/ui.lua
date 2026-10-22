@@ -303,8 +303,7 @@ return {
         { "<leader>m", group = "Multicursor" },
         { "<leader>x", group = "Diagnostics" },
         { "<leader>S", group = "Session" },
-        { "<leader>l", group = "Lint/LeetCode" },
-        { "<leader>j", group = "Judge (CompetiTest)" },
+        { "<leader>l", group = "Lint" },
         { "<leader>s", group = "Search" },
         { "<leader>g", group = "Git" },
       },
@@ -351,21 +350,5 @@ return {
         },
       },
     },
-  },
-
-  {
-    "stevearc/dressing.nvim",
-    lazy = true,
-    init = function()
-      vim.ui.select = function(...)
-        require("lazy").load { plugins = { "dressing.nvim" } }
-        return vim.ui.select(...)
-      end
-      vim.ui.input = function(...)
-        require("lazy").load { plugins = { "dressing.nvim" } }
-        return vim.ui.input(...)
-      end
-    end,
-    opts = {},
   },
 }

@@ -196,13 +196,10 @@ map("v", "<A-k>", ":m '<-2<cr>gv=gv")
 map("n", "<leader>xx", "<cmd>Trouble diagnostics toggle<cr>", { desc = "Diagnostics" })
 map("n", "<leader>xb", "<cmd>Trouble diagnostics toggle filter.buf=0<cr>", { desc = "Buffer diagnostics" })
 
--- ── Lint & LeetCode ──
+-- ── Lint ──
 map("n", "<leader>ll", function()
   require("lint").try_lint()
 end, { desc = "Run linter" })
-map("n", "<leader>ls", function()
-  require("configs.leetcode_stats").open()
-end, { desc = "LeetCode stats" })
 
 -- ── Sessions ──
 map("n", "<leader>Ss", function()

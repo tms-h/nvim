@@ -4,11 +4,11 @@ return {
     event = "VimEnter",
     dependencies = { "nvim-tree/nvim-web-devicons" },
     config = function()
-      local alpha = require("alpha")
-      local dashboard = require("alpha.themes.dashboard")
+      local alpha = require "alpha"
+      local dashboard = require "alpha.themes.dashboard"
 
       local function get_cat()
-        local hour = tonumber(os.date("%H"))
+        local hour = tonumber(os.date "%H")
 
         if hour >= 22 or hour < 5 then
           return {
@@ -21,8 +21,8 @@ return {
             [[         |,4-  ) )-,_. ,\ (  `'-'    ]],
             [[        '---''(_/--'  `-'\_)         ]],
             [[   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]],
-          }, "go to sleep..."
-
+          },
+            "go to sleep..."
         elseif hour >= 5 and hour < 9 then
           return {
             [[      ~ ~    ~  ~    ~ ~    ~  ~      ]],
@@ -37,8 +37,8 @@ return {
             [=[        (__(|     ((__)              ]=],
             [[   _____________________________________]],
             [[     {_}  )~~                           ]],
-          }, "morning. coffee first."
-
+          },
+            "morning. coffee first."
         elseif hour >= 9 and hour < 13 then
           return {
             [[]],
@@ -50,8 +50,8 @@ return {
             [[     {_}    .----.                      ]],
             [[           | // |                      ]],
             [[           '----'                      ]],
-          }, "ready to build"
-
+          },
+            "ready to build"
         elseif hour >= 13 and hour < 17 then
           return {
             [[   .-------------------------------------.]],
@@ -64,8 +64,8 @@ return {
             [[   |           |       |                  |]],
             [[   |            \_   _/                   |]],
             [[   |______________________________________|]],
-          }, "deep focus"
-
+          },
+            "deep focus"
         else
           return {
             [[   .    *    .        .    *    .      ]],
@@ -76,7 +76,8 @@ return {
             [[         (((^_(((/(((_/               ]],
             [[   _____________________________________]],
             [[                          {_}  )~~      ]],
-          }, "winding down"
+          },
+            "winding down"
         end
       end
 
@@ -94,14 +95,13 @@ return {
         dashboard.button("r", "  recent", "<cmd>Telescope oldfiles<cr>"),
         dashboard.button("g", "  grep", "<cmd>Telescope live_grep<cr>"),
         dashboard.button("n", "  new file", "<cmd>enew<cr>"),
-        dashboard.button("l", "  leetcode", "<cmd>Leet<cr>"),
         dashboard.button("c", "  config", "<cmd>e $MYVIMRC<cr>"),
         dashboard.button("q", "  quit", "<cmd>qa<cr>"),
       }
 
       for _, btn in ipairs(buttons) do
         local sc = btn.opts.shortcut
-        local start = btn.val:find("[%a]")
+        local start = btn.val:find "[%a]"
         if start then
           local pos = btn.val:lower():find(sc:lower(), start, true)
           if pos then

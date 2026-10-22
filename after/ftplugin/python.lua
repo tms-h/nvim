@@ -1,1 +1,1 @@
-require("configs.runner").setup_ft(0, "python")
+require("configs.runner").setup_python(0)

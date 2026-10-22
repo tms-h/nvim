@@ -168,12 +168,6 @@ return {
   },
 
   {
-    "windwp/nvim-ts-autotag",
-    ft = { "html", "javascript", "javascriptreact", "typescript", "typescriptreact", "vue", "xml", "markdown" },
-    opts = {},
-  },
-
-  {
     "MeanderingProgrammer/render-markdown.nvim",
     ft = { "markdown" },
     dependencies = { "nvim-treesitter/nvim-treesitter" },

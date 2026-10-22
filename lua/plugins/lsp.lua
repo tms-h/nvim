@@ -59,43 +59,16 @@ return {
         float = { border = "rounded", source = true },
       }
 
-      local competitive_headers = { "bits/stdcpp.h", "bits/stdc++.h" }
-      local function is_missing_competitive_include(diagnostic)
-        local message = diagnostic.message or ""
-        if not message:find("not found", 1, true) then
-          return false
-        end
-        for _, header in ipairs(competitive_headers) do
-          if message:find(header, 1, true) then
-            return true
-          end
-        end
-        return false
-      end
-
-      local function filter_competitive_include_diagnostics(diagnostics)
-        return vim.tbl_filter(function(diagnostic)
-          return not is_missing_competitive_include(diagnostic)
-        end, diagnostics or {})
-      end
-
-      local publish_diagnostics = vim.lsp.handlers["textDocument/publishDiagnostics"]
-      vim.lsp.handlers["textDocument/publishDiagnostics"] = function(err, result, ctx, config)
-        if result and result.diagnostics then
-          result = vim.deepcopy(result)
-          result.diagnostics = filter_competitive_include_diagnostics(result.diagnostics)
-        end
-        return publish_diagnostics(err, result, ctx, config)
-      end
-
-      -- Let clangd query the compiler selected by the cross-platform runner so
-      -- it can discover the matching standard-library include paths.
+      -- Let clangd query the installed C++ compiler so it can discover the
+      -- matching standard-library include paths.
       local clangd_cmd = {
         "clangd",
         "--header-insertion=never",
         "--background-index",
       }
-      local cpp_compiler = require("configs.runner").find_cpp_compiler()
+      local cpp_compiler = vim.iter({ "g++", "g++-15", "clang++" }):map(vim.fn.exepath):find(function(path)
+        return path ~= ""
+      end)
       if cpp_compiler then
         table.insert(clangd_cmd, 2, "--query-driver=" .. cpp_compiler)
       end
@@ -253,10 +226,11 @@ return {
             -- A project .clang-format wins; otherwise use this default style.
             prepend_args = function(_, ctx)
               local project_config = vim.fs.find(".clang-format", { path = ctx.dirname, upward = true })[1]
-              return project_config and {} or {
-                "--style",
-                "{BasedOnStyle: LLVM, IndentWidth: 2, TabWidth: 2, UseTab: Never, ColumnLimit: 100, BreakBeforeBinaryOperators: NonAssignment, AllowShortFunctionsOnASingleLine: None, DerivePointerAlignment: false, PointerAlignment: Left, ReferenceAlignment: Left, AlwaysBreakTemplateDeclarations: Yes, AlignConsecutiveDeclarations: true, AlignConsecutiveAssignments: true}",
-              }
+              return project_config and {}
+                or {
+                  "--style",
+                  "{BasedOnStyle: LLVM, IndentWidth: 2, TabWidth: 2, UseTab: Never, ColumnLimit: 100, BreakBeforeBinaryOperators: NonAssignment, AllowShortFunctionsOnASingleLine: None, DerivePointerAlignment: false, PointerAlignment: Left, ReferenceAlignment: Left, AlwaysBreakTemplateDeclarations: Yes, AlignConsecutiveDeclarations: true, AlignConsecutiveAssignments: true}",
+                }
             end,
           },
         },
@@ -295,19 +269,6 @@ return {
         "json",
         "-",
       }
-
-      local cppcheck = lint.linters.cppcheck
-      local cppcheck_parser = cppcheck.parser
-      cppcheck.parser = function(output, bufnr, linter_cwd)
-        local diagnostics = cppcheck_parser(output, bufnr, linter_cwd)
-        return vim.tbl_filter(function(diagnostic)
-          local message = diagnostic.message or ""
-          return not (
-            message:find("not found", 1, true)
-            and (message:find("bits/stdcpp.h", 1, true) or message:find("bits/stdc++.h", 1, true))
-          )
-        end, diagnostics or {})
-      end
 
       local by_ft = {}
       local function add(filetype, linter, executable)
