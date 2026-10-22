@@ -13,8 +13,9 @@ opt.scrolloff = 8
 opt.sidescrolloff = 8
 opt.splitbelow = true
 opt.splitright = true
--- Opening a vertical sidebar must not equalize horizontal split heights.
-opt.eadirection = "hor"
+-- Opening or closing one pane (explorer, terminal, split) never resizes the
+-- others: only the pane it splits from or gives its space back to changes.
+opt.equalalways = false
 -- Preserve the first visible line when horizontal splits are resized.
 opt.splitkeep = "topline"
 opt.wrap = true

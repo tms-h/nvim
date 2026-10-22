@@ -37,6 +37,53 @@ local function explorer_target_window()
   return vim.api.nvim_get_current_win()
 end
 
+-- Opening the explorer never resizes the other panes; only the column next
+-- to it gives up the room. nvim-tree opens by splitting the current window,
+-- moving the new half to the far left and shrinking it, which reshuffled
+-- every width on the way. Remember the sizes before it opens and put them back.
+local sizes_before_tree
+local function remember_pane_sizes()
+  sizes_before_tree = {}
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if vim.api.nvim_win_get_config(win).relative == "" then
+      sizes_before_tree[win] = { vim.api.nvim_win_get_width(win), vim.api.nvim_win_get_height(win) }
+    end
+  end
+end
+
+local function restore_pane_sizes()
+  local before = sizes_before_tree
+  sizes_before_tree = nil
+  if not before then
+    return
+  end
+  local tree = require("nvim-tree.view").get_winnr()
+  if not tree or not vim.api.nvim_win_is_valid(tree) then
+    return
+  end
+  -- The panes touching the tree absorb its width; every other pane keeps its
+  -- old size. Set the far ones right to left so each change only moves the
+  -- divider on that pane's left.
+  local tree_width = vim.api.nvim_win_get_width(tree)
+  local tree_edge = vim.api.nvim_win_get_position(tree)[2] + tree_width + 1
+  local far = {}
+  for win, size in pairs(before) do
+    if vim.api.nvim_win_is_valid(win) and win ~= tree then
+      vim.api.nvim_win_set_height(win, size[2])
+      if vim.api.nvim_win_get_position(win)[2] > tree_edge then
+        far[#far + 1] = { win = win, width = size[1] }
+      end
+    end
+  end
+  table.sort(far, function(a, b)
+    return vim.api.nvim_win_get_position(a.win)[2] > vim.api.nvim_win_get_position(b.win)[2]
+  end)
+  for _, pane in ipairs(far) do
+    vim.api.nvim_win_set_width(pane.win, pane.width)
+  end
+  vim.api.nvim_win_set_width(tree, tree_width)
+end
+
 local function wakatime_statusline()
   local ok, wakatime = pcall(require, "wakatime")
   if not ok then
@@ -388,6 +435,12 @@ return {
         )
       end,
     },
+    config = function(_, opts)
+      require("nvim-tree").setup(opts)
+      local api = require "nvim-tree.api"
+      api.events.subscribe(api.events.Event.TreePreOpen, remember_pane_sizes)
+      api.events.subscribe(api.events.Event.TreeOpen, restore_pane_sizes)
+    end,
   },
 
   {
