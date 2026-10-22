@@ -264,20 +264,12 @@ end
 -- Alt/Cmd chords that only had a normal-mode action do the same thing from
 -- insert, a selection or a terminal: leave that mode, then run the action.
 -- (Copy, paste, zoom, comment and undo have their own per-mode actions above.)
--- In a terminal on Linux/Windows the chord is Alt, and the shell's own
--- Alt+B/T/R/digit line editing keeps those keys there.
 local everywhere = { "w", "S-w", "t", "S-t", "S-]", "S-[", "b", "p", "S-p", "S-f", "r", "S-r" }
-local shell_keys = { b = true, t = true, r = true }
 for i = 1, 9 do
   everywhere[#everywhere + 1] = tostring(i)
-  shell_keys[tostring(i)] = true
 end
 for _, key in ipairs(everywhere) do
-  local modes = { "i", "x", "s" }
-  if require("util.modifier").is_macos or not shell_keys[key] then
-    modes[#modes + 1] = "t"
-  end
-  map(modes, super(key), "<C-\\><C-n>" .. super(key), { remap = true })
+  map({ "i", "x", "s", "t" }, super(key), "<C-\\><C-n>" .. super(key), { remap = true })
 end
 
 map("n", "<leader>gs", function()
