@@ -189,7 +189,7 @@ return {
       -- pane, which read as a doubled, offset border. Hover lights the gutter.
       local gutter = { fg = backgrounds.tab_fill, bg = backgrounds.tab_fill }
       local gutter_hover = { fg = "#3c4541", bg = "#3c4541" }
-      for _, group in ipairs { "WinSeparator", "NvimTreeWinSeparator", "TermWinSeparator", "TerminalBoundary" } do
+      for _, group in ipairs { "WinSeparator", "NvimTreeWinSeparator" } do
         vim.api.nvim_set_hl(0, group, gutter)
         vim.api.nvim_set_hl(0, group .. "Hover", gutter_hover)
       end
