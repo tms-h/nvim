@@ -64,12 +64,54 @@ local function session_directory(session_file)
   return normalize(directory)
 end
 
+-- Which folder every running Neovim is in, one small file per process, so a
+-- bare launch never reopens a project that another window already shows.
+-- With two windows open, "the newest session" is just whichever window was
+-- closed last: a new window cloned the project next door, and a reopened
+-- window came back as the other project (README.org, 2026-10-22 20:24).
+local open_dir = vim.fn.stdpath "state" .. "/open-projects"
+local open_file = open_dir .. "/" .. vim.fn.getpid()
+
+local function record_open_folder()
+  vim.fn.mkdir(open_dir, "p")
+  vim.fn.writefile({ normalize(vim.fn.getcwd(-1, -1)) or "" }, open_file)
+end
+
+local function folders_open_elsewhere()
+  local open = {}
+  for name, kind in vim.fs.dir(open_dir) do
+    local pid = tonumber(name)
+    if kind == "file" and pid and pid ~= vim.fn.getpid() then
+      if uv.kill(pid, 0) == 0 then
+        local ok, lines = pcall(vim.fn.readfile, open_dir .. "/" .. name)
+        if ok and lines[1] then
+          open[lines[1]] = true
+        end
+      else
+        os.remove(open_dir .. "/" .. name)
+      end
+    end
+  end
+  return open
+end
+
+local open_group = vim.api.nvim_create_augroup("OpenProjects", { clear = true })
+vim.api.nvim_create_autocmd({ "VimEnter", "DirChanged" }, { group = open_group, callback = record_open_folder })
+vim.api.nvim_create_autocmd("VimLeavePre", {
+  group = open_group,
+  callback = function()
+    os.remove(open_file)
+  end,
+})
+
 function M.last_project()
+  local open_elsewhere = folders_open_elsewhere()
   for _, session_file in ipairs(require("persistence").list()) do
     local directory = session_directory(session_file)
     if
       directory
       and vim.fn.isdirectory(directory) == 1
+      and not open_elsewhere[directory]
       and not M.is_config_path(directory)
       and not is_temporary_path(directory)
     then
