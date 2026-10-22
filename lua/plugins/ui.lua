@@ -122,7 +122,6 @@ local backgrounds = {
   editor = "#161a1c",
   raised = "#1b2023",
   status = "#0a0d0e",
-  terminal = "#07090a",
   tab_inactive = "#0d0f11",
   tab_selected = "#1a1f22",
   tab_fill = "#060708",
@@ -189,7 +188,9 @@ return {
     priority = 1000,
     config = function()
       vim.g.everforest_background = "hard"
-      vim.g.everforest_dim_inactive_windows = 1
+      -- One background for every pane: a darker unfocused pane doubled every
+      -- divider next to it.
+      vim.g.everforest_dim_inactive_windows = 0
       vim.g.everforest_colors_override = {
         bg_dim = { backgrounds.dim, "233" },
         bg0 = { backgrounds.editor, "235" },
@@ -230,30 +231,26 @@ return {
       vim.api.nvim_set_hl(0, "FloatTitle", { fg = "#b5db7a", bold = true })
       vim.api.nvim_set_hl(0, "TelescopeBorder", { link = "FloatBorder" })
 
-      -- Panes are cards on a dark ground, like windows in Hyprland's gaps. A
-      -- split divider is one even gutter of that ground with no glyph: a line
-      -- drawn mid-cell left a strip of one pane's colour beside the other
-      -- pane, which read as a doubled, offset border. Hover lights the gutter.
-      local gutter = { fg = backgrounds.tab_fill, bg = backgrounds.tab_fill }
-      local gutter_hover = { fg = "#3c4541", bg = "#3c4541" }
-      for _, group in ipairs { "WinSeparator", "NvimTreeWinSeparator" } do
-        vim.api.nvim_set_hl(0, group, gutter)
-        vim.api.nvim_set_hl(0, group .. "Hover", gutter_hover)
-      end
+      -- Every pane (editor, explorer, terminal, focused or not) sits on the
+      -- one card surface, so a divider is a thin line drawn on that surface
+      -- with nothing beside it. A full-cell gutter read as a thick bar, and
+      -- panes of different shades left a strip of one beside the other.
+      -- Hover redraws only the line under the pointer (lua/autocmds.lua).
+      vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#2f3639" })
+      vim.api.nvim_set_hl(0, "NvimTreeWinSeparator", { link = "WinSeparator" })
+      vim.api.nvim_set_hl(0, "WinSeparatorHover", { fg = "#b5db7a" })
 
-      vim.api.nvim_set_hl(0, "ExplorerHeader", { fg = "#b5db7a", bg = backgrounds.dim, bold = true })
-      vim.api.nvim_set_hl(0, "NvimTreeRootFolder", { fg = "#859289", bg = backgrounds.dim, italic = true })
-      vim.api.nvim_set_hl(0, "ExplorerSortTitle", { fg = "#859289", bg = backgrounds.dim })
-      vim.api.nvim_set_hl(0, "ExplorerSortButton", { fg = "#e6dcc3", bg = backgrounds.dim })
-      vim.api.nvim_set_hl(0, "ExplorerSortActive", { fg = "#b5db7a", bg = backgrounds.dim, bold = true })
-      vim.api.nvim_set_hl(0, "WinBar", { bg = backgrounds.dim })
-      vim.api.nvim_set_hl(0, "WinBarNC", { bg = backgrounds.dim })
-      vim.api.nvim_set_hl(0, "NvimTreeNormal", { bg = backgrounds.dim })
-      vim.api.nvim_set_hl(0, "NvimTreeNormalNC", { bg = backgrounds.dim })
-      vim.api.nvim_set_hl(0, "NvimTreeEndOfBuffer", { fg = backgrounds.dim, bg = backgrounds.dim })
-      vim.api.nvim_set_hl(0, "NvimTreeSignColumn", { bg = backgrounds.dim })
-      -- A darker shade of the editor background keeps terminal panes distinct.
-      vim.api.nvim_set_hl(0, "TermNormal", { bg = backgrounds.terminal })
+      vim.api.nvim_set_hl(0, "ExplorerHeader", { fg = "#b5db7a", bold = true })
+      vim.api.nvim_set_hl(0, "NvimTreeRootFolder", { fg = "#859289", italic = true })
+      vim.api.nvim_set_hl(0, "ExplorerSortTitle", { fg = "#859289" })
+      vim.api.nvim_set_hl(0, "ExplorerSortButton", { fg = "#e6dcc3" })
+      vim.api.nvim_set_hl(0, "ExplorerSortActive", { fg = "#b5db7a", bold = true })
+      vim.api.nvim_set_hl(0, "WinBar", {})
+      vim.api.nvim_set_hl(0, "WinBarNC", {})
+      for _, group in ipairs { "NvimTreeNormal", "NvimTreeNormalNC", "NvimTreeSignColumn", "NormalNC" } do
+        vim.api.nvim_set_hl(0, group, { link = "Normal" })
+      end
+      vim.api.nvim_set_hl(0, "NvimTreeEndOfBuffer", { link = "EndOfBuffer" })
     end,
   },
 

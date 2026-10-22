@@ -167,9 +167,8 @@ vim.api.nvim_create_autocmd("TextYankPost", {
   end,
 })
 
--- The terminal background a window wears while it shows a terminal. A window
--- can also inherit it from a buffer's remembered window options (a swap or
--- :buffer reuses them), so it is stripped before anything counts as "original".
+-- Older versions gave terminal windows their own background. Sessions and a
+-- buffer's remembered window options can still carry it, so it is stripped.
 local function without_terminal_background(winhighlight)
   local entries = {}
   for entry in winhighlight:gmatch "[^,]+" do
@@ -192,14 +191,9 @@ local function enter_terminal_input()
     vim.w.nvim_terminal_original_cursorline = vim.wo.cursorline
   end
 
-  local entries = {}
-  for entry in vim.wo.winhighlight:gmatch "[^,]+" do
-    if not vim.startswith(entry, "Normal:") and not vim.startswith(entry, "WinSeparator:") then
-      entries[#entries + 1] = entry
-    end
-  end
-  entries[#entries + 1] = "Normal:TermNormal"
-  vim.wo.winhighlight = table.concat(entries, ",")
+  -- Terminals share the one pane surface: a darker terminal left a strip of
+  -- the neighbour's colour on its side of every divider.
+  vim.wo.winhighlight = without_terminal_background(vim.wo.winhighlight)
   vim.wo.cursorline = false
   -- A global scrolloff larger than half a short split pins the view to the
   -- terminal cursor, which makes the scrollback impossible to scroll.
@@ -293,92 +287,155 @@ vim.api.nvim_create_autocmd(
   }
 )
 
--- Neovide cannot change the system pointer shape contextually, but Neovim can
--- tell us when the pointer is over a draggable window separator. A drag moves
--- the whole divider line, so light every window's separator along that line
--- (tree, editor splits and terminals alike), preserving any existing winhl.
+-- Neovide cannot change the system pointer shape, but Neovim tells us when the
+-- pointer is over a split divider. Light exactly that divider: the line a drag
+-- would move, end to end, and nothing else. A window's separator highlight
+-- covers both its side and bottom edges, so lighting by window also lit the
+-- bottom divider while you hovered the side one. Instead a click-through float
+-- redraws just the hovered line's own glyphs in the hover colour.
 if vim.g.neovide then
-  local hovered = {}
+  local api = vim.api
+  local hover = { win = nil, buf = nil, key = nil }
 
-  local function clear_separator_hover()
-    for _, h in ipairs(hovered) do
-      if vim.api.nvim_win_is_valid(h.winid) and vim.wo[h.winid].winhighlight == h.applied then
-        vim.wo[h.winid].winhighlight = h.original
-      end
+  local function clear_divider_hover()
+    local win = hover.win
+    hover.win, hover.key = nil, nil
+    if win and api.nvim_win_is_valid(win) then
+      api.nvim_win_hide(win)
     end
-    hovered = {}
   end
 
-  -- Every separator group shares one hover style (lua/plugins/ui.lua).
-  local function add_separator_hover(winhl)
-    local entries = {}
-    for entry in winhl:gmatch "[^,]+" do
-      if not vim.startswith(entry, "WinSeparator:") then
-        entries[#entries + 1] = entry
+  local function leaves(node, out)
+    if node[1] == "leaf" then
+      out[#out + 1] = node[2]
+    else
+      for _, child in ipairs(node[2]) do
+        leaves(child, out)
       end
     end
-    entries[#entries + 1] = "WinSeparator:WinSeparatorHover"
-    return table.concat(entries, ",")
+    return out
   end
 
-  -- Windows whose separator lies on the divider under the pointer: the same
-  -- column for a vertical divider, the same row for a horizontal one.
-  local function windows_on_divider(winid, mouse)
-    local pos = vim.api.nvim_win_get_position(winid)
-    local vertical = mouse.screencol - 1 == pos[2] + vim.api.nvim_win_get_width(winid)
-    local wins = {}
-    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-      if vim.api.nvim_win_get_config(win).relative == "" then
-        local p = vim.api.nvim_win_get_position(win)
-        local on_line = vertical
-            and p[2] + vim.api.nvim_win_get_width(win) == pos[2] + vim.api.nvim_win_get_width(winid)
-          or not vertical and p[1] + vim.api.nvim_win_get_height(win) == pos[1] + vim.api.nvim_win_get_height(winid)
-        if on_line then
-          wins[#wins + 1] = win
+  -- Screen box of a layout node: top row, left column, bottom and right edge
+  -- (exclusive), from its windows.
+  local function box(node)
+    local top, left, bottom, right = math.huge, math.huge, 0, 0
+    for _, win in ipairs(leaves(node, {})) do
+      local pos = api.nvim_win_get_position(win)
+      top, left = math.min(top, pos[1]), math.min(left, pos[2])
+      bottom = math.max(bottom, pos[1] + api.nvim_win_get_height(win))
+      right = math.max(right, pos[2] + api.nvim_win_get_width(win))
+    end
+    return top, left, bottom, right
+  end
+
+  -- The divider a drag on `winid`'s separator moves: the innermost split of
+  -- the right kind whose child ends where the window does. A vertical divider
+  -- runs the split's full height; a horizontal one its full width.
+  local function divider_cells(winid, vertical)
+    local pos = api.nvim_win_get_position(winid)
+    local edge = vertical and pos[2] + api.nvim_win_get_width(winid) or pos[1] + api.nvim_win_get_height(winid)
+    local found
+    local function walk(node)
+      if node[1] == "leaf" then
+        return node[2] == winid
+      end
+      for index, child in ipairs(node[2]) do
+        if walk(child) then
+          if not found and node[1] == (vertical and "row" or "col") and index < #node[2] then
+            local _, _, bottom, right = box(child)
+            if (vertical and right or bottom) == edge then
+              local top, left, node_bottom, node_right = box(node)
+              found = vertical and { row = top, col = edge, height = node_bottom - top, width = 1 }
+                or { row = edge, col = left, height = 1, width = node_right - left }
+            end
+          end
+          return true
         end
       end
+      return false
     end
-    return wins, vertical
+    walk(vim.fn.winlayout())
+    return found
   end
 
-  local function update_separator_hover()
+  local function show_divider_hover(cells)
+    local key = table.concat({ cells.row, cells.col, cells.height, cells.width }, ":")
+    if hover.key == key and hover.win and api.nvim_win_is_valid(hover.win) then
+      return
+    end
+    clear_divider_hover()
+    -- Copy the glyphs already drawn there (junctions included), so only the
+    -- colour changes. screenchar() is 1-based.
+    local lines = {}
+    for r = 0, cells.height - 1 do
+      local chars = {}
+      for c = 0, cells.width - 1 do
+        local ch = vim.fn.screenstring(cells.row + r + 1, cells.col + c + 1)
+        chars[#chars + 1] = ch ~= "" and ch or " "
+      end
+      lines[#lines + 1] = table.concat(chars)
+    end
+    if not (hover.buf and api.nvim_buf_is_valid(hover.buf)) then
+      hover.buf = api.nvim_create_buf(false, true)
+    end
+    api.nvim_buf_set_lines(hover.buf, 0, -1, false, lines)
+    hover.win = api.nvim_open_win(hover.buf, false, {
+      relative = "editor",
+      row = cells.row,
+      col = cells.col,
+      width = cells.width,
+      height = cells.height,
+      style = "minimal",
+      border = "none",
+      focusable = false,
+      mouse = false,
+      zindex = 1,
+      noautocmd = true,
+    })
+    vim.wo[hover.win].winhighlight = "Normal:WinSeparatorHover"
+    vim.wo[hover.win].winblend = 0
+    hover.key = key
+  end
+
+  local function update_divider_hover()
     local mouse = vim.fn.getmousepos()
     local winid = mouse.winid
-    local over_separator = winid ~= 0 and mouse.line == 0 and mouse.column == 0
-
     if
-      not over_separator
-      or not vim.api.nvim_win_is_valid(winid)
-      or vim.api.nvim_win_get_config(winid).relative ~= ""
+      winid == 0
+      or mouse.line ~= 0
+      or mouse.column ~= 0
+      or not api.nvim_win_is_valid(winid)
+      or api.nvim_win_get_config(winid).relative ~= ""
     then
-      clear_separator_hover()
+      clear_divider_hover()
       return
     end
-
-    local wins, vertical = windows_on_divider(winid, mouse)
-    local key = (vertical and "v" or "h") .. table.concat(wins, ",")
-    if hovered.key == key then
-      return
+    local pos = api.nvim_win_get_position(winid)
+    local vertical = mouse.screencol - 1 == pos[2] + api.nvim_win_get_width(winid)
+    local cells = divider_cells(winid, vertical)
+    if cells then
+      show_divider_hover(cells)
+    else
+      clear_divider_hover()
     end
-    clear_separator_hover()
-
-    for _, win in ipairs(wins) do
-      local original = vim.wo[win].winhighlight
-      local applied = add_separator_hover(original)
-      vim.wo[win].winhighlight = applied
-      hovered[#hovered + 1] = { winid = win, original = original, applied = applied }
-    end
-    hovered.key = key
   end
 
-  vim.keymap.set({ "n", "i", "v", "s", "o", "c", "t" }, "<MouseMove>", update_separator_hover, {
+  vim.keymap.set({ "n", "i", "v", "s", "o", "c", "t" }, "<MouseMove>", update_divider_hover, {
     silent = true,
     desc = "Highlight hovered split divider",
   })
 
-  vim.api.nvim_create_autocmd({ "WinClosed", "VimLeavePre" }, {
-    callback = clear_separator_hover,
+  -- A drag or a layout change moves the line: redraw it where it now is.
+  api.nvim_create_autocmd({ "WinResized", "WinClosed", "WinNew", "TabEnter", "VimResized" }, {
+    callback = function()
+      if hover.key then
+        clear_divider_hover()
+        vim.schedule(update_divider_hover)
+      end
+    end,
   })
+  api.nvim_create_autocmd("VimLeavePre", { callback = clear_divider_hover })
 end
 
 -- Pull config changes made on other machines without delaying startup.
