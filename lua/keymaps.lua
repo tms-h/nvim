@@ -142,23 +142,21 @@ map("n", "<S-l>", function()
   keyboard_buffer_switch "BufferLineCycleNext"
 end, { desc = "Next tab" })
 
--- ── Window navigation ──
-map("n", "<C-h>", "<C-w>h", { desc = "Left window" })
-map("n", "<C-l>", "<C-w>l", { desc = "Right window" })
-map("n", "<C-j>", "<C-w>j", { desc = "Lower window" })
-map("n", "<C-k>", "<C-w>k", { desc = "Upper window" })
-map("t", "<C-h>", "<C-\\><C-n><C-w>h")
-map("t", "<C-l>", "<C-\\><C-n><C-w>l")
-map("t", "<C-j>", "<C-\\><C-n><C-w>j")
-map("t", "<C-k>", "<C-\\><C-n><C-w>k")
+-- ── Window navigation (Ctrl+H/J/K/L) ──
+-- The same key moves between windows from every mode: insert, a visual or
+-- mouse selection and a terminal are left first, then the window changes.
+for key, desc in pairs { h = "Left window", j = "Lower window", k = "Upper window", l = "Right window" } do
+  map({ "n", "i", "x", "s", "t" }, "<C-" .. key .. ">", "<C-\\><C-n><C-w>" .. key, { desc = desc })
+end
 -- Double Esc so a single Esc still reaches lazygit, fzf and other TUIs.
 map("t", "<Esc><Esc>", "<C-\\><C-n>", { desc = "Terminal: normal mode" })
 
 -- ── Window resize (Ctrl+Arrow) ──
-map("n", "<C-Up>", "<cmd>resize +2<cr>", { desc = "Increase height" })
-map("n", "<C-Down>", "<cmd>resize -2<cr>", { desc = "Decrease height" })
-map("n", "<C-Left>", "<cmd>vertical resize -2<cr>", { desc = "Decrease width" })
-map("n", "<C-Right>", "<cmd>vertical resize +2<cr>", { desc = "Increase width" })
+-- Works in every mode without leaving it, so a focused terminal resizes too.
+map({ "n", "i", "x", "s", "t" }, "<C-Up>", "<Cmd>resize +2<cr>", { desc = "Increase height" })
+map({ "n", "i", "x", "s", "t" }, "<C-Down>", "<Cmd>resize -2<cr>", { desc = "Decrease height" })
+map({ "n", "i", "x", "s", "t" }, "<C-Left>", "<Cmd>vertical resize -2<cr>", { desc = "Decrease width" })
+map({ "n", "i", "x", "s", "t" }, "<C-Right>", "<Cmd>vertical resize +2<cr>", { desc = "Increase width" })
 
 -- ── Terminal splits ──
 map("n", "<leader>th", "<cmd>belowright split | resize 15 | term<cr>", { desc = "Terminal (bottom)" })
@@ -246,6 +244,26 @@ if vim.g.neovide then
   map({ "n", "i", "v", "c", "t" }, super "0", function()
     vim.g.neovide_scale_factor = default_scale
   end, { silent = true, desc = "Reset zoom" })
+end
+
+-- ── GUI chords work from every mode ──
+-- Alt/Cmd chords that only had a normal-mode action do the same thing from
+-- insert, a selection or a terminal: leave that mode, then run the action.
+-- (Copy, paste, zoom, comment and undo have their own per-mode actions above.)
+-- In a terminal on Linux/Windows the chord is Alt, and the shell's own
+-- Alt+B/T/R/digit line editing keeps those keys there.
+local everywhere = { "w", "S-w", "t", "S-t", "S-]", "S-[", "b", "p", "S-p", "S-f", "r", "S-r" }
+local shell_keys = { b = true, t = true, r = true }
+for i = 1, 9 do
+  everywhere[#everywhere + 1] = tostring(i)
+  shell_keys[tostring(i)] = true
+end
+for _, key in ipairs(everywhere) do
+  local modes = { "i", "x", "s" }
+  if require("util.modifier").is_macos or not shell_keys[key] then
+    modes[#modes + 1] = "t"
+  end
+  map(modes, super(key), "<C-\\><C-n>" .. super(key), { remap = true })
 end
 
 map("n", "<leader>gs", function()

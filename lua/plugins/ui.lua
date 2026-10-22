@@ -255,6 +255,9 @@ return {
         local api = require "nvim-tree.api"
         api.config.mappings.default_on_attach(bufnr)
         explorer_sort.attach(bufnr)
+        -- Ctrl+K moves to the window above everywhere; nvim-tree's file-info
+        -- popup on that key broke it inside the tree.
+        vim.keymap.del("n", "<C-k>", { buffer = bufnr })
 
         vim.schedule(function()
           if not vim.api.nvim_buf_is_valid(bufnr) then

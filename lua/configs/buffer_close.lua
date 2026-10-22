@@ -88,8 +88,9 @@ function M.delete(bufnr, opts)
     return
   end
 
-  if not vim.bo[bufnr].modified then
-    delete_now(bufnr, false, opts)
+  -- A running terminal counts as modified, but it is never unsaved work.
+  if not vim.bo[bufnr].modified or vim.bo[bufnr].buftype == "terminal" then
+    delete_now(bufnr, vim.bo[bufnr].buftype == "terminal", opts)
     return
   end
 
@@ -115,7 +116,20 @@ function M.delete(bufnr, opts)
   end)
 end
 
+-- Alt/Cmd+W closes what has focus. A file is a tab: close the tab. A panel
+-- (terminal, help, quickfix, the tree) is its window: close the window, and
+-- for a terminal end its shell too, so one key removes it completely.
 function M.delete_from_keyboard(bufnr)
+  bufnr = normalize_buffer(bufnr)
+  local buftype = vim.bo[bufnr].buftype
+  if bufnr == vim.api.nvim_get_current_buf() and buftype ~= "" then
+    if buftype == "terminal" then
+      M.close_window_and_buffer()
+    elseif not pcall(vim.cmd.close) then
+      vim.api.nvim_echo({ { "Last window: nothing to close" } }, false, {})
+    end
+    return
+  end
   M.delete(bufnr, { keep_terminal_normal = true })
 end
 
