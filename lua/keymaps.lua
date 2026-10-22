@@ -106,8 +106,8 @@ for i = 1, 9 do
 end
 
 -- ── Open Folder (VS Code's Cmd+O on macOS; Alt+O here) ──
--- VS Code's Linux chord Ctrl+K Ctrl+O would become Alt+K Alt+O, and Alt+K
--- already moves the line up, so use the macOS key on every OS.
+-- VS Code's Linux chord Ctrl+K Ctrl+O would be a two-key chord here, so use
+-- the macOS key on every OS.
 map({ "n", "i", "x", "t" }, super "o", function()
   require("configs.session").pick_folder()
 end, { desc = "Open folder" })
@@ -156,12 +156,26 @@ map("n", "<S-l>", function()
   keyboard_buffer_switch "BufferLineCycleNext"
 end, { desc = "Next tab" })
 
--- ── Window navigation (Ctrl+H/J/K/L) ──
--- The same key moves between windows from every mode: insert, a visual or
--- mouse selection and a terminal are left first, then the window changes.
-for key, desc in pairs { h = "Left window", j = "Lower window", k = "Upper window", l = "Right window" } do
-  map({ "n", "i", "x", "s", "t" }, "<C-" .. key .. ">", "<C-\\><C-n><C-w>" .. key, { desc = desc })
+-- ── Panes like Omarchy windows (Alt on Linux/Windows, Cmd on Mac) ──
+-- Hyprland keeps Super, so the same letter or arrow with the primary modifier
+-- does the same thing to a pane: focus, swap, new terminal, zoom, flip.
+-- Every mode first leaves insert, a selection or a terminal.
+-- Ctrl+H/J/K/L stay as a second focus key (Vim habit, most used).
+local function pane_action(name, arg)
+  local args = arg and ("'" .. name .. "', '" .. arg .. "'") or ("'" .. name .. "'")
+  return "<C-\\><C-n><Cmd>lua require('configs.panes').run(" .. args .. ")<CR>"
 end
+local pane_modes = { "n", "i", "x", "s", "t" }
+for arrow, key in pairs { Left = "h", Down = "j", Up = "k", Right = "l" } do
+  local where = arrow:lower()
+  map(pane_modes, super(arrow), pane_action("focus", key), { desc = "Focus pane " .. where })
+  map(pane_modes, "<C-" .. key .. ">", pane_action("focus", key), { desc = "Focus pane " .. where })
+  map(pane_modes, super("S-" .. arrow), pane_action("swap", key), { desc = "Swap pane " .. where })
+end
+map(pane_modes, super "CR", pane_action "new_terminal", { desc = "New terminal pane" })
+map(pane_modes, super "f", pane_action "toggle_zoom", { desc = "Zoom pane (toggle)" })
+map(pane_modes, super "j", pane_action "flip", { desc = "Flip split direction" })
+
 -- Double Esc so a single Esc still reaches lazygit, fzf and other TUIs.
 map("t", "<Esc><Esc>", "<C-\\><C-n>", { desc = "Terminal: normal mode" })
 
@@ -210,13 +224,13 @@ end, { desc = "Lazygit" })
 map("v", "<", "<gv")
 map("v", ">", ">gv")
 
--- ── Move lines (Alt+J/K) ──
-map("n", "<A-j>", "<cmd>m .+1<cr>==", { desc = "Move line down" })
-map("n", "<A-k>", "<cmd>m .-2<cr>==", { desc = "Move line up" })
-map("i", "<A-j>", "<esc><cmd>m .+1<cr>==gi")
-map("i", "<A-k>", "<esc><cmd>m .-2<cr>==gi")
-map("v", "<A-j>", ":m '>+1<cr>gv=gv")
-map("v", "<A-k>", ":m '<-2<cr>gv=gv")
+-- ── Move lines (Alt+Shift+J/K; Alt+J flips panes) ──
+map("n", "<A-J>", "<cmd>m .+1<cr>==", { desc = "Move line down" })
+map("n", "<A-K>", "<cmd>m .-2<cr>==", { desc = "Move line up" })
+map("i", "<A-J>", "<esc><cmd>m .+1<cr>==gi", { desc = "Move line down" })
+map("i", "<A-K>", "<esc><cmd>m .-2<cr>==gi", { desc = "Move line up" })
+map("v", "<A-J>", ":m '>+1<cr>gv=gv", { desc = "Move lines down" })
+map("v", "<A-K>", ":m '<-2<cr>gv=gv", { desc = "Move lines up" })
 
 -- ── Diagnostics ──
 map("n", "<leader>xx", "<cmd>Trouble diagnostics toggle<cr>", { desc = "Diagnostics" })

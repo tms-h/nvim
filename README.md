@@ -89,6 +89,25 @@ Its full reference is available with `:help multicursor`.
 | Go to tab 1–9 | `Cmd+1`…`Cmd+9` | `Alt+1`…`Alt+9` |
 | Toggle file tree | `Cmd+B` | `Alt+B` |
 
+### Panes (Omarchy window keys)
+
+A pane behaves like a Hyprland window: the same letter or arrow as Omarchy, with
+Alt (Cmd on Mac) in place of Super. Every key works the same from normal, insert,
+selection and terminal mode; a terminal that ends up focused goes straight to typing.
+The file tree can be focused but is never swapped, zoomed or flipped.
+
+| Action | Mac | Linux/Windows |
+|--------|-----|---------|
+| Focus pane in that direction (tree included) | `Cmd+Arrows` | `Alt+Arrows` (also `Ctrl+H/J/K/L`) |
+| Swap buffer with the neighbour; layout stays, focus follows | `Cmd+Shift+Arrows` | `Alt+Shift+Arrows` |
+| New terminal beside, split along the longer side | `Cmd+Return` | `Alt+Return` |
+| Zoom pane; same key restores the layout | `Cmd+F` | `Alt+F` |
+| Flip pane and neighbour: side by side / stacked | `Cmd+J` | `Alt+J` |
+| Move divider in the arrow's direction | `Ctrl+Arrows` | `Ctrl+Arrows` |
+
+Zoom opens the pane alone in a temporary tab page (the tab bar shows `1 2` while
+zoomed), so the real layout, sizes and running terminals are untouched.
+
 **Neovide only:** paste `Cmd+V` / `Alt+V`, zoom in `Cmd+=` / `Alt+=`, zoom out `Cmd+-` / `Alt+-`.
 Draggable split dividers brighten slightly when hovered. Keyboard buffer shortcuts land
 on terminals in Terminal-Normal mode; clicking a terminal returns it to input mode.
@@ -110,9 +129,9 @@ fullscreen. Split borders use Neovide's native box renderer so junctions stay al
 | `Esc` | Clear search highlight |
 | `s` / `S` | Flash jump |
 | `Shift+H` / `Shift+L` | Previous / next buffer |
-| `Ctrl+H/J/K/L` | Move between windows |
+| `Ctrl+H/J/K/L` | Focus the pane in that direction (any mode; same as `Alt+Arrows`) |
 | `Ctrl+Arrow` | Move the split divider in the arrow's direction (any mode) |
-| `Alt+J` / `Alt+K` | Move line down / up (normal, insert, visual) |
+| `Alt+Shift+J` / `Alt+Shift+K` | Move line down / up (normal, insert, visual) |
 | `<` / `>` (visual) | Indent, keep selection |
 
 ### Leader — find & files
@@ -137,7 +156,7 @@ a **More…** menu for modification-time and file-size sorting.
 
 | Key | Action |
 |-----|--------|
-| `<leader>th` / `<leader>tv` | Terminal (bottom / side split) |
+| `<leader>th` / `<leader>tv` | Terminal (bottom / side split); `Alt+Return` picks the side for you |
 | `Esc Esc` (in terminal) | Leave terminal input; a single `Esc` goes to the program |
 | `q` (in run pane) | Close terminal/run pane |
 | `gd` / `gD` | Go to definition / declaration |

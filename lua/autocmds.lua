@@ -167,13 +167,26 @@ vim.api.nvim_create_autocmd("TextYankPost", {
   end,
 })
 
+-- The terminal background a window wears while it shows a terminal. A window
+-- can also inherit it from a buffer's remembered window options (a swap or
+-- :buffer reuses them), so it is stripped before anything counts as "original".
+local function without_terminal_background(winhighlight)
+  local entries = {}
+  for entry in winhighlight:gmatch "[^,]+" do
+    if entry ~= "Normal:TermNormal" and entry ~= "WinSeparator:TermWinSeparator" then
+      entries[#entries + 1] = entry
+    end
+  end
+  return table.concat(entries, ",")
+end
+
 local function enter_terminal_input()
   if vim.bo.buftype ~= "terminal" then
     return
   end
 
   if vim.w.nvim_terminal_original_winhighlight == nil then
-    vim.w.nvim_terminal_original_winhighlight = vim.wo.winhighlight
+    vim.w.nvim_terminal_original_winhighlight = without_terminal_background(vim.wo.winhighlight)
   end
   if vim.w.nvim_terminal_original_cursorline == nil then
     vim.w.nvim_terminal_original_cursorline = vim.wo.cursorline
@@ -203,15 +216,9 @@ local function restore_editor_background()
     vim.wo.winhighlight = original_winhighlight
     vim.w.nvim_terminal_original_winhighlight = nil
   else
-    -- Repair windows restored from sessions made before the original value was
-    -- tracked: a normal editor must never inherit the terminal background.
-    local entries = {}
-    for entry in vim.wo.winhighlight:gmatch "[^,]+" do
-      if entry ~= "Normal:TermNormal" and entry ~= "WinSeparator:TermWinSeparator" then
-        entries[#entries + 1] = entry
-      end
-    end
-    vim.wo.winhighlight = table.concat(entries, ",")
+    -- Repair windows restored from sessions or handed a buffer's remembered
+    -- options: a normal editor must never inherit the terminal background.
+    vim.wo.winhighlight = without_terminal_background(vim.wo.winhighlight)
   end
 
   local original_cursorline = vim.w.nvim_terminal_original_cursorline

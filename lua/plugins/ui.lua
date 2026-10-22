@@ -402,6 +402,7 @@ return {
         { "<leader>l", group = "Lint" },
         { "<leader>s", group = "Search" },
         { "<leader>g", group = "Git" },
+        { "<leader>t", group = "Terminal & todo" },
       },
     },
   },
