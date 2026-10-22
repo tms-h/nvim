@@ -8,6 +8,10 @@ vim.g.loaded_python3_provider = 0
 vim.g.loaded_python_provider = 0
 vim.opt.termguicolors = true
 
+-- Count mapping and command use (silent; see lua/configs/usage_log.lua). Must
+-- load before any mapping is defined so it can see them all.
+require("configs.usage_log").setup()
+
 -- GUI launches do not always inherit the interactive shell PATH. Keep the
 -- toolchains used by LSP, linting, formatting, and OCaml available in Neovide.
 local path_separator = vim.fn.has "win32" == 1 and ";" or ":"
