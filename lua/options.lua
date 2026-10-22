@@ -56,9 +56,6 @@ vim.cmd "filetype plugin indent on"
 opt.autoindent = true
 
 if vim.g.neovide then
-  -- Let Neovim report pointer movement so split dividers can react on hover.
-  opt.mousemoveevent = true
-
   vim.o.guifont = "JetBrainsMono Nerd Font Mono:h14"
 
   -- 120Hz for ProMotion, drop to 5fps when idle (saves battery)

@@ -8,8 +8,8 @@ local api = vim.api
 local ns = api.nvim_create_namespace "focus_dim"
 -- Share of the way each colour moves toward the background.
 local STRENGTH = 0.45
--- Lines and hover belong to two panes at once, so they never dim.
-local KEEP = { WinSeparator = true, WinSeparatorHover = true, NvimTreeWinSeparator = true }
+-- Lines belong to two panes at once, so they never dim.
+local KEEP = { WinSeparator = true, NvimTreeWinSeparator = true }
 
 local function mix(fg, bg, t)
   local function channel(shift)

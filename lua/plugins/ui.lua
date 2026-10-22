@@ -235,10 +235,8 @@ return {
       -- one card surface, so a divider is a thin line drawn on that surface
       -- with nothing beside it. A full-cell gutter read as a thick bar, and
       -- panes of different shades left a strip of one beside the other.
-      -- Hover redraws only the line under the pointer (lua/autocmds.lua).
       vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#2f3639" })
       vim.api.nvim_set_hl(0, "NvimTreeWinSeparator", { link = "WinSeparator" })
-      vim.api.nvim_set_hl(0, "WinSeparatorHover", { fg = "#b5db7a" })
 
       vim.api.nvim_set_hl(0, "ExplorerHeader", { fg = "#b5db7a", bold = true })
       vim.api.nvim_set_hl(0, "NvimTreeRootFolder", { fg = "#859289", italic = true })
