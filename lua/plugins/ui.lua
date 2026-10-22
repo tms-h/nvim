@@ -249,6 +249,8 @@ return {
       filters = { dotfiles = false },
       git = { enable = true },
       actions = { change_dir = { global = true } },
+      -- Name files in notices, not their full path, so a notice fits one line.
+      notify = { absolute_path = false },
       on_attach = function(bufnr)
         local api = require "nvim-tree.api"
         api.config.mappings.default_on_attach(bufnr)
@@ -264,6 +266,32 @@ return {
             end
           end
         end)
+
+        -- With nothing copied in the tree, nvim-tree's paste reads the system
+        -- clipboard and tries to copy every line as a file path, so an image
+        -- or a paragraph on the clipboard became a stack of red popups. Only
+        -- fall back to the clipboard when every line names a real file.
+        local function paste_guarded(action)
+          return function()
+            local explorer = require("nvim-tree.core").get_explorer()
+            local own = explorer and explorer.clipboard and explorer.clipboard.data or {}
+            if #(own.copy or {}) == 0 and #(own.cut or {}) == 0 then
+              local lines = vim.split(vim.fn.getreg "+", "\n", { trimempty = true })
+              local paths = #lines > 0
+              for _, line in ipairs(lines) do
+                paths = paths and line:sub(1, 1) == "/" and vim.uv.fs_stat(line) ~= nil
+              end
+              if not paths then
+                vim.api.nvim_echo({ { "Nothing to paste: copy a file with c or x first" } }, false, {})
+                return
+              end
+            end
+            action()
+          end
+        end
+        local paste_opts = { buffer = bufnr, noremap = true, silent = true, nowait = true }
+        vim.keymap.set("n", "p", paste_guarded(api.fs.paste), vim.tbl_extend("force", paste_opts, { desc = "Paste" }))
+        vim.keymap.set("n", "gp", paste_guarded(api.fs.move), vim.tbl_extend("force", paste_opts, { desc = "Move" }))
 
         vim.keymap.del("n", "<CR>", { buffer = bufnr })
         vim.keymap.set("n", "<CR>", function()
@@ -337,7 +365,17 @@ return {
       messages = { view = "mini" },
       popupmenu = { enabled = true },
       notify = { enabled = true, view = "notify" },
+      -- A stray key should cost at most one short line. One-line Vim refusals
+      -- (E21 "not modifiable" in a tree or terminal, E486 "pattern not found")
+      -- and one-line info notices go to the corner line; multi-line errors
+      -- (real bugs, with tracebacks) still get a popup.
+      routes = {
+        { filter = { event = "msg_show", kind = "emsg", find = "^E%d+: [^\n]*$" }, view = "mini" },
+        { filter = { event = "notify", kind = { "info", "debug", "trace" }, max_height = 1 }, view = "mini" },
+      },
       views = {
+        -- Popups replace each other instead of stacking down the screen.
+        notify = { replace = true },
         cmdline_popup = {
           position = { row = "50%", col = "50%" },
           size = { width = 70, height = "auto" },
