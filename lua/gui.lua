@@ -1,4 +1,5 @@
--- Neovide only: font, motion and the window surface. Colours are theme.lua.
+-- Neovide only: font, motion, floats and padding. Colours and opacity are
+-- theme.lua.
 if not vim.g.neovide then
   return
 end
@@ -11,8 +12,9 @@ vim.o.guifont = "JetBrainsMono Nerd Font Mono:h14"
 g.default_scale = 1 / 1.25 ^ 2
 g.neovide_scale_factor = g.default_scale
 
--- Motion: quick and consistent. Every animation is the same short glide,
--- also while typing (0.05 s); not on the command line.
+-- Motion: quick and consistent. The cursor and scrolling glide for 0.05 s
+-- (short cursor hops 0.03 s), also while typing; not on the command line.
+-- Windows move at once.
 g.neovide_refresh_rate = is_macos and 120 or 240
 g.neovide_refresh_rate_idle = 5
 g.neovide_cursor_animation_length = 0.05
@@ -26,7 +28,7 @@ g.neovide_scroll_animation_far_lines = 0
 g.neovide_position_animation_length = 0
 
 -- Floats (hover, completion docs, picker) sit on the same surface with a
--- soft shadow; no extra blending.
+-- soft shadow, a slight blur behind and square corners.
 g.neovide_floating_shadow = true
 g.neovide_floating_z_height = 10
 g.neovide_light_angle_degrees = 45
