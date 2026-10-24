@@ -8,6 +8,18 @@ local M = {}
 local api = vim.api
 local tools = require "tools"
 
+-- Names for the Space keys Neovim's own OCaml plugin maps (runtime
+-- ftplugin/ocaml.vim), by what they run.
+local STOCK_KEYS = {
+  ["<Plug>LUncomOn"] = "comment out the line (* *)",
+  ["<Plug>LUncomOff"] = "uncomment the line",
+  ["<Plug>BUncomOn"] = "comment out the selection (* *)",
+  ["<Plug>BUncomOff"] = "uncomment the selection",
+  ["<Plug>OCamlSwitchEdit"] = "switch .ml/.mli (stock)",
+  ["<Plug>OCamlSwitchNewWin"] = "switch .ml/.mli in a split",
+  ["<Plug>OCamlPrintType"] = "type from old .annot files (K is better)",
+}
+
 ---Indent of one line as ocp-indent computes it from the whole buffer.
 function M.indent(lnum)
   local ocp = tools.find "ocp-indent"
@@ -121,6 +133,16 @@ function M.setup(buf)
   map("<leader>op", function()
     M.dune(buf, { "promote" })
   end, "dune promote")
+  -- Neovim's own OCaml plugin adds Space keys with no name, so the key hints
+  -- (mini.clue) listed them blank. Same keys, now named.
+  for _, mode in ipairs { "n", "x" } do
+    for _, m in ipairs(api.nvim_buf_get_keymap(buf, mode)) do
+      local desc = STOCK_KEYS[m.rhs]
+      if desc and not m.desc then
+        vim.keymap.set(mode, m.lhs, m.rhs, { buffer = buf, remap = true, desc = "OCaml: " .. desc })
+      end
+    end
+  end
 end
 
 return M

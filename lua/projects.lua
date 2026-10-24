@@ -165,18 +165,6 @@ function M.last_project()
   end
 end
 
-local function show_tree()
-  local editor = api.nvim_get_current_win()
-  -- The tree takes its columns from the pane beside it, as with Alt+B.
-  local panes = require "panes"
-  local sizes = panes.snapshot()
-  require("nvim-tree.api").tree.open()
-  panes.restore(sizes)
-  if api.nvim_win_is_valid(editor) then
-    api.nvim_set_current_win(editor)
-  end
-end
-
 ---Switch this window to `path`: save this folder, close its tabs and
 ---terminals, then open the folder's own session and the tree.
 ---@param opts? { startup: boolean }
@@ -211,39 +199,89 @@ function M.open_folder(path, opts)
   project = path
   record_open()
   load(path)
-  vim.schedule(show_tree)
+  vim.schedule(require("explorer").show)
 end
 
----Alt/Cmd+O: pick a folder. Recent projects first, then folders under home.
+-- "5m ago", "3h ago", "2d ago".
+local function ago(sec)
+  local d = math.max(0, os.time() - sec)
+  if d < 3600 then
+    return math.max(1, math.floor(d / 60)) .. "m ago"
+  elseif d < 86400 then
+    return math.floor(d / 3600) .. "h ago"
+  end
+  return math.floor(d / 86400) .. "d ago"
+end
+
+local pick_ns = api.nvim_create_namespace "PickFolder"
+
+-- Each row: an icon, the path with its last folder in bold, and on the right
+-- when a recent project was last open.
+local function show_folders(buf, items, query)
+  local pick = require("finder").load()
+  pick.default_show(buf, items, query)
+  api.nvim_buf_clear_namespace(buf, pick_ns, 0, -1)
+  for i, item in ipairs(items) do
+    local name = item.text:find "[^/]+$" or 1
+    api.nvim_buf_set_extmark(buf, pick_ns, i - 1, 0, {
+      virt_text = { { item.recent and "󰋚 " or "󰉋 ", item.recent and "PickFolderRecent" or "PickFolderIcon" } },
+      virt_text_pos = "inline",
+    })
+    api.nvim_buf_set_extmark(buf, pick_ns, i - 1, name - 1, { end_col = #item.text, hl_group = "PickFolderName" })
+    if item.recent then
+      api.nvim_buf_set_extmark(buf, pick_ns, i - 1, 0, {
+        virt_text = { { item.recent .. " ", "PickFolderAge" } },
+        virt_text_pos = "right_align",
+      })
+    end
+  end
+end
+
+-- Recent projects (the first `recent` items) stay on top while you type,
+-- newest first; the other folders follow, best match first.
+local function match_folders(recent)
+  return function(stritems, inds, query)
+    local pick = require("finder").load()
+    local top, rest = {}, {}
+    for _, i in ipairs(pick.default_match(stritems, inds, query, { sync = true }) or {}) do
+      table.insert(i <= recent and top or rest, i)
+    end
+    table.sort(top)
+    pick.set_picker_match_inds(vim.list_extend(top, rest))
+  end
+end
+
+---Alt/Cmd+O: pick a folder. Recent projects first, newest first, each with
+---when it was last open; then folders inside this one, then folders under
+---home. Typing keeps the recent projects on top.
 function M.pick_folder()
   local home = normalize "~"
+  local scratch = normalize "~/.cache"
   local seen, items = M.open_elsewhere(), {}
-  local function add(dir)
+  local function add(dir, recent)
     if dir and not seen[dir] then
       seen[dir] = true
-      items[#items + 1] = vim.startswith(dir, home) and "~" .. dir:sub(#home + 1) or dir
+      items[#items + 1] = {
+        text = vim.startswith(dir, home) and "~" .. dir:sub(#home + 1) or dir,
+        path = dir,
+        recent = recent,
+      }
     end
   end
+  local config = normalize(vim.fn.stdpath "config")
   for _, file in ipairs(M.sessions()) do
-    local dir = dir_of_session(file)
-    if vim.fn.isdirectory(dir) == 1 then
-      add(dir)
+    local dir = normalize(dir_of_session(file))
+    -- Left out: home, / and temp folders (never a project) and agents'
+    -- scratch folders under ~/.cache. This config stays: it opens, it just
+    -- keeps no session.
+    local listed = dir and (is_project(dir) or dir == config) and not vim.startswith(dir, scratch .. "/")
+    if listed and vim.fn.isdirectory(dir) == 1 then
+      add(dir, ago((uv.fs_stat(file) or { mtime = { sec = 0 } }).mtime.sec))
     end
   end
-  local function finish()
-    require("finder").load().start {
-      source = {
-        name = "Open folder",
-        items = items,
-        choose = function(item)
-          vim.schedule(function()
-            M.open_folder(item)
-          end)
-        end,
-      },
-    }
-  end
-  -- Then folders inside this one, then folders under home.
+  local recent = #items
+  -- Then folders inside this one, then folders under home, each shallow
+  -- first, then A-Z.
   if vim.fn.executable "fd" == 1 then
     for _, where in ipairs { { vim.fn.getcwd(), "3" }, { home, "4" } } do
       local cmd = { "fd", "--type", "d", "--max-depth", where[2], "--absolute-path" }
@@ -251,13 +289,33 @@ function M.pick_folder()
         vim.list_extend(cmd, { "--exclude", skip })
       end
       vim.list_extend(cmd, { ".", where[1] })
-      local found = vim.system(cmd, { text = true }):wait().stdout or ""
-      for _, dir in ipairs(vim.split(found, "\n", { trimempty = true })) do
-        add(normalize(dir))
+      local found = vim.split(vim.system(cmd, { text = true }):wait().stdout or "", "\n", { trimempty = true })
+      found = vim.tbl_map(normalize, found)
+      table.sort(found, function(a, b)
+        local da, db = select(2, a:gsub("/", "")), select(2, b:gsub("/", ""))
+        if da ~= db then
+          return da < db
+        end
+        return a < b
+      end)
+      for _, dir in ipairs(found) do
+        add(dir)
       end
     end
   end
-  finish()
+  require("finder").load().start {
+    source = {
+      name = "Open folder",
+      items = items,
+      show = show_folders,
+      match = match_folders(recent),
+      choose = function(item)
+        vim.schedule(function()
+          M.open_folder(item.path)
+        end)
+      end,
+    },
+  }
 end
 
 function M.setup()

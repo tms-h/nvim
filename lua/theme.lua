@@ -336,6 +336,12 @@ local function groups(p, look)
     MiniPickIconFile = { fg = fg },
     MiniPickPreviewLine = { bg = band },
     MiniPickPreviewRegion = { bg = p.selection },
+    -- Alt/Cmd+O (projects.lua): recent projects get the accent clock and
+    -- their age; every folder's own name is bold.
+    PickFolderIcon = { link = "MiniPickIconDirectory" },
+    PickFolderRecent = { fg = c.accent },
+    PickFolderAge = { fg = comment },
+    PickFolderName = { bold = true },
     MiniIconsAzure = { fg = c.blue },
     MiniIconsBlue = { fg = c.blue },
     MiniIconsCyan = { fg = c.cyan },

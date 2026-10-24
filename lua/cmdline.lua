@@ -1,5 +1,5 @@
--- Where typed commands appear: a box near the top centre, where VS Code's
--- command palette sits, instead of the bottom row. `:` commands, `/` and `?`
+-- Where typed commands appear: a centred box on the row where the finder
+-- (Alt/Cmd+P) opens, instead of the bottom row. `:` commands, `/` and `?`
 -- searches and input() prompts all show there, and a long line wraps inside
 -- the box, so the whole input stays in view in a narrow window. Messages stay
 -- on the bottom line, as before (ui2, options.lua).
@@ -22,14 +22,16 @@ local TITLES = { [":"] = " Command ", ["/"] = " Search ", ["?"] = " Search back 
 
 local state = { firstc = "", prompt = "" }
 
----The box: centred, near the top, at most 100 cells wide, never wider than
----the screen less a margin.
+---The box: centred, its top on the finder's top row (pressed against the
+---pane titles at the top it looked off), at most 100 cells wide, never wider
+---than the screen less a margin.
 function M.box(height)
   local cols, lines = vim.o.columns, vim.o.lines
   local width = math.max(math.min(100, math.floor(cols * 0.6)), math.min(60, cols - 4))
   width = math.min(width, cols - 4)
-  -- Row 1 is under the tab bar; the border takes a cell on each side.
-  local row = math.min(2, math.max(0, lines - height - 4))
+  -- Moved up when the box (and its completion menu) would not fit below;
+  -- the border takes a cell on each side.
+  local row = math.min(require("finder").window().row, math.max(0, lines - height - 4))
   return {
     relative = "editor",
     row = row,

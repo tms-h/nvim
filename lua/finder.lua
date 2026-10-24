@@ -5,6 +5,20 @@ local M = {}
 
 local ready = false
 
+---Where the finder opens: centred, a little above the middle. The command
+---box (cmdline.lua) opens on the same row.
+function M.window()
+  local width = math.min(90, math.floor(vim.o.columns * 0.6))
+  local height = math.min(18, math.floor(vim.o.lines * 0.45))
+  return {
+    anchor = "NW",
+    row = math.floor((vim.o.lines - height) * 0.3),
+    col = math.floor((vim.o.columns - width) / 2),
+    width = width,
+    height = height,
+  }
+end
+
 ---MiniPick, set up.
 function M.load()
   if not ready then
@@ -31,17 +45,7 @@ function M.load()
         },
       },
       window = {
-        config = function()
-          local width = math.min(90, math.floor(vim.o.columns * 0.6))
-          local height = math.min(18, math.floor(vim.o.lines * 0.45))
-          return {
-            anchor = "NW",
-            row = math.floor((vim.o.lines - height) * 0.3),
-            col = math.floor((vim.o.columns - width) / 2),
-            width = width,
-            height = height,
-          }
-        end,
+        config = M.window,
         prompt_prefix = "  ",
       },
     }

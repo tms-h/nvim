@@ -66,7 +66,8 @@ o.splitkeep = "topline"
 -- more; g< shows the rest. (ui2 reads a height below 1 as a share of the
 -- screen, rounded up: 0.01 is one line.)
 require("vim._core.ui2").enable { msg = { target = "cmd", cmd = { height = 0.01 } } }
--- Typed commands and searches show in a box near the top centre (cmdline.lua).
+-- Typed commands and searches show in a centred box where the finder opens
+-- (cmdline.lua).
 require("cmdline").setup()
 
 -- A short flash on what was just copied.

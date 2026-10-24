@@ -1051,7 +1051,7 @@ check("A message takes one line: three lines show as one with [+2]", function()
   end
 end)
 
-check("Typed commands show in a box at the top centre; long input wraps, all of it in view", function()
+check("Typed commands show in a centred box on the finder's row; long input wraps, all of it in view", function()
   local function cmdwin()
     for _, w in ipairs(api.nvim_list_wins()) do
       if vim.bo[api.nvim_win_get_buf(w)].filetype == "cmd" then
@@ -1064,7 +1064,9 @@ check("Typed commands show in a box at the top centre; long input wraps, all of 
     local w = cmdwin()
     expect(w, what .. ": no command line window")
     local cfg = api.nvim_win_get_config(w)
-    expect(cfg.relative == "editor" and cfg.row <= 3 and not cfg.hide, what .. ": not near the top: " .. vim.inspect {
+    local row = require("finder").window().row
+    expect(row > 3, "the finder's row is " .. row)
+    expect(cfg.relative == "editor" and cfg.row == row and not cfg.hide, what .. ": not on the finder's row: " .. vim.inspect {
       cfg.relative,
       cfg.row,
       cfg.hide,
@@ -1890,6 +1892,117 @@ check("Reopen puts a closed tab back in its place (Chrome)", function()
   local after = require("tabs").index(api.nvim_get_current_buf())
   expect(name_of(api.nvim_get_current_win()) == "b.ml", "reopened " .. name_of(api.nvim_get_current_win()))
   expect(after == before, ("back at %s, was %s"):format(tostring(after), tostring(before)))
+end)
+
+-- ── Friction notes, 2026-10-25 ───────────────────────────────────────────
+
+check("A window resize scales every pane; the terminal is never squeezed to a strip", function()
+  expect(vim.env.TMUX, "SKIP not inside tmux")
+  local function screen(cols)
+    vim.fn.system { "tmux", "resize-window", "-x", tostring(cols), "-y", "50" }
+    wait(500)
+  end
+  local editor = api.nvim_get_current_win()
+  local term = editor_and_terminal()
+  api.nvim_win_set_width(term, 60)
+  local buf = api.nvim_win_get_buf(term)
+  vim.fn.chansend(
+    vim.b[buf].terminal_job_id,
+    "clear; printf 'line %s: the quick brown fox jumps over the lazy dog and keeps running\\n' 1 2 3 4 5 6\n"
+  )
+  wait(800)
+  local ok, err = pcall(function()
+    screen(100)
+    expect(vim.o.columns == 100, "the screen did not shrink: " .. vim.o.columns)
+    local w = api.nvim_win_get_width(term)
+    expect(math.abs(w - 30) <= 2, "after shrinking to 100 columns the terminal is " .. w .. " wide, not about 30")
+    screen(200)
+    w = api.nvim_win_get_width(term)
+    expect(math.abs(w - 60) <= 1, "back at 200 columns the terminal is " .. w .. " wide, not 60")
+    expect(math.abs(api.nvim_win_get_width(editor) - 139) <= 1, "editor " .. api.nvim_win_get_width(editor))
+    -- The shell's text rewrapped with the pane, never one letter per line.
+    local text = table.concat(api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+    expect(text:find "line 6: the quick brown fox", "the terminal text is mangled:\n" .. text)
+  end)
+  screen(200)
+  expect(ok, err)
+end)
+
+check("Every Space key in the key hints has a name (OCaml, Python, Markdown, Org files too)", function()
+  local missing = {}
+  for _, file in ipairs { "a.ml", "a.mli", "hello.py", "README.md", "README.org" } do
+    vim.cmd("edit " .. proj .. "/" .. file)
+    wait(150)
+    for _, mode in ipairs { "n", "x" } do
+      local maps = vim.list_extend(api.nvim_get_keymap(mode), api.nvim_buf_get_keymap(0, mode))
+      for _, m in ipairs(maps) do
+        if m.lhs:sub(1, 1) == " " and #m.lhs > 1 and (m.desc or "") == "" then
+          missing[#missing + 1] = file .. " " .. mode .. " <Space>" .. m.lhs:sub(2) .. " = " .. tostring(m.rhs)
+        end
+      end
+    end
+  end
+  expect(#missing == 0, "no name: " .. table.concat(missing, ", "))
+end)
+
+check("A folder opened at start shows the tree at its full width, not a one-cell strip", function()
+  vim.fn.mkdir(proj .. "/sub-start", "p")
+  local editor = api.nvim_get_current_win()
+  require("projects").open_folder(proj .. "/sub-start", { startup = true })
+  wait(600)
+  local tree = win_of(function(_, b)
+    return vim.bo[b].filetype == "NvimTree"
+  end)
+  expect(tree, "no tree")
+  expect(api.nvim_win_get_width(tree) >= 25, "the tree is " .. api.nvim_win_get_width(tree) .. " cells wide")
+  expect(api.nvim_get_current_win() == editor, "focus moved to the tree")
+  vim.cmd("cd " .. proj)
+end)
+
+check("Alt/Cmd+O lists recent projects first, newest first, with their age; typing keeps them on top", function()
+  local real = function(path)
+    return vim.uv.fs_realpath(vim.fn.expand(path))
+  end
+  local sessions = vim.fn.stdpath "state" .. "/sessions"
+  vim.fn.mkdir(sessions, "p")
+  local function session(dir, age)
+    local file = sessions .. "/" .. real(dir):gsub("[/\\:]", "%%") .. ".vim"
+    vim.fn.writefile({ "" }, file)
+    vim.uv.fs_utime(file, os.time() - age, os.time() - age)
+  end
+  for _, d in ipairs { "alphabet", "zeta-recent", "alpbet" } do
+    vim.fn.mkdir(proj .. "/" .. d, "p")
+  end
+  session(proj .. "/alphabet", -60)
+  session(proj .. "/zeta-recent", 7200)
+  -- Never a project: home, and agents' scratch folders under ~/.cache.
+  session("~", -120)
+  local cache = vim.fn.glob("~/.cache/*/", false, true)[1]
+  if cache then
+    session(cache, -120)
+  end
+  press(super "o", 1500)
+  expect(picker_active(), "no folder picker")
+  local items = MiniPick.get_picker_items()
+  local function path(item)
+    return type(item) == "table" and item.path or tostring(item)
+  end
+  expect(path(items[1]) == real(proj .. "/alphabet"), "first row is " .. path(items[1]))
+  local zeta
+  for _, item in ipairs(items) do
+    expect(path(item) ~= real "~", "home is listed")
+    expect(not cache or path(item) ~= real(cache), "a ~/.cache folder is listed")
+    if path(item) == real(proj .. "/zeta-recent") then
+      zeta = item
+    end
+  end
+  expect(type(zeta) == "table" and zeta.recent == "2h ago", "zeta-recent shows " .. vim.inspect(zeta))
+  -- "alpbet" matches the plain folder alpbet better, but the recent
+  -- alphabet stays on top.
+  press("alpbet", 400)
+  local first = MiniPick.get_picker_matches().all[1]
+  expect(path(first) == real(proj .. "/alphabet"), "typing put " .. path(first) .. " on top")
+  press("<Esc>", 200)
 end)
 
 -- ── Runner ────────────────────────────────────────────────────────────────

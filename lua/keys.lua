@@ -68,7 +68,7 @@ map(ALL, super "t", tab "enew", { expr = true, desc = "New tab" })
 map(ALL, super "S-t", call "require('panes').reopen()", { expr = true, desc = "Reopen closed tab" })
 for i = 1, 9 do
   -- 1-8 go to that tab, 9 to the last one (Chrome).
-  local go = ("require('panes').in_editor(function() require('util').go_to_tab(%d) end)"):format(i == 9 and -1 or i)
+  local go = ("require('panes').in_editor(function() require('tabs').go_to(%d) end)"):format(i == 9 and -1 or i)
   map(ALL, super(tostring(i)), call(go), { expr = true, desc = i == 9 and "Last tab" or "Tab " .. i })
 end
 

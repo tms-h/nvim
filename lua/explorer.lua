@@ -248,18 +248,13 @@ function M.setup()
   })
 end
 
----Alt/Cmd+B: show the tree and focus it, or hide it. Other panes keep their
----sizes.
-function M.toggle()
-  local tree = require "nvim-tree.api"
+-- Show or hide the tree with `change`. Only the pane beside the tree gives
+-- (or gets back) its columns; every other pane keeps its size. Putting every
+-- pane back, the one beside included, would squeeze the tree to one cell.
+local function beside_tree(change)
   local panes = require "panes"
   local sizes = panes.snapshot()
-  if tree.tree.is_visible() then
-    tree.tree.close()
-  else
-    tree.tree.open { find_file = true }
-  end
-  -- Only the pane beside the tree gives (or gets back) its columns.
+  change()
   local neighbour
   for _, win in ipairs(api.nvim_tabpage_list_wins(0)) do
     if
@@ -271,14 +266,37 @@ function M.toggle()
       neighbour = win
     end
   end
-  for win, size in pairs(sizes) do
+  for win in pairs(sizes) do
     if win == neighbour or not api.nvim_win_is_valid(win) or panes.is_tree(win) then
       sizes[win] = nil
-    else
-      sizes[win] = { size[1], size[2] }
     end
   end
   panes.restore(sizes)
+end
+
+---Alt/Cmd+B: show the tree and focus it, or hide it.
+function M.toggle()
+  local tree = require("nvim-tree.api").tree
+  beside_tree(function()
+    if tree.is_visible() then
+      tree.close()
+    else
+      tree.open { find_file = true }
+    end
+  end)
+end
+
+---Show the tree beside a folder just opened; focus stays where it was.
+function M.show()
+  local tree = require("nvim-tree.api").tree
+  if tree.is_visible() then
+    return
+  end
+  local win = api.nvim_get_current_win()
+  beside_tree(tree.open)
+  if api.nvim_win_is_valid(win) then
+    api.nvim_set_current_win(win)
+  end
 end
 
 return M

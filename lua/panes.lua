@@ -20,10 +20,6 @@ function M.is_tree(win)
   return vim.bo[api.nvim_win_get_buf(win)].filetype == "NvimTree"
 end
 
-function M.is_terminal(win)
-  return vim.bo[api.nvim_win_get_buf(win)].buftype == "terminal"
-end
-
 function M.is_editor(win)
   return api.nvim_win_is_valid(win) and not M.is_float(win) and vim.bo[api.nvim_win_get_buf(win)].buftype == ""
 end
@@ -160,6 +156,17 @@ function M.new_terminal()
   vim.cmd.terminal()
 end
 
+-- The current window's options while it shows a terminal: no numbers or
+-- signs, scrollback scrollable to its last line in a short split, and a
+-- fixed size, so a window resize takes room from the other panes first (see
+-- "A window resize keeps each pane's share"). [0][0] is :setlocal: a file
+-- opened later in this window gets its own options back.
+local function terminal_window()
+  local wo = vim.wo[0][0]
+  wo.number, wo.relativenumber, wo.signcolumn, wo.scrolloff = false, false, "no", 0
+  wo.winfixwidth, wo.winfixheight = true, true
+end
+
 -- ── The bottom panel (Ctrl+`, VS Code's terminal panel) ───────────────────
 -- One shell, shown full width under every pane. Hiding it keeps the shell
 -- running; the next Ctrl+` shows the same one at the height it had.
@@ -174,8 +181,8 @@ local function panel_alive()
   return job ~= nil and vim.fn.jobwait({ job }, 0)[1] == -1
 end
 
----The panel's window in this tab, if it shows.
-function M.panel_win()
+-- The panel's window in this tab, if it shows.
+local function panel_win()
   for _, win in ipairs(panes()) do
     if vim.w[win].panel and api.nvim_win_get_buf(win) == panel.buf then
       return win
@@ -187,7 +194,7 @@ end
 ---Shown but not focused, focus it (as VS Code does).
 function M.toggle_panel()
   M.leave_zoom()
-  local win = M.panel_win()
+  local win = panel_win()
   if win and win == api.nvim_get_current_win() then
     panel.height = api.nvim_win_get_height(win)
     local back = panel.back
@@ -217,9 +224,7 @@ function M.toggle_panel()
     panel.buf = api.nvim_get_current_buf()
   end
   vim.w.panel = true
-  -- [0][0] is :setlocal (as for any terminal, see TermOpen below).
-  local wo = vim.wo[0][0]
-  wo.number, wo.relativenumber, wo.signcolumn, wo.scrolloff = false, false, "no", 0
+  terminal_window()
 end
 
 ---Zoom: the pane alone fills the window; the same key brings the layout
@@ -352,6 +357,7 @@ end
 
 ---Put panes back to their snapshot sizes (closed ones are skipped).
 function M.restore(sizes)
+  -- Twice: sizing one pane can move a neighbour already sized.
   for _ = 1, 2 do
     for win, size in pairs(sizes) do
       if api.nvim_win_is_valid(win) then
@@ -360,6 +366,45 @@ function M.restore(sizes)
       end
     end
   end
+end
+
+-- ── A window resize keeps each pane's share ───────────────────────────────
+-- When the whole window changes size (Hyprland tiles a second window beside
+-- it, Neovide zoom), Neovim takes or gives every column from the rightmost
+-- pane: a terminal there was squeezed to one column, its text rewrapped one
+-- letter per line for good, and growing back never brought the layout back.
+-- Instead every pane is scaled from the sizes its tab had before the resize;
+-- the tree keeps its width. Terminals are 'winfixwidth' and 'winfixheight'
+-- (terminal_window), so Neovim's own first pass squeezes the editors, never
+-- the shell: a terminal resizes once, straight to its share.
+local before = {} -- tabpage -> { cols, lines, sizes }
+local resizing = false
+
+local function remember()
+  before[api.nvim_get_current_tabpage()] = { cols = vim.o.columns, lines = vim.o.lines, sizes = M.snapshot() }
+end
+
+local function rescale()
+  local saved = before[api.nvim_get_current_tabpage()]
+  if not saved then
+    return
+  end
+  local tree = 0
+  for win, size in pairs(saved.sizes) do
+    if api.nvim_win_is_valid(win) and M.is_tree(win) then
+      tree = size[1] + 1
+    end
+  end
+  local sx = (vim.o.columns - tree) / math.max(1, saved.cols - tree)
+  local sy = vim.o.lines / saved.lines
+  local sizes = {}
+  for win, size in pairs(saved.sizes) do
+    if api.nvim_win_is_valid(win) then
+      sizes[win] = M.is_tree(win) and size
+        or { math.max(1, math.floor(size[1] * sx + 0.5)), math.max(1, math.floor(size[2] * sy + 0.5)) }
+    end
+  end
+  M.restore(sizes)
 end
 
 -- ── Close (Alt/Cmd+W): whatever has focus ─────────────────────────────────
@@ -492,12 +537,7 @@ function M.setup()
     group = group,
     callback = function(args)
       vim.bo[args.buf].buflisted = false
-      -- [0][0] is :setlocal: a file opened later in this window keeps its
-      -- numbers and signs.
-      local wo = vim.wo[0][0]
-      wo.number, wo.relativenumber, wo.signcolumn = false, false, "no"
-      -- Scrollback stays scrollable to its last line in a short split.
-      wo.scrolloff = 0
+      terminal_window()
       -- Only if focus is still here when the key that opened it is done (F5
       -- opens a terminal, then goes back to the file).
       vim.schedule(function()
@@ -512,6 +552,27 @@ function M.setup()
       })
     end,
   })
+  -- The sizes to scale from are the ones you set: a resize's own WinResized
+  -- (Neovim's squeeze, then the rescale) is not recorded.
+  api.nvim_create_autocmd({ "VimEnter", "WinResized" }, {
+    group = group,
+    callback = function()
+      if resizing then
+        resizing = false
+      else
+        remember()
+      end
+    end,
+  })
+  api.nvim_create_autocmd("VimResized", {
+    group = group,
+    callback = function()
+      resizing = true
+      rescale()
+    end,
+  })
+  -- Other tabs were squeezed too; each is scaled when you go back to it.
+  api.nvim_create_autocmd("TabEnter", { group = group, callback = rescale })
   api.nvim_create_autocmd("WinLeave", {
     group = group,
     callback = function()
