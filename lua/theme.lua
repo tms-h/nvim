@@ -8,8 +8,8 @@
 --   glass  see-through card over wallpaper + blur (Linux). Background, text
 --          and opacity come from shell.toml [menu] through the surface-recipe
 --          hook, so Neovide matches kitty, Files and the shell popups.
---   flat   opaque (the Mac, or transparency off). The theme's deepest
---          editor background (dark_background) under its own text, so body
+--   flat   opaque (the Mac, or transparency off). The theme's dark editor
+--          background (dark_background) under its own text, so body
 --          text, comments and the dim are at least as clear as the old
 --          config's opaque look; the cursor line is a faint band.
 local M = {}
@@ -438,7 +438,7 @@ end
 function M.one_surface()
   for name in pairs(api.nvim_get_hl(0, {})) do
     -- A link takes its fill from its target, which is judged on its own
-    -- (stripping NvimTreeCursorLine -> CursorLine would lose the band).
+    -- (stripping NvimTreeCursorLine -> ListCurrent would lose the row fill).
     if not keeps_bg(name) and not api.nvim_get_hl(0, { name = name, create = false }).link then
       local hl = api.nvim_get_hl(0, { name = name, link = false, create = false })
       if hl.bg or hl.reverse then
@@ -449,7 +449,8 @@ function M.one_surface()
   end
 end
 
-M.palette = nil
+-- Set by apply(): the palette with the surface's bg/fg, and "glass" or "flat".
+M.palette, M.look = nil, nil
 
 ---Build and set every group for the current look.
 function M.apply()
