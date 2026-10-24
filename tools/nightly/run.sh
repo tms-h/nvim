@@ -182,5 +182,6 @@ else
   FF="~/.config/nvim not on main; left alone"
 fi
 echo "$FF"
+cd / && git -C "$REPO" worktree remove --force "$WT" && git -C "$REPO" branch -q -D "$BRANCH" || true   # per-fix history stays on origin/$BRANCH
 report "$FIXED_LINE" "$CLEANED_LINE" "$FLAGGED_LINE. Merged $SHA ($PASS_LINE); $FF"
 echo "=== done $(date '+%T')"

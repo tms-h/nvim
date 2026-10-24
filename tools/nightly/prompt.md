@@ -36,6 +36,8 @@ Each line is `- <date time>  [<file:line where he was>] <his words>`. Fix every 
   lives in, so run main's copy at the live checkout path for "before" and your worktree's copy for
   "after"). Never use a hidden monitor on the live desktop. Judge both looks (glass and `OPAQUE=1` flat).
   Save the PNGs under `~/.local/state/nvim/nightly/shots/<date>/` and name them in the result.
+- A note already fixed on main (someone fixed it by hand since): confirm it with a check (add one if
+  missing), list it under `fixed` with that commit, and move on.
 - If a fix needs something only Thomas can confirm (a real key on his keyboard, the Mac), do the fix
   anyway and flag what he should try.
 
