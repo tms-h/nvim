@@ -45,7 +45,10 @@ stale or wrong comments, and needless complexity; fix what you find with behavio
 - No new features, no keybind changes, no look changes. If you find a real bug, fix it only if it is
   small and you add a failing-then-passing check; otherwise flag it.
 - Small coherent commits (`Cleanup <file>: <what>`). Skip the area rather than make a risky change.
-- Run `tests/check.sh` (all checks) at the end; every check must pass. Fix what you broke.
+- Run `tests/check.sh` (all checks) at the end; every check must pass, or nothing merges. Fix what you
+  broke. A check that also fails on the untouched base, or only in the full run (order-dependent or
+  timing), is a broken check: fix its root cause in its own commit (`Fix check: ...`) and say so in
+  `notes`. Never delete a check or loosen what it proves to get a pass.
 
 ## Result file (required, last step)
 Write JSON to the result path under "Tonight":
