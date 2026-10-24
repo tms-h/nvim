@@ -89,17 +89,8 @@ local function groups(p, look)
   local faint = mix(bg, fg, 0.32)
   local line = mix(bg, fg, 0.24)
   local band = mix(bg, fg, 0.05)
-  local c = {
-    red = p.red,
-    orange = p.orange,
-    yellow = p.yellow,
-    green = p.green,
-    cyan = p.cyan,
-    blue = p.blue,
-    magenta = p.magenta,
-    accent = p.accent,
-  }
-  local G = {
+  local c = p -- the theme's named colours: c.red, c.accent, ...
+  return {
     -- The one surface
     Normal = { fg = fg, bg = bg },
     NormalNC = { link = "Normal" },
@@ -398,7 +389,6 @@ local function groups(p, look)
     ExplorerSortButton = { fg = fg },
     ExplorerSortActive = { fg = c.accent, bold = true },
   }
-  return G
 end
 
 -- Groups allowed to keep a background (the meaning is the fill).
@@ -463,7 +453,7 @@ function M.apply()
   if look == "glass" and surface then
     p.bg, p.fg = surface.bg, surface.fg
   else
-    p.bg, p.fg = p.dark_background or p.background, p.foreground
+    p.bg, p.fg = p.dark_background, p.foreground
   end
   M.palette, M.look = p, look
 
@@ -517,7 +507,6 @@ function M.setup()
   -- Plugins that define their colours late (orgmode on the first .org file).
   api.nvim_create_autocmd({ "VimEnter", "FileType" }, {
     group = api.nvim_create_augroup("OneSurface", { clear = true }),
-    pattern = { "*" },
     callback = function(args)
       if args.event == "VimEnter" or args.match == "org" then
         vim.schedule(M.one_surface)
