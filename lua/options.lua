@@ -1,128 +1,85 @@
-local opt = vim.opt
+local o = vim.o
 
-opt.expandtab = true
-opt.shiftwidth = 2
-opt.tabstop = 2
-opt.softtabstop = -1
+-- Tools first: a GUI launch does not inherit the login shell's PATH.
+require("tools").setup_path()
 
-opt.number = true
-opt.relativenumber = true
-opt.cursorline = true
-opt.signcolumn = "yes"
-opt.scrolloff = 8
-opt.sidescrolloff = 8
-opt.splitbelow = true
-opt.splitright = true
--- Opening or closing one pane (explorer, terminal, split) never resizes the
--- others: only the pane it splits from or gives its space back to changes.
-opt.equalalways = false
--- Preserve the first visible line when horizontal splits are resized.
-opt.splitkeep = "topline"
-opt.wrap = true
-opt.termguicolors = true
-opt.showmode = false
-opt.cmdheight = 0
-opt.confirm = true
--- Keep :substitute from visually rewriting the buffer while it is being typed.
-opt.inccommand = ""
-opt.jumpoptions = "view"
-opt.virtualedit = "block"
-opt.winborder = "rounded"
+-- Editing
+o.expandtab = true
+o.shiftwidth = 2
+o.tabstop = 2
+o.softtabstop = -1
+o.undofile = true
+-- No swap files: their "ATTENTION" dialog is the biggest popup in Vim, and
+-- the undo file plus frequent saves already keep the work.
+o.swapfile = false
+o.clipboard = "unnamedplus"
+o.ignorecase = true
+o.smartcase = true
+o.confirm = true
+o.virtualedit = "block"
+o.jumpoptions = "view"
+o.updatetime = 250
+o.timeoutlen = 400
+o.mouse = "a"
+-- Files changed by agents or git reload without a keypress (projects.lua).
+o.autoread = true
 
-opt.list = true
-opt.listchars = {
-  tab = "» ",
-  trail = "·",
-  nbsp = "␣",
-}
+-- Completion menu (mini.completion fills it as you type; see plugins.lua).
+o.completeopt = "menuone,noselect"
+o.pumheight = 12
+o.pummaxwidth = 60
 
--- Start files unfolded; zc/zo, za and zM/zR remain available on demand.
-opt.foldlevel = 99
-opt.foldlevelstart = 99
-opt.foldcolumn = "1"
+-- Screen
+o.number = true
+o.relativenumber = true
+o.signcolumn = "yes"
+o.cursorline = true
+o.scrolloff = 8
+-- :s does not preview while you type (the old config's choice).
+o.inccommand = ""
+o.sidescrolloff = 8
+o.wrap = true
+o.linebreak = true
+o.breakindent = true
+o.showmode = false
+o.laststatus = 3
+o.cmdheight = 0
+o.winborder = "rounded"
+o.list = true
+o.listchars = "tab:» ,trail:·,nbsp:␣"
+-- Markup never hides words: every character in the file is drawn.
+o.conceallevel = 0
+o.foldlevelstart = 99
+o.shortmess = o.shortmess .. "IcC"
+-- One thin line between panes, the same glyph at every joint.
+o.fillchars = "vert:│,horiz:─,horizup:┴,horizdown:┬,vertleft:┤,vertright:├,verthoriz:┼,eob: ,fold: "
 
-opt.clipboard = "unnamedplus"
-opt.undofile = true
-opt.undodir = vim.fn.stdpath "state" .. "/undo"
-opt.updatetime = 250
-opt.timeoutlen = 400
-opt.completeopt = { "menuone", "noselect" }
+-- Panes: a new pane takes space only from the pane it splits; closing one
+-- gives its space only to its neighbour. Nothing else moves.
+o.splitright = true
+o.splitbelow = true
+o.equalalways = false
+o.splitkeep = "topline"
 
-opt.ignorecase = true
-opt.smartcase = true
-opt.incsearch = true
+-- Messages and the command line: the built-in redesign (no "Press ENTER", no
+-- stacks). A message is one line at the bottom, with [+N] when there is
+-- more; g< shows the rest. (ui2 reads a height below 1 as a share of the
+-- screen, rounded up: 0.01 is one line.)
+require("vim._core.ui2").enable { msg = { target = "cmd", cmd = { height = 0.01 } } }
+-- Typed commands and searches show in a box near the top centre (cmdline.lua).
+require("cmdline").setup()
 
-vim.cmd "filetype plugin indent on"
-opt.autoindent = true
+-- A short flash on what was just copied.
+vim.api.nvim_create_autocmd("TextYankPost", {
+  group = vim.api.nvim_create_augroup("YankFlash", { clear = true }),
+  callback = function()
+    vim.hl.on_yank { higroup = "IncSearch", timeout = 200 }
+  end,
+})
 
-if vim.g.neovide then
-  -- Let Neovim report pointer movement so the divider under it can light.
-  opt.mousemoveevent = true
-
-  vim.o.guifont = "JetBrainsMono Nerd Font Mono:h14"
-
-  -- 120Hz for ProMotion, drop to 5fps when idle (saves battery)
-  vim.g.neovide_refresh_rate = 120
-  vim.g.neovide_refresh_rate_idle = 5
-  -- The Linux desktop drives a 240Hz monitor.
-  if vim.fn.has "linux" == 1 then
-    vim.g.neovide_refresh_rate = 240
-  end
-
-  -- Snappy cursor: fast animation, tight trail
-  vim.g.neovide_cursor_animation_length = 0.04
-  vim.g.neovide_cursor_trail_size = 0.3
-  vim.g.neovide_cursor_animate_in_insert_mode = true
-  vim.g.neovide_cursor_animate_command_line = true
-
-  -- No particles, just the classic Neovide smear
-  vim.g.neovide_cursor_vfx_mode = ""
-
-  -- Instant scroll and window movement
-  vim.g.neovide_scroll_animation_length = 0.12
-  vim.g.neovide_scroll_animation_far_lines = 1
-  vim.g.neovide_position_animation_length = 0
-
-  -- Frosted glass: same recipe as kitty, Files and the shell popups. Opacity,
-  -- background and neutral text come from shell.toml [menu] through the
-  -- surface-recipe theme hook (lua/surface.lua); falls back to the old values.
-  local ok_surface, surface = pcall(require, "surface")
-  vim.g.neovide_opacity = 0.94
-  vim.g.neovide_normal_opacity = ok_surface and surface.opacity or 0.84
-  if ok_surface then
-    local function apply_surface()
-      local normal = vim.api.nvim_get_hl(0, { name = "Normal" })
-      vim.api.nvim_set_hl(0, "Normal", vim.tbl_extend("force", normal, { bg = surface.bg, fg = surface.fg }))
-    end
-    vim.api.nvim_create_autocmd("ColorScheme", { callback = apply_surface })
-    apply_surface()
-  end
-  if vim.fn.has "macunix" == 1 then
-    vim.g.neovide_window_blurred = true
-  end
-  vim.g.neovide_floating_blur_amount_x = 2.0
-  vim.g.neovide_floating_blur_amount_y = 2.0
-  opt.winblend = 8
-  opt.pumblend = 8
-
-  -- Floating window shadows
-  vim.g.neovide_floating_shadow = true
-  vim.g.neovide_floating_z_height = 10
-  vim.g.neovide_light_angle_degrees = 45
-  vim.g.neovide_light_radius = 5
-
-  -- QoL
-  vim.g.neovide_hide_mouse_when_typing = true
-  vim.g.neovide_remember_window_size = true
-  if vim.fn.has "macunix" == 1 then
-    vim.g.neovide_input_use_logo = true
-    vim.g.neovide_input_macos_option_key_is_meta = "only_left"
-  end
-
-  -- Remove the extra inset around the grid. macOS window chrome is handled by
-  -- neovide.toml so its real traffic lights remain movable and functional.
-  vim.g.neovide_padding_top = 0
-  vim.g.neovide_padding_bottom = 0
-  vim.g.neovide_padding_left = 0
-  vim.g.neovide_padding_right = 0
-end
+vim.g.loaded_netrw = 1
+vim.g.loaded_netrwPlugin = 1
+vim.g.loaded_python3_provider = 0
+vim.g.loaded_ruby_provider = 0
+vim.g.loaded_perl_provider = 0
+vim.g.loaded_node_provider = 0

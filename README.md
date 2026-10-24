@@ -1,267 +1,48 @@
-# nvim
+# Neovim + Neovide config
 
-My Neovim config. Lazy-loaded with [lazy.nvim](https://github.com/folke/lazy.nvim), everforest colorscheme, built around OCaml and Python.
+A Neovim + Neovide config for Neovim 0.12: built-ins first, six plugins,
+one surface, the VS Code / Chrome keys on Alt (Linux, Windows) or Cmd (macOS).
+It replaced the old lazy.nvim config on 2026-10-25; the old one is the git tag
+`old-config-2026-10-25`.
 
-## Plugins
+## Install
 
-| Category | Plugins |
-|----------|---------|
-| **Theme** | everforest |
-| **UI** | bufferline, lualine, nvim-tree, noice, nvim-notify, which-key, alpha (dashboard) |
-| **Editor** | treesitter, flash, nvim-autopairs, mini (ai, surround, bufremove, bracketed), Oil, vim-easy-align, todo-comments, trouble |
-| **Fuzzy finder** | telescope + fzf-native |
-| **LSP** | mason, mason-tool-installer, nvim-lspconfig, blink.cmp, LuaSnip, friendly-snippets, fidget |
-| **Formatting** | conform (stylua, ruff, clang-format, prettier, shfmt) |
-| **Linting** | nvim-lint (selene, ruff, cppcheck, shellcheck, eslint_d) |
-| **Git** | gitsigns |
-| **Search/replace** | grug-far.nvim |
-| **Sessions** | persistence.nvim |
-| **Activity** | WakaTime |
-| **OCaml** | ocamllsp, ocamlformat (Jane Street profile), ocp-indent, Dune |
+    git clone <this repo> ~/.config/nvim
+    mkdir -p ~/.config/neovide
+    ln -sfn ~/.config/nvim/neovide.toml ~/.config/neovide/config.toml        # Linux
+    ln -sfn ~/.config/nvim/neovide-macos.toml ~/.config/neovide/config.toml  # macOS
 
-## Cross-platform setup
+Then plain `nvim` or `neovide`. Neovide reads its startup settings (window
+chrome, divider widths) only from `~/.config/neovide/config.toml`, hence the
+link. The first start installs the plugins (`vim.pack`, pinned in
+`nvim-pack-lock.json`) and the tree-sitter parsers.
 
-The same `main` branch runs on macOS and Windows. Platform differences are selected at
-runtime, so shared behavior cannot drift between long-lived branches.
+One second after each start, `lua/sync.lua` fast-forwards this checkout from
+GitHub, unless it has uncommitted or untracked files (then it says so in one
+line). Restart to apply a pull.
 
-`lua/util/modifier.lua` maps VS Code-style shortcuts to **Cmd** on macOS and **Alt** on
-Linux and Windows (Ctrl would shadow core Vim keys such as `Ctrl+W`, `Ctrl+B` and `Ctrl+T`). `lua/configs/runner.lua` handles executable and path differences for
-running Python. Neovide-specific settings remain shared, with Mac-only options guarded by
-an OS check. Leader is `Space`.
+## Where things are
 
-## Keybindings
+`init.lua` lists every module and the order they load in. In short:
 
-### Multicursor and faster editing
+| File | What it does |
+| --- | --- |
+| `lua/keys.lua` | every global key, with the rules for adding one |
+| `lua/panes.lua` | focus, swap, zoom, flip, divider moves, close, reopen |
+| `lua/theme.lua` | all colours, from the Omarchy palette; `:Look glass` / `:Look flat` |
+| `lua/gui.lua` | Neovide: font, motion, opacity |
+| `lua/dividers.lua` | divider hover (`vim.g.divider_hover = "line"` or `"colour"`) |
+| `lua/projects.lua` | `Alt+O` open folder, per-folder sessions, one project per window |
+| `lua/lsp.lua`, `lsp/*.lua` | language servers, format on save (ocamlformat for OCaml) |
+| `lua/ocaml.lua` | ocp-indent, `.ml`/`.mli` switch, dune |
+| `lua/usage.lua` | usage log, `:FrictionNote`, `:UsageReport` |
 
-Start in Normal mode (`Esc`). Press `Space m` and pause to see the multicursor menu.
+## Tests
 
-| Keys | Action |
-|------|--------|
-| `Space m n` | Add the next occurrence of the word or visual selection |
-| `Space m s` | Skip the next occurrence |
-| `Space m a` | Add all occurrences in this buffer |
-| `Space m j` / `Space m k` | Add a cursor below / above |
-| `Space m x` | Clear extra cursors |
-| `Space m r` | Restore the previous cursors |
-| `Cmd+D` (Mac) / `Alt+D` (Linux/Windows) | Add next occurrence in Neovide, Normal or Visual mode |
-| `Cmd+click` (Mac) / `Alt+click` (Linux/Windows) | Add or remove a cursor in Neovide, Normal mode |
-| `Space f k` | Search all keyboard shortcuts |
+    tests/check.sh            # every friction rule and key, in a private tmux (all checks)
+    tests/sync.sh             # the startup pull, against a throwaway git remote
+    tests/startup.sh          # headless startup, median of 9
+    tests/open-time.sh FILE   # time to open a file in the TUI
+    tests/capture/all.sh      # screenshots in a sealed nested Hyprland
 
-Try this in a scratch buffer: put `apple + apple + apple` on a line, place the
-cursor on the first `apple`, then press `Space m n` twice. Type `ciw`, type
-`pear`, and press `Esc`. All three words change together. Press `Esc` again to
-clear the extra cursors. `u` undoes the edit. To target a phrase, select it with
-`v` first, add matches, then use `c` to replace the selections.
-
-For several lines with different lengths, add cursors with `Space m j`, then
-press `A` to append to every line. Press `Esc` twice when finished.
-
-Other useful approaches already installed:
-
-- **Jump by sight:** press `s`, type a few characters of a visible target, then
-  its displayed label. This uses Flash to avoid repeated arrow presses.
-- **Edit a whole unit:** `ciw` changes a word, `ci"` changes text inside quotes,
-  and `ci(` changes text inside parentheses. Type the replacement, then `Esc`.
-- **Repeat an edit:** after `ciwpear<Esc>`, move to another word and press `.`.
-- **Wrap text:** on a word, `gsaiw)` wraps it in parentheses. `gsd)` removes the
-  surrounding parentheses. These are mini.surround mappings.
-- **Rename a code symbol:** `Space r n` asks the language server to rename its
-  references. Use this for a variable or function; multicursor matches text.
-- **Discover shortcuts:** `Space f k` searches their descriptions. `Space o s`
-  browses the OCaml snippets in an OCaml buffer.
-
-Multicursor is supplied by [multicursor.nvim](https://github.com/jake-stewart/multicursor.nvim).
-Its full reference is available with `:help multicursor`.
-
-### VS Code-style shortcuts
-
-| Action | Mac | Linux/Windows |
-|--------|-----|---------|
-| Undo | `Cmd+Z` | `Alt+Z` |
-| Redo | `Cmd+Shift+Z` | `Alt+Shift+Z` |
-| Find files | `Cmd+P` | `Alt+P` |
-| Command palette | `Cmd+Shift+P` | `Alt+Shift+P` |
-| Search in project (grep) | `Cmd+Shift+F` | `Alt+Shift+F` |
-| Close tab/buffer | `Cmd+W` | `Alt+W` |
-| New tab/file | `Cmd+T` | `Alt+T` |
-| Next tab | `Cmd+Shift+]` | `Alt+Shift+]` |
-| Previous tab | `Cmd+Shift+[` | `Alt+Shift+[` |
-| Go to tab 1–9 | `Cmd+1`…`Cmd+9` | `Alt+1`…`Alt+9` |
-| Toggle file tree | `Cmd+B` | `Alt+B` |
-
-### Panes (Omarchy window keys)
-
-A pane behaves like a Hyprland window: the same letter or arrow as Omarchy, with
-Alt (Cmd on Mac) in place of Super. Every key works the same from normal, insert,
-selection and terminal mode; a terminal that ends up focused goes straight to typing.
-The file tree can be focused but is never swapped, zoomed or flipped.
-
-| Action | Mac | Linux/Windows |
-|--------|-----|---------|
-| Focus pane in that direction (tree included) | `Cmd+Arrows` | `Alt+Arrows` (also `Ctrl+H/J/K/L`) |
-| Swap buffer with the neighbour; layout stays, focus follows | `Cmd+Shift+Arrows` | `Alt+Shift+Arrows` |
-| New terminal beside, split along the longer side | `Cmd+Return` | `Alt+Return` |
-| Zoom pane; same key restores the layout | `Cmd+F` | `Alt+F` |
-| Flip pane and neighbour: side by side / stacked | `Cmd+J` | `Alt+J` |
-| Move divider in the arrow's direction | `Ctrl+Arrows` | `Ctrl+Arrows` |
-
-Zoom opens the pane alone in a temporary tab page (the tab bar shows `1 2` while
-zoomed), so the real layout, sizes and running terminals are untouched.
-
-**Neovide only:** paste `Cmd+V` / `Alt+V`, zoom in `Cmd+=` / `Alt+=`, zoom out `Cmd+-` / `Alt+-`.
-Draggable split dividers brighten slightly when hovered. Keyboard buffer shortcuts land
-on terminals in Terminal-Normal mode; clicking a terminal returns it to input mode.
-Automatic startup restores the latest real project session, excluding config and temporary
-QA sessions; config-only buffers are also removed from restored project buffer lists.
-
-On macOS, [`neovide.toml`](./neovide.toml) uses a transparent, titleless native strip. The
-real traffic-light controls remain functional and the window stays movable/resizable;
-zero outer padding removes the extra inset around the Neovim grid. Double-clicking that
-strip performs macOS Zoom; use the green traffic light or `Ctrl+Cmd+F` for native
-fullscreen. Split borders use Neovide's native box renderer so junctions stay aligned.
-
-### Motions & windows (same on both)
-
-| Key | Action |
-|-----|--------|
-| `;` | Enter command mode (`:`) |
-| `jk` | Escape (insert mode) |
-| `Esc` | Clear search highlight |
-| `s` / `S` | Flash jump |
-| `Shift+H` / `Shift+L` | Previous / next buffer |
-| `Ctrl+H/J/K/L` | Focus the pane in that direction (any mode; same as `Alt+Arrows`) |
-| `Ctrl+Arrow` | Move the split divider in the arrow's direction (any mode) |
-| `Alt+Shift+J` / `Alt+Shift+K` | Move line down / up (normal, insert, visual) |
-| `<` / `>` (visual) | Indent, keep selection |
-
-### Leader — find & files
-
-| Key | Action |
-|-----|--------|
-| `<leader>ff` | Find files |
-| `<leader>fg` | Live grep |
-| `<leader>fb` | Buffers |
-| `<leader>fh` | Help tags |
-| `<leader>ft` | Todos (Telescope) |
-| `<leader>e` | Toggle file explorer |
-| `-` | Edit the parent directory with Oil |
-| `<leader>n` | New file |
-| `<leader>c` | Close buffer |
-| `<leader>q` | Quit window |
-
-Oil and nvim-tree have **Name** and **Recently added** sort controls. Oil also provides
-a **More…** menu for modification-time and file-size sorting.
-
-### Leader — terminal, LSP & diagnostics
-
-| Key | Action |
-|-----|--------|
-| `<leader>th` / `<leader>tv` | Terminal (bottom / side split); `Alt+Return` picks the side for you |
-| `Esc Esc` (in terminal) | Leave terminal input; a single `Esc` goes to the program |
-| `q` (in run pane) | Close terminal/run pane |
-| `gd` / `gD` | Go to definition / declaration |
-| `gr` / `gi` | References / implementation |
-| `K` | Hover docs |
-| `<leader>rn` | Rename symbol |
-| `<leader>a` | Code action |
-| `<leader>d` | Line diagnostics (float) |
-| `<leader>xx` / `<leader>xb` | Diagnostics list / buffer diagnostics (Trouble) |
-| `<leader>ll` | Run linter |
-
-### Project search and replace
-
-| Key | Action |
-|-----|--------|
-| `<leader>sr` | Project search and replace |
-
-### Config sync
-
-On startup the config pulls new commits from GitHub in the background, but only when
-this checkout has no local edits. Restart Neovim to apply a pulled update.
-
-| Key | Action |
-|-----|--------|
-| `<leader>gs` | Commit local config changes, pull, and push to GitHub |
-
-### Leader — sessions & todo
-
-| Key | Action |
-|-----|--------|
-| `<leader>Ss` | Restore session |
-| `<leader>Sl` | Restore last session |
-| `<leader>Sd` | Stop session recording |
-| `<leader>td` | Open todo list (floating `todo.md`) |
-| `<leader>tw` | Toggle the corner todo widget |
-| `<CR>` (in todo) | Toggle checkbox |
-| `o` (in todo) | New checklist item |
-| `q` (in todo) | Close todo |
-
-### Running Python
-
-Python buffers get buffer-local run mappings.
-
-| Key | Action |
-|-----|--------|
-| `F5` | Run the current file in a new terminal window |
-| `Cmd+R` | Run (Neovide on macOS only) |
-
-### OCaml / Jane Street workflow
-
-OCaml buffers use `ocp-indent` while typing, so top-level `let` stays at column zero.
-`:w` runs `ocamlformat`, using project `.ocamlformat` settings when present and the
-`janestreet` profile otherwise. `ocamllsp` supplies diagnostics, completion, navigation,
-and `.ml`/`.mli` switching.
-
-Typing `mod_board ` at the start of a line expands to a `module Board = struct`
-block and places the cursor inside it. Underscored names become PascalCase, so
-`mod_game_board ` creates `GameBoard`. Blink also offers the friendly-snippets
-OCaml templates for `module`, `struct`, `sig`, `match`, `type`, `let`, and `val`.
-Custom named snippets also include `rec_name `, `test_name `, `expect_name `,
-`record_name `, and `orerror_name `. Type any prefix ending in `_` to see its
-description in Blink. Press Enter to accept a completion and Tab or Shift-Tab to
-move through its fields. Use `<leader>os` to browse every snippet available in an
-OCaml buffer.
-
-| Key | Action |
-|-----|--------|
-| `<leader>of` | Format with ocamlformat |
-| `<leader>oi` | Switch between `.ml` and `.mli` |
-| `<leader>os` | Show available OCaml snippets |
-| `<leader>ob` | `dune build` |
-| `<leader>ot` | `dune runtest` |
-| `<leader>ow` | `dune build --watch` |
-| `<leader>op` | `dune promote` |
-
-Install the tools in each opam switch used for development:
-
-```sh
-opam install dune ocaml-lsp-server ocamlformat ocp-indent
-```
-
-For a Jane Street-formatted project, commit this `.ocamlformat` file:
-
-```text
-profile=janestreet
-```
-
-## Setup
-
-```sh
-# macOS
-git clone https://github.com/tms-h/nvim ~/.config/nvim
-
-# Windows (PowerShell)
-git clone https://github.com/tms-h/nvim $env:LOCALAPPDATA\nvim
-```
-
-Open `nvim` and lazy.nvim installs everything on first launch. Needs Neovim >= 0.12,
-`ripgrep`, `fd`, `make`, and a C compiler. Optionally works with
-[Neovide](https://neovide.dev) (custom cursor, padding, 120Hz configured).
-
-If an existing Windows checkout still uses the old `windows` branch, migrate it once:
-
-```powershell
-git fetch origin
-git switch main
-git pull --ff-only
-```
+Everything runs in a scratch world under `/tmp/nvnext` (see `tests/env.sh`).

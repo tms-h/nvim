@@ -1,17 +1,13 @@
-# Startup-only window chrome. Runtime rendering options live in lua/options.lua.
-# On macOS the transparent frame keeps the real traffic-light controls while
-# removing the opaque title strip and redundant centered file path.
-frame = "transparent"
-title-hidden = true
+# Neovide's startup-only settings (everything else is lua/gui.lua), shared by
+# Linux and Windows. Neovide reads this file when NEOVIDE_CONFIG points at it,
+# or when it is linked to ~/.config/neovide/config.toml. The Mac uses
+# neovide-macos.toml (the same plus window chrome Linux rejects).
 
-# A title-bar double-click is macOS Zoom, not fullscreen. Keep the native
-# Enter Full Screen action explicit so Ctrl+Cmd+F always enters a real Space.
-system-fullscreen-hotkey = "cmd+ctrl+f"
-
-# Render split lines as geometry instead of font glyphs. This keeps vertical,
-# horizontal, T-junction, and edge segments aligned at exactly the same width.
+# Dividers are drawn as lines, not font glyphs: every joint lines up, and the
+# width is set here in pixels. Light (│ ─) is the resting divider; heavy
+# (┃ ━) is the divider under the pointer (lua/dividers.lua).
 [box-drawing]
 mode = "native"
 
 [box-drawing.sizes]
-default = [2, 4]
+default = [1, 3]

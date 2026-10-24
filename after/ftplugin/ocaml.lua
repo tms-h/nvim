@@ -1,1 +1,1 @@
-require("configs.ocaml").setup(0)
+require("ocaml").setup(0)
