@@ -1,0 +1,13 @@
+[Unit]
+Description=Neovim config nightly pass: fix new friction notes, clean one area, merge if tests pass (headless claude)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.config/nvim/tools/nightly/run.sh
+Nice=19
+# claude gets a 90 min cap inside run.sh; this covers the tests and merge after it
+TimeoutStartSec=110min
+# claude, notify-send and jq come from mise and the session environment (same as threads-daily-drop.service)
+Environment=PATH=%h/.local/share/mise/installs/claude/latest:%h/.local/share/mise/shims:%h/.local/bin:/usr/local/bin:/usr/bin

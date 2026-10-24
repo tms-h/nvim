@@ -1,0 +1,9 @@
+# One cleanup area per night, in rotation (tools/nightly/run.sh picks the next line).
+lua/panes.lua lua/util.lua
+lua/theme.lua lua/gui.lua neovide.toml neovide-macos.toml
+lua/explorer.lua lua/finder.lua lua/projects.lua
+lua/tabs.lua lua/statusline.lua lua/focus.lua lua/dividers.lua
+lua/keys.lua lua/options.lua init.lua after/
+lua/lsp.lua lua/library.lua lua/ocaml.lua lsp/ lua/tools.lua lua/run.lua
+lua/cmdline.lua lua/usage.lua lua/words.lua lua/snippets.lua lua/sync.lua lua/plugins.lua
+tests/
