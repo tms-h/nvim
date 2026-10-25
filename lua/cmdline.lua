@@ -14,6 +14,10 @@
 -- them to the screen. Neovide draws each window on its own (multigrid), where
 -- nothing cuts them, so a long command or message ran off the right edge and
 -- never wrapped. Every ui2 window gets the real width here.
+--
+-- Suggestions: typing a `:` command opens the completion menu as you type
+-- (`:e ` lists files), the way the old config's popup did. Nothing is picked
+-- until Tab or an arrow; Up and Down still walk the command history.
 local M = {}
 
 local api = vim.api
@@ -58,7 +62,32 @@ local function title()
   return TITLES[state.firstc]
 end
 
+---Suggestions as you type (see the top of this file; :h cmdline-autocompletion).
+local function suggest()
+  vim.o.wildmode = "noselect:lastused,full"
+  vim.o.wildoptions = "pum,tagfile"
+  api.nvim_create_autocmd("CmdlineChanged", {
+    group = api.nvim_create_augroup("CmdlineSuggest", { clear = true }),
+    pattern = ":",
+    callback = function()
+      -- The menu opens under the line wherever the box is on screen, and the
+      -- box moves only at the next redraw: with keys typed in one burst
+      -- (":e ") the menu opened on the bottom line, outside the box.
+      if not M.active then
+        api.nvim__redraw { flush = true }
+      end
+      vim.fn.wildtrigger()
+    end,
+  })
+  for _, key in ipairs { "<Up>", "<Down>" } do
+    vim.keymap.set("c", key, function()
+      return vim.fn.wildmenumode() == 1 and "<C-e>" .. key or key
+    end, { expr = true, desc = "History, not the suggestion list" })
+  end
+end
+
 function M.setup()
+  suggest()
   local ok, ui = pcall(require, "vim._core.ui2")
   if not ok or not ui.cmd then
     return
@@ -108,7 +137,7 @@ function M.setup()
       api.nvim_win_set_config(win, cfg)
       M.active = true
     end
-    -- Tab completion: the menu opens under the typed line; the box grows
+    -- Completion: the menu opens under the typed line; the box grows
     -- around it, so the list sits inside the box (as in VS Code's palette)
     -- instead of across its border.
     local h = api.nvim_win_text_height(win, {}).all + M.menu_rows()

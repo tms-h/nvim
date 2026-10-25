@@ -1164,6 +1164,41 @@ check("Typed commands show in a centred box on the finder's row; long input wrap
   end
 end)
 
+check("Suggestions pop up as you type a command (:e shows files), inside the box, without changing the text", function()
+  local function inside(what)
+    local w
+    for _, x in ipairs(api.nvim_list_wins()) do
+      if vim.bo[api.nvim_win_get_buf(x)].filetype == "cmd" then
+        w = x
+      end
+    end
+    local cfg, pum = api.nvim_win_get_config(w), vim.fn.pum_getpos()
+    expect(
+      pum.row and pum.row > cfg.row and pum.row + pum.height <= cfg.row + 1 + cfg.height,
+      what .. ": the menu (row " .. tostring(pum.row) .. ") is outside the box (rows " .. cfg.row .. "+" .. cfg.height .. ")"
+    )
+  end
+  -- Typed in one burst, before the box has been drawn.
+  press(":e ", 300)
+  local info = vim.fn.cmdcomplete_info()
+  expect(info.pum_visible == 1, ":e showed no suggestions until Tab")
+  inside ":e "
+  expect(vim.tbl_contains(info.matches or {}, "a.ml"), "a.ml is not suggested: " .. vim.inspect(info.matches))
+  expect(vim.fn.getcmdline() == "e ", "typing changed the line to " .. vim.fn.getcmdline())
+  press("a.", 300)
+  info = vim.fn.cmdcomplete_info()
+  expect(info.pum_visible == 1 and not vim.tbl_contains(info.matches, "b.ml"), "the list did not narrow as you type")
+  inside ":e a."
+  press("<Tab>", 200)
+  expect(vim.fn.getcmdline():find "^e a%.ml", "Tab does not pick the first suggestion: " .. vim.fn.getcmdline())
+  press("<Esc>", 150)
+  -- Up still recalls the last command, as before.
+  press(":echo 'from history'<CR>", 200)
+  press(":<Up>", 200)
+  expect(vim.fn.getcmdline() == "echo 'from history'", "Up gave " .. vim.fn.getcmdline())
+  press("<Esc>", 150)
+end)
+
 -- ── Found by review (each was a real bug) ─────────────────────────────────
 
 check("dune keys open a new pane; the .ml file stays in the editor", function()
