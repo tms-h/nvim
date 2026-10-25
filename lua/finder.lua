@@ -78,6 +78,17 @@ M.commands = from_editor(function()
   MiniExtra.pickers.commands()
 end)
 
+---Every symbol in the project, from the language server (ocamllsp:
+---workspace symbols; needs a dune build). Typing narrows the list here.
+M.symbols = from_editor(function()
+  local has = #vim.lsp.get_clients { bufnr = 0, method = "workspace/symbol" } > 0
+  if not has then
+    vim.notify("No language server here to list project symbols", vim.log.levels.INFO)
+    return
+  end
+  MiniExtra.pickers.lsp { scope = "workspace_symbol", symbol_query = "" }
+end)
+
 ---`:Pick <args>` from the editor pane (the leader keys).
 M.pick = from_editor(function(args)
   vim.cmd("Pick " .. args)

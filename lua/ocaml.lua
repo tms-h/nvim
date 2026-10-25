@@ -3,6 +3,7 @@
 --   <leader>oi  switch .ml / .mli        <leader>of  format now
 --   <leader>ob  dune build               <leader>ot  dune runtest
 --   <leader>ow  dune build --watch       <leader>op  dune promote
+--   gt{motion} / gt on a selection / gtt   wrap in (fun () -> ...)
 local M = {}
 
 local api = vim.api
@@ -100,6 +101,24 @@ function M.switch(buf)
   end
 end
 
+---Operator (g@): wrap the text it covered in `(fun () -> ...)`, bcc32's
+---`gt`. Whole lines are wrapped from their first non-blank to their end.
+function M.wrap_thunk(kind)
+  local first = api.nvim_buf_get_mark(0, "[")
+  local last = api.nvim_buf_get_mark(0, "]")
+  local srow, scol, erow, ecol = first[1] - 1, first[2], last[1] - 1, last[2]
+  local end_line = api.nvim_buf_get_lines(0, erow, erow + 1, false)[1] or ""
+  if kind == "line" then
+    scol = #(api.nvim_buf_get_lines(0, srow, srow + 1, false)[1] or ""):match "^%s*"
+    ecol = #end_line
+  else
+    -- `]` marks the start of the last character; take all of it.
+    ecol = math.min(#end_line, ecol + #vim.fn.strcharpart(end_line:sub(ecol + 1), 0, 1))
+  end
+  api.nvim_buf_set_text(0, erow, ecol, erow, ecol, { ")" })
+  api.nvim_buf_set_text(0, srow, scol, srow, scol, { "(fun () -> " })
+end
+
 function M.setup(buf)
   buf = buf == 0 and api.nvim_get_current_buf() or buf
   vim.bo[buf].expandtab = true
@@ -133,6 +152,16 @@ function M.setup(buf)
   map("<leader>op", function()
     M.dune(buf, { "promote" })
   end, "dune promote")
+  -- gt: stock "next tab page", which here only reaches an Alt+F zoom.
+  local function thunk(motion)
+    return function()
+      vim.o.operatorfunc = "v:lua.require'ocaml'.wrap_thunk"
+      return "g@" .. motion
+    end
+  end
+  local wrap = { buffer = buf, expr = true, desc = "OCaml: wrap in (fun () -> ...)" }
+  vim.keymap.set({ "n", "x" }, "gt", thunk "", wrap)
+  vim.keymap.set("n", "gtt", thunk "_", vim.tbl_extend("force", wrap, { desc = "OCaml: wrap the line in (fun () -> ...)" }))
   -- Neovim's own OCaml plugin adds Space keys with no name, so the key hints
   -- (mini.clue) listed them blank. Same keys, now named.
   for _, mode in ipairs { "n", "x" } do

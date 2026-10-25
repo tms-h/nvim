@@ -13,7 +13,12 @@
 --   misses across files); <C-h/j/k/l> (pane focus; most used keys);
 --   <C-Arrows> (move the divider: brief); <C-PageUp/Down> (file tabs, as in
 --   Chrome); Visual < > (keep the selection); Space (leader only); K in OCaml
---   (the full type, lsp.lua).
+--   (the full type, lsp.lua); gt in OCaml (wrap in a thunk, bcc32's key;
+--   tab pages here only hold an Alt+F zoom, ocaml.lua).
+-- VS Code keys not taken, with what they would have stolen: Ctrl+T (symbol
+-- in workspace: Vim's tag-back) and Alt+T (new tab) -> Space f s; Ctrl+K
+-- Ctrl+Alt+S / Ctrl+K Ctrl+R (stage / revert change: Ctrl+K is focus up) ->
+-- Space g s / Space g r.
 local map = vim.keymap.set
 local super = require("util").chord
 local panes = require "panes"
@@ -100,6 +105,9 @@ end, { desc = "Find key" })
 map("n", "<leader>fd", function()
   require("finder").pick "diagnostic scope='current'"
 end, { desc = "Find diagnostic" })
+map("n", "<leader>fs", function()
+  require("finder").symbols()
+end, { desc = "Find symbol in project" })
 
 -- ── Edit ───────────────────────────────────────────────────────────────────
 map("n", "<Esc>", "<Cmd>nohlsearch<CR><Esc>", { desc = "Clear search highlight" })
@@ -183,6 +191,22 @@ end
 -- ── Run and git ────────────────────────────────────────────────────────────
 map(ALL, "<F5>", call "require('run').current_file()", { expr = true, desc = "Run this file" })
 map(ALL, "<C-S-g>", call "require('run').lazygit()", { expr = true, desc = "Lazygit" })
+-- Changes since the last stage (hunks.lua). Alt+F5 is VS Code's key on every
+-- system (Option+F5 on the Mac; Cmd+F5 is VoiceOver there).
+local function hunk_jump(dir)
+  return call(("require('panes').in_editor(function() require('hunks').go(%q) end)"):format(dir))
+end
+map(ALL, "<M-F5>", hunk_jump "next", { expr = true, desc = "Next change" })
+map(ALL, "<M-S-F5>", hunk_jump "prev", { expr = true, desc = "Previous change" })
+map({ "n", "x" }, "<leader>gs", function()
+  require("hunks").stage()
+end, { desc = "Stage this change" })
+map({ "n", "x" }, "<leader>gr", function()
+  require("hunks").reset()
+end, { desc = "Undo this change" })
+map({ "n", "x" }, "<leader>gp", function()
+  require("hunks").preview()
+end, { desc = "Show old lines (toggle)" })
 
 -- ── Stray keys do nothing ──────────────────────────────────────────────────
 -- An Alt chord with no action would otherwise run the plain letter (Alt+X

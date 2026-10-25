@@ -109,9 +109,20 @@ clue.setup {
     { mode = "n", keys = "<Leader>" },
     { mode = "x", keys = "<Leader>" },
   },
+  -- Every Space group has a name, in both modes (a nameless one showed as
+  -- "+2 choices"). Space o holds the OCaml keys in OCaml files and orgmode's
+  -- keys elsewhere (its agenda and capture are global); org's own subgroups
+  -- are named per buffer (below).
   clues = {
     { mode = "n", keys = "<Leader>f", desc = "+Find" },
-    { mode = "n", keys = "<Leader>o", desc = "+OCaml" },
+    { mode = { "n", "x" }, keys = "<Leader>g", desc = "+Git changes" },
+    {
+      mode = { "n", "x" },
+      keys = "<Leader>o",
+      desc = function()
+        return vim.bo.filetype:find "^ocaml" and "+OCaml" or "+Org"
+      end,
+    },
   },
   window = { delay = 400, config = { width = "auto", border = "rounded" } },
 }
@@ -142,6 +153,18 @@ vim.api.nvim_create_autocmd("FileType", {
 })
 
 -- ── Loaded when needed ─────────────────────────────────────────────────────
+-- orgmode's Space o subgroups, named in org files only.
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "org",
+  callback = function(args)
+    local groups = { b = "+Code blocks", d = "+Dates", i = "+Insert", l = "+Links", n = "+Notes", x = "+Clock" }
+    local clues = {}
+    for k, desc in pairs(groups) do
+      clues[#clues + 1] = { mode = { "n", "x" }, keys = "<Leader>o" .. k, desc = desc }
+    end
+    vim.b[args.buf].miniclue_config = { clues = clues }
+  end,
+})
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "org",
   once = true,

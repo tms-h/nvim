@@ -2009,6 +2009,154 @@ check("Alt/Cmd+O lists recent projects first, newest first, with their age; typi
   press("<Esc>", 200)
 end)
 
+-- ── Jane Street steals (compare.md 4-8) ──────────────────────────────────
+
+-- What mini.clue would show after Space, in this buffer and mode: keys with
+-- no name, and groups (a prefix of 2+ keys) with no name.
+local function unnamed_space_keys(mode)
+  local missing, keys, groups = {}, {}, {}
+  for _, src in ipairs { api.nvim_get_keymap(mode), api.nvim_buf_get_keymap(0, mode) } do
+    for _, m in ipairs(src) do
+      local k = vim.keycode(m.lhs)
+      if k:sub(1, 1) == " " and #k > 1 then
+        keys[k] = keys[k] or (m.desc or "")
+      end
+    end
+  end
+  local cfg = vim.list_extend(vim.deepcopy(MiniClue.config.clues), (vim.b.miniclue_config or {}).clues or {})
+  for _, c in ipairs(cfg) do
+    local modes = type(c.mode) == "table" and c.mode or { c.mode }
+    if c.keys and vim.tbl_contains(modes, mode) then
+      local d = type(c.desc) == "function" and c.desc() or c.desc
+      groups[vim.keycode(c.keys)] = d
+    end
+  end
+  for k, d in pairs(keys) do
+    if d == "" then
+      missing[#missing + 1] = mode .. " key" .. k:gsub(" ", "SPC ")
+    end
+    for i = 2, #k - 1 do
+      if not keys[k:sub(1, i)] and not groups[k:sub(1, i)] then
+        missing[#missing + 1] = mode .. " group" .. k:sub(1, i):gsub(" ", "SPC ")
+      end
+    end
+  end
+  return missing, groups
+end
+
+check("Every Space key and Space group has a name (OCaml, org, Lua; normal and selection)", function()
+  local missing = {}
+  for _, f in ipairs { "a.ml", "a.mli", "README.org", "hello.py", "a.ml" } do
+    vim.cmd("edit! " .. f)
+    wait(f == "README.org" and 600 or 150)
+    for _, mode in ipairs { "n", "x" } do
+      for _, m in ipairs((unnamed_space_keys(mode))) do
+        missing[#missing + 1] = f .. " " .. m
+      end
+    end
+  end
+  table.sort(missing)
+  expect(#missing == 0, "unnamed: " .. table.concat(vim.fn.uniq(missing), ", "))
+  vim.cmd "edit! a.ml"
+  local _, groups = unnamed_space_keys "n"
+  expect(groups[" o"] == "+OCaml", "Space o in OCaml is " .. tostring(groups[" o"]))
+  vim.cmd "edit! README.org"
+  _, groups = unnamed_space_keys "n"
+  expect(groups[" o"] == "+Org", "Space o in org is " .. tostring(groups[" o"]))
+  expect(groups[" g"] == "+Git changes", "no +Git changes group")
+end)
+
+check("Change keys: Alt+F5 jumps to the next change, Space g s stages it, Space g r undoes one", function()
+  local function git(...)
+    return vim.system(vim.list_extend({ "git", "-C", proj }, { ... })):wait()
+  end
+  local f = proj .. "/hunk.ml"
+  vim.fn.writefile({ "let a = 1", "let b = 2", "let c = 3", "let d = 4", "let e = 5", "let f = 6" }, f)
+  git("add", "hunk.ml")
+  git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "hunk base")
+  vim.cmd("edit! " .. f)
+  api.nvim_buf_set_lines(0, 1, 2, false, { "let b = 20" })
+  api.nvim_buf_set_lines(0, 4, 5, false, { "let e = 50" })
+  vim.cmd "silent write"
+  for _ = 1, 20 do
+    wait(150)
+    local d = MiniDiff.get_buf_data(0)
+    if d and #d.hunks == 2 then
+      break
+    end
+  end
+  vim.fn.cursor(1, 1)
+  press("<M-F5>", 200)
+  expect(vim.fn.line "." == 2, "Alt+F5 went to line " .. vim.fn.line ".")
+  press("i", 50)
+  press("<M-F5>", 200)
+  expect(vim.fn.line "." == 5, "Alt+F5 from Insert went to line " .. vim.fn.line ".")
+  press("<Esc>", 50)
+  press("<M-S-F5>", 200)
+  expect(vim.fn.line "." == 2, "Alt+Shift+F5 went to line " .. vim.fn.line ".")
+  press(" gs", 400)
+  local staged = git("diff", "--cached", "--", "hunk.ml").stdout or ""
+  expect(staged:find "let b = 20" and not staged:find "let e = 50", "staged: " .. staged)
+  vim.fn.cursor(5, 1)
+  press(" gr", 300)
+  expect(vim.fn.getline(5) == "let e = 5", "Space g r left line 5 as " .. vim.fn.getline(5))
+  press(" gp", 200)
+  expect(MiniDiff.get_buf_data(0).overlay == true, "Space g p showed no old lines")
+  press(" gp", 200)
+  vim.cmd "silent! write"
+  git("reset", "-q")
+  vim.cmd "bwipeout!"
+  vim.fn.delete(f)
+end)
+
+check("Space f s lists the project's symbols from ocamllsp", function()
+  vim.system({ "dune", "build", "@check" }, { cwd = proj }):wait(60000)
+  vim.cmd "edit! b.ml"
+  local buf = api.nvim_get_current_buf()
+  for _ = 1, 40 do
+    wait(250)
+    if #vim.lsp.get_clients { bufnr = buf } > 0 and vim.lsp.status() == "" then
+      break
+    end
+  end
+  wait(800)
+  vim.cmd "edit! a.ml"
+  wait(300)
+  press(" fs", 300)
+  local items = {}
+  for _ = 1, 30 do
+    wait(200)
+    items = picker_active() and MiniPick.get_picker_items() or {}
+    if #items > 0 then
+      break
+    end
+  end
+  local text = table.concat(vim.tbl_map(function(i)
+    return type(i) == "table" and (i.text or "") or tostring(i)
+  end, items), "\n")
+  press("<Esc>", 200)
+  expect(text:find "helper" and text:find "greeting", "symbols listed: " .. text:sub(1, 200))
+end)
+
+check("OCaml gt wraps a motion, a selection or a line in (fun () -> ...)", function()
+  vim.cmd "edit! c.ml"
+  api.nvim_buf_set_lines(0, 0, -1, false, { "let x = foo bar", "  let y = é 1", "let z = 3" })
+  vim.fn.cursor(1, 9)
+  press("gt$", 150)
+  expect(vim.fn.getline(1) == "let x = (fun () -> foo bar)", "gt$ made: " .. vim.fn.getline(1))
+  vim.fn.cursor(2, 11)
+  press("vgt", 150)
+  expect(vim.fn.getline(2) == "  let y = (fun () -> é) 1", "v gt made: " .. vim.fn.getline(2))
+  vim.fn.cursor(3, 1)
+  press("gtt", 150)
+  expect(vim.fn.getline(3) == "(fun () -> let z = 3)", "gtt made: " .. vim.fn.getline(3))
+  vim.cmd "edit! hello.py"
+  expect(vim.fn.maparg("gt", "n", false, true).buffer ~= 1, "gt is mapped outside OCaml")
+  vim.cmd "edit! c.ml"
+  vim.cmd "silent! undo 0"
+  vim.cmd "edit! c.ml"
+end)
+
 -- ── Runner ────────────────────────────────────────────────────────────────
 
 co = coroutine.create(function()
