@@ -1,10 +1,9 @@
 -- The file tree (nvim-tree), laid out like the old config's: a two-cell
 -- gutter, folder arrows and git marks before each name, and a clickable
--- "Sort" row on top (Name gn, Added ga; gs picks any sort, also Edited). Its first line is the open
--- folder's name. Files open in the editor pane used last, never in a
--- terminal and never with a "which window?" prompt. Only the keys below do
--- anything; any other key is plain Vim on a read-only list (at most one
--- short line).
+-- Sort row on top (M.winbar). Its first line is the open folder's name.
+-- Files open in the editor pane used last, never in a terminal and never
+-- with a "which window?" prompt. Only the keys below do anything; any other
+-- key is plain Vim on a read-only list (at most one short line).
 local M = {}
 
 local api = vim.api
@@ -79,8 +78,9 @@ local function button(id, label, active)
 end
 
 ---The tree's winbar, as in the old config: " Sort  Name (gn)  Added (ga)",
----29 cells so it fits the 30-cell tree. Sorted by modification time (gs),
----the second button reads "Edited (gs)". Clicking Added or Edited sorts.
+---at most 29 cells so it fits the 30-cell tree. Sorted by modification time
+---(gs), the second button reads "Edited (gs)". Clicking Name or Added sorts
+---by it; clicking Edited opens the gs list.
 function M.winbar()
   local edited = M.sort == "modified"
   return table.concat {

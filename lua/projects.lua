@@ -94,11 +94,20 @@ end
 
 -- ── Sessions ──────────────────────────────────────────────────────────────
 
+-- When a file last changed, in seconds (0 when it is gone).
+local function mtime(file)
+  local stat = uv.fs_stat(file)
+  return stat and stat.mtime.sec or 0
+end
+
 ---Session files, newest first.
 function M.sessions()
-  local files = vim.fn.glob(session_dir .. "/*.vim", false, true)
+  local files, time = vim.fn.glob(session_dir .. "/*.vim", false, true), {}
+  for _, file in ipairs(files) do
+    time[file] = mtime(file)
+  end
   table.sort(files, function(a, b)
-    return (uv.fs_stat(a) or { mtime = { sec = 0 } }).mtime.sec > (uv.fs_stat(b) or { mtime = { sec = 0 } }).mtime.sec
+    return time[a] > time[b]
   end)
   return files
 end
@@ -276,7 +285,7 @@ function M.pick_folder()
     -- keeps no session.
     local listed = dir and (is_project(dir) or dir == config) and not vim.startswith(dir, scratch .. "/")
     if listed and vim.fn.isdirectory(dir) == 1 then
-      add(dir, ago((uv.fs_stat(file) or { mtime = { sec = 0 } }).mtime.sec))
+      add(dir, ago(mtime(file)))
     end
   end
   local recent = #items
@@ -347,10 +356,9 @@ function M.setup()
     nested = true,
     callback = function()
       if start_dir then
-        local dir = start_dir
         vim.cmd "silent! %argdelete"
         local netrw_buf = api.nvim_get_current_buf()
-        M.open_folder(dir, { startup = true })
+        M.open_folder(start_dir, { startup = true })
         if api.nvim_buf_is_valid(netrw_buf) and api.nvim_buf_get_name(netrw_buf) ~= "" then
           pcall(api.nvim_buf_delete, netrw_buf, { force = true })
         end
