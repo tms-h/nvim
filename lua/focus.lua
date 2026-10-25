@@ -16,7 +16,9 @@ local ns_bright_lit = api.nvim_create_namespace "focus_bright_lit"
 -- Other panes must stay easy to read, so dimming alone cannot be the cue:
 --   "title"    (default) others pulled only 20% toward the background, and
 --              each pane has a title row (its file name; the tree's "Sort"
---              row) in the accent colour where focus is, muted elsewhere
+--              row) in the accent colour where focus is, muted elsewhere;
+--              the focused row is a soft accent-tinted bar, so focus can be
+--              found at a glance after a break (Thomas's pick, 2026-10-25)
 --   "dim"      the look until 2026-10-24: others pulled 45%, no other cue
 --              (the unfocused tree got hard to read)
 --   "light"    others pulled 20%, no other cue (focus too hard to tell)
@@ -106,8 +108,9 @@ function M.build()
     api.nvim_set_hl(ns_lit, name, lit)
     api.nvim_set_hl(ns_bright_lit, name, lit)
   end
-  -- Titles: the focused pane's in the accent, the others muted.
-  api.nvim_set_hl(0, "FocusTitle", { fg = accent, bold = true })
+  -- Titles: the focused pane's in the accent on a soft accent tint (a block
+  -- of colour, like Chrome's active tab), the others muted.
+  api.nvim_set_hl(0, "FocusTitle", { fg = accent, bg = mix(base, accent, 0.28), bold = true })
   api.nvim_set_hl(0, "FocusTitleNC", { link = "StatusLineNC" })
   api.nvim_set_hl(ns, "FocusTitle", { link = "FocusTitleNC" })
   api.nvim_set_hl(ns_lit, "FocusTitle", { link = "FocusTitleNC" })
@@ -120,7 +123,8 @@ function M.title()
   local buf = api.nvim_win_get_buf(win)
   local name = vim.bo[buf].buftype == "terminal" and "terminal"
     or vim.fn.fnamemodify(api.nvim_buf_get_name(buf), ":t")
-  return "%#FocusTitle# " .. (name ~= "" and name or "[No Name]")
+  -- "%=" carries the title's tint to the end of the row.
+  return "%#FocusTitle# " .. (name ~= "" and name or "[No Name]") .. " %="
 end
 local TITLE = "%!v:lua.require'focus'.title()"
 

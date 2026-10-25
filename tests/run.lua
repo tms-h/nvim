@@ -475,6 +475,10 @@ check("unfocused panes stay easy to read; the focused one has an accent title", 
   expect(vim.wo[tree].winbar ~= "" and vim.fn.luaeval "require('explorer').winbar()":find "FocusTitle", "the tree's title is not a focus title")
   expect(title_fg(left) == accent, "focused title is not the accent")
   expect(title_fg(right) ~= accent and title_fg(tree) ~= accent, "an unfocused title is in the accent")
+  -- The focused title is a tinted bar to the row's end, found at a glance.
+  local title_bg = api.nvim_get_hl(api.nvim_get_hl_ns { winid = left }, { name = "FocusTitle", link = false }).bg
+  expect(title_bg and title_bg ~= bg, "focused title row has no tint")
+  expect(vim.fn.luaeval "require('focus').title()":find "%%=$", "focused title tint stops at the name")
 end)
 
 check("markup never hides words: markdown and org show every character", function()
