@@ -356,10 +356,9 @@ function M.setup()
     nested = true,
     callback = function()
       if start_dir then
-        local dir = start_dir
         vim.cmd "silent! %argdelete"
         local netrw_buf = api.nvim_get_current_buf()
-        M.open_folder(dir, { startup = true })
+        M.open_folder(start_dir, { startup = true })
         if api.nvim_buf_is_valid(netrw_buf) and api.nvim_buf_get_name(netrw_buf) ~= "" then
           pcall(api.nvim_buf_delete, netrw_buf, { force = true })
         end
