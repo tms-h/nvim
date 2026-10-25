@@ -1478,6 +1478,7 @@ local function other_nvim(cwd, args, lua)
 end
 
 check("`nvim folder` opens that folder as this window's project", function()
+  vim.fn.mkdir(proj .. "/sub-a", "p")
   local dir = vim.uv.fs_realpath(proj .. "/sub-a")
   local got = other_nvim(proj, { dir }, "tostring(require('projects').current()) .. ' ' .. vim.fn.getcwd()")
   expect(got == dir .. " " .. dir, "got: " .. got)
@@ -1485,6 +1486,7 @@ end)
 
 check("A bare start in a project's subfolder opens the project's root", function()
   -- proj has a dune-project; sub-a is a folder inside it.
+  vim.fn.mkdir(proj .. "/sub-a", "p")
   local got = other_nvim(proj .. "/sub-a", {}, "tostring(require('projects').current())")
   expect(got == vim.uv.fs_realpath(proj), "got: " .. got)
 end)
