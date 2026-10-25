@@ -680,6 +680,45 @@ check("Ctrl+` toggles a full-width terminal panel at the bottom, from every mode
   expect(api.nvim_get_current_win() == shown, "Ctrl+` with the panel shown but not focused did not focus it")
 end)
 
+check("Alt+B with the panel shown or the editor split top/bottom: tree full size, panel full width", function()
+  local function tree()
+    return win_of(function(_, b)
+      return vim.bo[b].filetype == "NvimTree"
+    end)
+  end
+  press(super "b", 400)
+  if not tree() then
+    press(super "b", 400)
+  end
+  local width = api.nvim_win_get_width(tree())
+  press("<C-`>", 400)
+  local p = api.nvim_get_current_win()
+  press(super "b", 300)
+  expect(not tree(), "Alt+B did not hide the tree")
+  press(super "b", 400)
+  local t = tree()
+  expect(t and api.nvim_win_get_width(t) == width, "tree came back " .. (t and api.nvim_win_get_width(t) or 0) .. " wide, not " .. width)
+  expect(t and api.nvim_get_current_win() == t, "focus not in the tree")
+  local panel = win_of(function(w)
+    return is_term(w)
+  end)
+  expect(panel and api.nvim_win_get_width(panel) == vim.o.columns, "panel not full width after the tree came back")
+  expect(
+    t and panel and api.nvim_win_get_position(t)[1] + api.nvim_win_get_height(t) < api.nvim_win_get_position(panel)[1],
+    "the tree runs down past the panel"
+  )
+  api.nvim_set_current_win(panel)
+  press("<C-`>", 300)
+  expect(p ~= nil, "setup")
+  -- Two editors along the tree's edge, one above the other.
+  require("panes").editor()
+  vim.cmd "split b.ml"
+  press(super "b", 300)
+  press(super "b", 400)
+  t = tree()
+  expect(t and api.nvim_win_get_width(t) == width, "with a top/bottom split the tree came back " .. (t and api.nvim_win_get_width(t) or 0) .. " wide")
+end)
+
 check("Alt+F zooms a pane and brings the layout back", function()
   vim.cmd "vsplit b.ml"
   local layout = vim.fn.winlayout()
@@ -831,6 +870,14 @@ check("OCaml: <leader>oi switches .ml/.mli; ocp-indent indents; format on save",
   vim.cmd "write"
   wait(300)
   expect(vim.fn.getline(1) == "let f x = x + 1", "formatted to '" .. vim.fn.getline(1) .. "'")
+end)
+
+check("OCaml: :w re-indents (Jane Street) where .ocamlformat says disable", function()
+  vim.cmd "edit! noformat/indent_me.ml"
+  vim.cmd "write"
+  wait(300)
+  expect(vim.fn.getline(2) == "  item * 2) [ 1; 2; 3 ]", "line 2 is '" .. vim.fn.getline(2) .. "'")
+  expect(vim.fn.getline(1) == "let prices = List.map (fun item ->", "line 1 reflowed: " .. vim.fn.getline(1))
 end)
 
 check("gd goes to a definition; K shows the type", function()
@@ -1053,6 +1100,14 @@ check("A message takes one line: three lines show as one with [+2]", function()
       expect(api.nvim_win_get_config(w).hide, ft .. " window showed up")
     end
   end
+end)
+
+check("Sizing panes (Neovide zoom, tree open) leaves no empty rows under the status line", function()
+  vim.cmd "only"
+  local win = api.nvim_get_current_win()
+  -- The zoom rescale asks a pane that fills the screen for a row less.
+  require("panes").restore { [win] = { api.nvim_win_get_width(win), api.nvim_win_get_height(win) - 1 } }
+  expect(vim.o.cmdheight == 0, "cmdheight is " .. vim.o.cmdheight .. " after sizing the pane")
 end)
 
 check("Typed commands show in a centred box on the finder's row; long input wraps, all of it in view", function()
@@ -2088,6 +2143,9 @@ check("Change keys: Alt+F5 jumps to the next change, Space g s stages it, Space 
   vim.fn.cursor(1, 1)
   press("<M-F5>", 200)
   expect(vim.fn.line "." == 2, "Alt+F5 went to line " .. vim.fn.line ".")
+  -- Each jump says which change it is and what it did, in the bottom line.
+  local said = table.concat(api.nvim_buf_get_lines(require("vim._core.ui2").bufs.cmd, 0, -1, false), " ")
+  expect(said:find "Change 1 of 2: 1 line changed", "the bottom line said '" .. said .. "'")
   press("i", 50)
   press("<M-F5>", 200)
   expect(vim.fn.line "." == 5, "Alt+F5 from Insert went to line " .. vim.fn.line ".")

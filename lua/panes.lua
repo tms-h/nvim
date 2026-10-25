@@ -190,6 +190,27 @@ local function panel_win()
   end
 end
 
+---Run `fn` with the panel out of the layout, then show it again, full width
+---at the height it had, with the same shell. A pane that opens down the
+---whole left edge (the tree) would otherwise run past the panel and cut it
+---short.
+function M.without_panel(fn)
+  local win = panel_win()
+  if not win or #panes() < 2 then
+    return fn()
+  end
+  local height = api.nvim_win_get_height(win)
+  api.nvim_win_close(win, false)
+  fn()
+  -- Focus stays where `fn` put it.
+  local here = api.nvim_get_current_win()
+  vim.cmd(("botright %dsplit"):format(height))
+  api.nvim_win_set_buf(0, panel.buf)
+  vim.w.panel = true
+  terminal_window()
+  api.nvim_set_current_win(here)
+end
+
 ---Ctrl+`: show the panel and focus it; focused already, hide it.
 ---Shown but not focused, focus it (as VS Code does).
 function M.toggle_panel()
@@ -357,6 +378,10 @@ end
 
 ---Put panes back to their snapshot sizes (closed ones are skipped).
 function M.restore(sizes)
+  -- Sizing a pane that fills its column hands the rows it gives up to the
+  -- command line ('cmdheight'): a Neovide zoom left empty rows under the
+  -- status line until the next `:`. Sizing panes never changes it.
+  local cmdheight = vim.o.cmdheight
   -- Twice: sizing one pane can move a neighbour already sized.
   for _ = 1, 2 do
     for win, size in pairs(sizes) do
@@ -365,6 +390,9 @@ function M.restore(sizes)
         api.nvim_win_set_height(win, size[2])
       end
     end
+  end
+  if vim.o.cmdheight ~= cmdheight then
+    vim.o.cmdheight = cmdheight
   end
 end
 

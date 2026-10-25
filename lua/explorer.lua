@@ -248,26 +248,28 @@ function M.setup()
   })
 end
 
--- Show or hide the tree with `change`. Only the pane beside the tree gives
--- (or gets back) its columns; every other pane keeps its size. Putting every
--- pane back, the one beside included, would squeeze the tree to one cell.
+-- Show or hide the tree with `change`. Only the panes along the tree's edge
+-- give (or get back) its columns; every other pane keeps its size. Putting
+-- every pane back, those along the edge included, would squeeze the tree to
+-- one cell. Two of them touch the edge when the editor is split top and
+-- bottom, or when the bottom panel shows.
 local function beside_tree(change)
   local panes = require "panes"
   local sizes = panes.snapshot()
   change()
-  local neighbour
+  -- The column just right of the tree (the tree sits at the left edge).
+  local edge = 0
   for _, win in ipairs(api.nvim_tabpage_list_wins(0)) do
-    if
-      sizes[win]
-      and api.nvim_win_is_valid(win)
-      and api.nvim_win_get_position(win)[2] <= 31
-      and not panes.is_tree(win)
-    then
-      neighbour = win
+    if panes.is_tree(win) then
+      edge = api.nvim_win_get_width(win) + 1
     end
   end
   for win in pairs(sizes) do
-    if win == neighbour or not api.nvim_win_is_valid(win) or panes.is_tree(win) then
+    if
+      not api.nvim_win_is_valid(win)
+      or panes.is_tree(win)
+      or api.nvim_win_get_position(win)[2] == edge
+    then
       sizes[win] = nil
     end
   end
@@ -277,11 +279,14 @@ end
 ---Alt/Cmd+B: show the tree and focus it, or hide it.
 function M.toggle()
   local tree = require("nvim-tree.api").tree
+  local panes = require "panes"
   beside_tree(function()
     if tree.is_visible() then
       tree.close()
     else
-      tree.open { find_file = true }
+      panes.without_panel(function()
+        tree.open { find_file = true }
+      end)
     end
   end)
 end
@@ -292,9 +297,13 @@ function M.show()
   if tree.is_visible() then
     return
   end
-  local win = api.nvim_get_current_win()
-  beside_tree(tree.open)
-  if api.nvim_win_is_valid(win) then
+  local win, buf = api.nvim_get_current_win(), api.nvim_get_current_buf()
+  beside_tree(function()
+    require("panes").without_panel(tree.open)
+  end)
+  -- The panel comes back in a new window: find it by its buffer.
+  win = api.nvim_win_is_valid(win) and win or vim.fn.win_findbuf(buf)[1]
+  if win then
     api.nvim_set_current_win(win)
   end
 end

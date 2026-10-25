@@ -21,21 +21,30 @@ local STOCK_KEYS = {
   ["<Plug>OCamlPrintType"] = "type from old .annot files (K is better)",
 }
 
----Indent of one line as ocp-indent computes it from the whole buffer.
-function M.indent(lnum)
+---ocp-indent with `args` on `input`, run from the folder `dir`: the
+---project's .ocp-indent if it has one, else Jane Street style (the same rule
+---as ocamlformat's --profile=janestreet), so no machine-wide file is needed.
+function M.ocp_indent(dir, args, input)
   local ocp = tools.find "ocp-indent"
   if not ocp then
+    return nil
+  end
+  dir = dir ~= "" and vim.fn.isdirectory(dir) == 1 and dir or nil
+  local cmd = { ocp }
+  if not vim.fs.find(".ocp-indent", { path = dir or vim.fn.getcwd(), upward = true })[1] then
+    cmd[2] = "--config=JaneStreet"
+  end
+  return vim.system(vim.list_extend(cmd, args), { stdin = input, cwd = dir, text = true }):wait(2000)
+end
+
+---Indent of one line as ocp-indent computes it from the whole buffer.
+function M.indent(lnum)
+  local input = table.concat(api.nvim_buf_get_lines(0, 0, -1, false), "\n") .. "\n"
+  local dir = vim.fs.dirname(api.nvim_buf_get_name(0))
+  local result = M.ocp_indent(dir, { "--numeric", "--indent-empty", "--lines", lnum .. "-" .. lnum }, input)
+  if not result then
     return -1
   end
-  local input = table.concat(api.nvim_buf_get_lines(0, 0, -1, false), "\n") .. "\n"
-  -- Run from the file's folder, so ocp-indent finds the project's .ocp-indent.
-  local dir = vim.fs.dirname(api.nvim_buf_get_name(0))
-  local result = vim
-    .system(
-      { ocp, "--numeric", "--indent-empty", "--lines", lnum .. "-" .. lnum },
-      { stdin = input, cwd = dir ~= "" and vim.fn.isdirectory(dir) == 1 and dir or nil }
-    )
-    :wait(2000)
   return result.code == 0 and (tonumber(vim.trim(result.stdout or "")) or -1) or -1
 end
 

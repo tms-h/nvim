@@ -37,7 +37,7 @@ end
 
 -- ── Format on save ────────────────────────────────────────────────────────
 -- OCaml: ocamlformat with the project's .ocamlformat, else the Jane Street
--- profile. Everything else: the language server's own formatter (ruff,
+-- profile; where the project turns ocamlformat off, ocp-indent re-indents. Everything else: the language server's own formatter (ruff,
 -- rust-analyzer, lua_ls), if it has one.
 
 local function apply_lines(buf, new)
@@ -55,13 +55,42 @@ local function apply_lines(buf, new)
   end
 end
 
-function M.format_ocaml(buf)
-  local ocamlformat = require("tools").find "ocamlformat"
-  if not ocamlformat then
+---The project's .ocamlformat turns ocamlformat off (`disable = true`).
+local function ocamlformat_disabled(dir)
+  local conf = vim.fs.find(".ocamlformat", { path = dir, upward = true })[1]
+  if not conf then
     return false
   end
+  for line in io.lines(conf) do
+    if line:match "^%s*disable%s*=%s*true%s*$" then
+      return true
+    end
+  end
+  return false
+end
+
+---Re-indent the whole buffer with ocp-indent: leading spaces only, so a
+---project that turns ocamlformat off still gets Jane Street indentation.
+local function indent_ocaml(buf, dir)
+  local input = table.concat(api.nvim_buf_get_lines(buf, 0, -1, false), "\n") .. "\n"
+  local result = require("ocaml").ocp_indent(dir, {}, input)
+  if not result then
+    return false
+  end
+  if result.code ~= 0 then
+    return true
+  end
+  apply_lines(buf, vim.split(result.stdout:gsub("\n$", ""), "\n", { plain = true }))
+  return true
+end
+
+function M.format_ocaml(buf)
+  local ocamlformat = require("tools").find "ocamlformat"
   local file = api.nvim_buf_get_name(buf)
   local dir = vim.fs.dirname(file)
+  if not ocamlformat or ocamlformat_disabled(dir) then
+    return indent_ocaml(buf, dir)
+  end
   local args = { ocamlformat, "--name=" .. file, "--enable-outside-detected-project", "-" }
   if not vim.fs.find(".ocamlformat", { path = dir, upward = true })[1] then
     table.insert(args, 2, "--profile=janestreet")

@@ -48,6 +48,9 @@ EOF
 printf 'print("hello from python")\n' >"$PROJ/hello.py"
 printf 'let y = 2\n' >"$PROJ/c.ml"
 printf 'let x = 1\n' >"$PROJ/fmt.ml"
+mkdir -p "$PROJ/noformat"
+printf 'disable = true\n' >"$PROJ/noformat/.ocamlformat"
+printf 'let prices = List.map (fun item ->\n    item * 2) [ 1; 2; 3 ]\n' >"$PROJ/noformat/indent_me.ml"
 (cd "$PROJ" && git init -q . 2>/dev/null)
 
 tmux -L "$SOCK" kill-server 2>/dev/null
