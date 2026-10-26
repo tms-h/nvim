@@ -105,10 +105,29 @@ function M.format_ocaml(buf)
   return true
 end
 
--- Formatted on every save: OCaml (ocamlformat) and Rust (rust-analyzer,
--- which runs rustfmt). Every other language only on :Format, so a save
--- never restyles a Lua, Python or shell file.
-M.FORMAT_ON_SAVE = { ocaml = true, ocaml_interface = true, rust = true }
+---Prettier for Markdown: lines up table pipes and tidies lists. Prose
+---wrapping is left as typed (`--prose-wrap preserve`).
+local function format_markdown(buf)
+  local prettier = require("tools").find "prettier"
+  if not prettier then
+    return
+  end
+  local file = api.nvim_buf_get_name(buf)
+  local args = { prettier, "--stdin-filepath", file ~= "" and file or "untitled.md", "--prose-wrap", "preserve" }
+  local input = table.concat(api.nvim_buf_get_lines(buf, 0, -1, false), "\n") .. "\n"
+  local result = vim.system(args, { stdin = input, text = true }):wait(5000)
+  if result.code ~= 0 then
+    -- Broken Markdown: leave the file as typed.
+    return
+  end
+  apply_lines(buf, vim.split(result.stdout:gsub("\n$", ""), "\n", { plain = true }))
+end
+
+-- Formatted on every save: OCaml (ocamlformat), Rust (rust-analyzer, which
+-- runs rustfmt) and Markdown (prettier, so tables line up). Every other
+-- language only on :Format, so a save never restyles a Lua, Python or shell
+-- file.
+M.FORMAT_ON_SAVE = { ocaml = true, ocaml_interface = true, rust = true, markdown = true }
 
 function M.format(buf)
   buf = (buf == nil or buf == 0) and api.nvim_get_current_buf() or buf
@@ -118,6 +137,10 @@ function M.format(buf)
   local ft = vim.bo[buf].filetype
   if ft == "ocaml" or ft == "ocaml_interface" then
     M.format_ocaml(buf)
+    return
+  end
+  if ft == "markdown" then
+    format_markdown(buf)
     return
   end
   local clients = vim.lsp.get_clients { bufnr = buf, method = "textDocument/formatting" }
