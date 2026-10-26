@@ -7,8 +7,8 @@ local M = {}
 
 local api = vim.api
 local ns = api.nvim_create_namespace "focus_dim"
--- Divider hover in the "colour" style (dividers.lua) lights a window's
--- separator through its namespace: dimmed + lit, or full strength + lit.
+-- Divider hover (dividers.lua) colours a window's separator by giving it a
+-- lit namespace: dimmed + lit, or full strength + lit.
 local ns_lit = api.nvim_create_namespace "focus_dim_lit"
 local ns_bright_lit = api.nvim_create_namespace "focus_bright_lit"
 
@@ -86,7 +86,8 @@ function M.build()
   end
   -- The focused pane: full strength plus its cue. A namespace falls back to
   -- the global groups for anything it does not define.
-  local accent = api.nvim_get_hl(0, { name = "WinSeparatorHover", link = false }).fg or 0xffffff
+  local hover = api.nvim_get_hl(0, { name = "WinSeparatorHover", link = false })
+  local accent = hover.fg or 0xffffff
   local cue_groups = {}
   if cue() == "divider" then
     local line = api.nvim_get_hl(0, { name = "WinSeparator", link = false }).fg or base
@@ -103,10 +104,9 @@ function M.build()
   end
   -- With no cue colours the focused pane uses the global groups (namespace 0).
   focus_ns = next(cue_groups) and ns_focus or 0
-  local lit = api.nvim_get_hl(0, { name = "WinSeparatorHover", link = false })
   for name in pairs(SEPARATORS) do
-    api.nvim_set_hl(ns_lit, name, lit)
-    api.nvim_set_hl(ns_bright_lit, name, lit)
+    api.nvim_set_hl(ns_lit, name, hover)
+    api.nvim_set_hl(ns_bright_lit, name, hover)
   end
   -- Titles: the focused pane's in the accent on a soft accent tint (a block
   -- of colour, like Chrome's active tab), the others muted.
@@ -121,8 +121,7 @@ end
 function M.title()
   local win = vim.g.statusline_winid or api.nvim_get_current_win()
   local buf = api.nvim_win_get_buf(win)
-  local name = vim.bo[buf].buftype == "terminal" and "terminal"
-    or vim.fn.fnamemodify(api.nvim_buf_get_name(buf), ":t")
+  local name = vim.bo[buf].buftype == "terminal" and "terminal" or vim.fn.fnamemodify(api.nvim_buf_get_name(buf), ":t")
   -- "%=" carries the title's tint to the end of the row.
   return "%#FocusTitle# " .. (name ~= "" and name or "[No Name]") .. " %="
 end

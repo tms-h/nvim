@@ -145,14 +145,14 @@ function M.render()
     right[#right + 1] = diag
   end
   -- Lines added / changed / removed against git, like VS Code's gutter.
-  local diff = vim.b.minidiff_summary
-  if diff and ((diff.add or 0) + (diff.change or 0) + (diff.delete or 0)) > 0 then
-    local d = {}
-    for _, item in ipairs { { "add", "+", "Added" }, { "change", "~", "Changed" }, { "delete", "-", "Removed" } } do
-      if (diff[item[1]] or 0) > 0 then
-        d[#d + 1] = "%#" .. item[3] .. "#" .. item[2] .. diff[item[1]] .. "%*"
-      end
+  local diff = vim.b.minidiff_summary or {}
+  local d = {}
+  for _, item in ipairs { { "add", "+", "Added" }, { "change", "~", "Changed" }, { "delete", "-", "Removed" } } do
+    if (diff[item[1]] or 0) > 0 then
+      d[#d + 1] = "%#" .. item[3] .. "#" .. item[2] .. diff[item[1]] .. "%*"
     end
+  end
+  if #d > 0 then
     right[#right + 1] = table.concat(d, " ")
   end
   if branch ~= "" then

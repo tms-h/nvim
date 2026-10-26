@@ -43,6 +43,7 @@ end
 
 ---Move `buf` to position `index` (reopen in place).
 function M.place(buf, index)
+  -- M.list() hands back `order` itself, so editing it moves the tab.
   local list = M.list()
   for i, b in ipairs(list) do
     if b == buf then
@@ -57,12 +58,11 @@ end
 ---The tab `step` places from the current one (Ctrl+Tab is +1), wrapping.
 function M.next(step)
   local list = M.list()
-  local i = M.index(api.nvim_get_current_buf())
   if #list == 0 then
     return
   end
-  local target = list[((i or 1) - 1 + step) % #list + 1]
-  api.nvim_win_set_buf(0, target)
+  local i = M.index(api.nvim_get_current_buf()) or 1
+  api.nvim_win_set_buf(0, list[(i - 1 + step) % #list + 1])
 end
 
 ---The n-th tab (-1 = the last).
@@ -161,8 +161,13 @@ local function tab(buf, name, step, current)
   local kind = current and "Current" or visible and "Visible" or "Hidden"
   local hl = "Tabs" .. (modified and "Modified" or "") .. kind
   local err = errors(buf)
-  local close = (current or not step.no_close)
-  local text = " " .. icon .. (name ~= "" and " " .. name or "") .. (err and " ●" .. err or "") .. (close and " ×" or "") .. " "
+  local close = current or not step.no_close
+  local text = " "
+    .. icon
+    .. (name ~= "" and " " .. name or "")
+    .. (err and " ●" .. err or "")
+    .. (close and " ×" or "")
+    .. " "
   local s = { "%" .. buf .. "@v:lua.Tabs_click@%#" .. hl .. "# " }
   if icon ~= "" then
     s[#s + 1] = "%#" .. (icon_hl or hl) .. "#" .. icon .. "%#" .. hl .. "#"
@@ -198,11 +203,15 @@ function M.render()
   local right = pages > 1 and ("%#TabsTabpage# " .. vim.fn.tabpagenr() .. "/" .. pages .. " ") or ""
   local room = vim.o.columns - (pages > 1 and #tostring(pages) * 2 + 3 or 0)
   local tabs, total
+  local ci = 1 -- the current tab's place (the first if it has none)
   for i, step in ipairs(STEPS) do
     tabs, total = {}, 0
-    for _, buf in ipairs(list) do
+    for j, buf in ipairs(list) do
       local t = tab(buf, tail[buf], step, buf == cur)
-      tabs[#tabs + 1], total = t, total + t.width
+      tabs[j], total = t, total + t.width
+      if buf == cur then
+        ci = j
+      end
     end
     M.step = i
     if total <= room then
@@ -212,12 +221,6 @@ function M.render()
   -- Past the last step: a window of tabs around the current one.
   local first, last = 1, #tabs
   if total > room then
-    local ci = 1
-    for i, buf in ipairs(list) do
-      if buf == cur then
-        ci = i
-      end
-    end
     first, last = ci, ci
     local used = tabs[ci] and tabs[ci].width or 0
     local grew = true
