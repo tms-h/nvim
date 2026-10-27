@@ -35,9 +35,9 @@ o.relativenumber = true
 o.signcolumn = "yes"
 o.cursorline = true
 o.scrolloff = 8
+o.sidescrolloff = 8
 -- :s does not preview while you type (the old config's choice).
 o.inccommand = ""
-o.sidescrolloff = 8
 o.wrap = true
 o.linebreak = true
 o.breakindent = true
