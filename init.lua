@@ -1,22 +1,25 @@
 -- One file per concern; this file only decides the order.
 --
 --   usage       counts mapped keys; :UsageReport and :FrictionNote
---   options     plain Vim options (tools puts language tools on PATH)
+--   options     plain Vim options; also loads tools (language tools on PATH)
+--               and cmdline (typed commands in a centred box)
 --   gui         Neovide: font, motion, see-through surface
---   theme       every colour, built from the desktop palette; :Look
---   plugins     the few plugins and their setup (explorer, statusline)
+--   theme       every colour, built from the desktop palette (surface); :Look
+--   plugins     the few plugins and their setup; loads explorer, statusline,
+--               tabs (the tab bar), snippets and finder (mini.pick waits for
+--               first use)
 --   keys        every global key (Alt on Linux/Windows, Cmd on macOS; util)
 --   panes       what the pane keys do: focus, swap, zoom, flip, resize, close
 --   words       double-click marks the word's other occurrences
---   focus       the focused pane at full strength, the others dimmed
+--   focus       which pane has focus: its title row stands out, others dim
 --   dividers    the divider under the pointer lights up
 --   projects    open folder, per-folder sessions, one project per window
 --   lsp         language servers, diagnostics, format on save
 --   library     installed code is read-only, without diagnostics
 --   sync        pulls this config from GitHub after startup (clean checkout only)
 --
--- Loaded on demand: ocaml (ocp-indent, ocamlformat, dune; from
--- after/ftplugin), run (F5, lazygit), explorer, statusline, tools, util.
+-- Loaded on first use: hunks (change keys), run (F5, lazygit), ocaml
+-- (ocp-indent, ocamlformat, dune; from after/ftplugin).
 
 vim.g.mapleader = " "
 vim.g.maplocalleader = " "

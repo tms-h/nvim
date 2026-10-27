@@ -9,6 +9,8 @@
 --   terminal you land in goes back to typing. Edit chords work where you edit.
 -- * Stock Vim and Neovim keys keep their meaning (s, ;, -, H, L, gi, ga,
 --   grr, grn, gra, gri, grt, gO, K, gc, [d, ]d). Exceptions, with reasons:
+--   c, C, s, S and Visual p edit as usual but leave the clipboard alone
+--   (below);
 --   gd (go to definition: the stock heuristic aims at the same thing and
 --   misses across files); <C-h/j/k/l> (pane focus; most used keys);
 --   <C-Arrows> (move the divider: brief); <C-PageUp/Down> (file tabs, as in
@@ -28,17 +30,19 @@ local ALL = { "n", "i", "x", "s", "t" }
 -- A key that leaves the current mode, then runs a Lua call (an expr map).
 -- A terminal leaves with :stopinsert, not <C-\><C-n>: a stray Ctrl+\ typed
 -- just before would pair with that one and reach the shell as a quit signal.
-local function from_any_mode(lua)
+local function call(lua)
   local run = "<Cmd>lua " .. lua .. "<CR>"
   return function()
     return (vim.api.nvim_get_mode().mode == "t" and "<Cmd>stopinsert<CR>" or "<C-\\><C-n>") .. run
   end
 end
 local function pane(name, arg)
-  return from_any_mode(("require('panes').run(%q%s)"):format(name, arg and (", %q"):format(arg) or ""))
+  return call(("require('panes').run(%q%s)"):format(name, arg and (", %q"):format(arg) or ""))
 end
-local function call(lua)
-  return from_any_mode(lua)
+-- The same, run from the editor pane (from the tree or a terminal, it acts
+-- on the files).
+local function in_editor(lua)
+  return call(("require('panes').in_editor(function() %s end)"):format(lua))
 end
 
 -- ── Panes (the Omarchy keys) ───────────────────────────────────────────────
@@ -59,22 +63,19 @@ map(ALL, super "j", pane "flip", { expr = true, desc = "Flip split direction" })
 map(ALL, super "w", call "require('panes').close()", { expr = true, desc = "Close what has focus" })
 
 -- ── Tabs (Chrome) ──────────────────────────────────────────────────────────
-local function tab(cmd)
-  return call(("require('panes').in_editor(function() vim.cmd(%q) end)"):format(cmd))
-end
 local function step(n)
-  return call(("require('panes').in_editor(function() require('tabs').next(%d) end)"):format(n))
+  return in_editor(("require('tabs').next(%d)"):format(n))
 end
 map(ALL, "<C-Tab>", step(1), { expr = true, desc = "Next tab" })
 map(ALL, "<C-S-Tab>", step(-1), { expr = true, desc = "Previous tab" })
 map(ALL, "<C-PageDown>", step(1), { expr = true, desc = "Next tab" })
 map(ALL, "<C-PageUp>", step(-1), { expr = true, desc = "Previous tab" })
-map(ALL, super "t", tab "enew", { expr = true, desc = "New tab" })
+map(ALL, super "t", in_editor 'vim.cmd("enew")', { expr = true, desc = "New tab" })
 map(ALL, super "S-t", call "require('panes').reopen()", { expr = true, desc = "Reopen closed tab" })
 for i = 1, 9 do
   -- 1-8 go to that tab, 9 to the last one (Chrome).
-  local go = ("require('panes').in_editor(function() require('tabs').go_to(%d) end)"):format(i == 9 and -1 or i)
-  map(ALL, super(tostring(i)), call(go), { expr = true, desc = i == 9 and "Last tab" or "Tab " .. i })
+  local go = in_editor(("require('tabs').go_to(%d)"):format(i == 9 and -1 or i))
+  map(ALL, super(tostring(i)), go, { expr = true, desc = i == 9 and "Last tab" or "Tab " .. i })
 end
 
 -- ── Find, files, folders (VS Code) ─────────────────────────────────────────
@@ -84,27 +85,19 @@ map(ALL, super "S-f", call "require('finder').grep()", { expr = true, desc = "Se
 map(ALL, super "b", call "require('explorer').toggle()", { expr = true, desc = "Toggle file tree" })
 map(ALL, super "o", call "require('projects').pick_folder()", { expr = true, desc = "Open folder" })
 map(ALL, super "s", "<Cmd>silent! update<CR>", { desc = "Save" })
-map("n", "<leader>ff", function()
-  require("finder").pick "files"
-end, { desc = "Find file" })
-map("n", "<leader>fg", function()
-  require("finder").pick "grep_live"
-end, { desc = "Search in project" })
-map("n", "<leader>fb", function()
-  require("finder").pick "buffers"
-end, { desc = "Find open tab" })
-map("n", "<leader>fr", function()
-  require("finder").pick "oldfiles"
-end, { desc = "Recent files" })
-map("n", "<leader>fh", function()
-  require("finder").pick "help"
-end, { desc = "Find help" })
-map("n", "<leader>fk", function()
-  require("finder").pick "keymaps"
-end, { desc = "Find key" })
-map("n", "<leader>fd", function()
-  require("finder").pick "diagnostic scope='current'"
-end, { desc = "Find diagnostic" })
+for _, f in ipairs {
+  { "f", "files", "Find file" },
+  { "g", "grep_live", "Search in project" },
+  { "b", "buffers", "Find open tab" },
+  { "r", "oldfiles", "Recent files" },
+  { "h", "help", "Find help" },
+  { "k", "keymaps", "Find key" },
+  { "d", "diagnostic scope='current'", "Find diagnostic" },
+} do
+  map("n", "<leader>f" .. f[1], function()
+    require("finder").pick(f[2])
+  end, { desc = f[3] })
+end
 map("n", "<leader>fs", function()
   require("finder").symbols()
 end, { desc = "Find symbol in project" })
@@ -161,7 +154,30 @@ map("i", "<CR>", function()
   return MiniPairs.cr()
 end, { expr = true, replace_keycodes = false, desc = "Accept completion or new line" })
 
--- ── Clipboard and zoom (Neovide: the terminal app does these elsewhere) ────
+-- ── Clipboard ──────────────────────────────────────────────────────────────
+-- The clipboard holds what was last copied or cut (y, d, x, Alt+C, Alt+X), as
+-- in VS Code. Retyping text (c, s) or pasting over a selection does not
+-- replace it, so the same text pastes again and again. A named register
+-- ("ac) still gets the old text.
+for _, key in ipairs { "c", "C", "s", "S" } do
+  map({ "n", "x" }, key, function()
+    return (vim.v.register == "+" or vim.v.register == '"') and '"_' .. key or key
+  end, { expr = true, desc = "Change, keep the clipboard" })
+end
+-- Visual P is the stock put that keeps the register.
+map("x", "p", "P", { desc = "Paste over the selection, keep the clipboard" })
+-- Typing over a Select mode selection (a snippet field) sends the old text
+-- nowhere: Select mode's CTRL-R _. Fed in front of any keys already typed; if
+-- a key beats it, it lands in Insert mode, where it inserts nothing.
+vim.api.nvim_create_autocmd("ModeChanged", {
+  group = vim.api.nvim_create_augroup("KeepClipboard", { clear = true }),
+  pattern = "*:[sS\19]",
+  callback = function()
+    vim.api.nvim_feedkeys(vim.keycode "<C-r>_", "ni", false)
+  end,
+})
+
+-- ── Clipboard and zoom keys (Neovide: the terminal app does these elsewhere)
 if vim.g.neovide then
   local function paste()
     -- A whole copied line (Alt+C with no selection) goes in above the
@@ -177,7 +193,11 @@ if vim.g.neovide then
   map("s", super "c", '<C-g>"+y', { desc = "Copy selection" })
   map("x", super "x", '"+d', { desc = "Cut selection" })
   map("s", super "x", '<C-g>"+d', { desc = "Cut selection" })
-  map({ "n", "i", "x", "s", "c", "t" }, super "v", paste, { desc = "Paste" })
+  map({ "n", "i", "c", "t" }, super "v", paste, { desc = "Paste" })
+  -- Over a selection, P: nvim_paste would put the replaced text on the
+  -- clipboard.
+  map("x", super "v", '"+P', { desc = "Paste over the selection" })
+  map("s", super "v", '<C-g>"+P', { desc = "Paste over the selection" })
   local function zoom(factor)
     return function()
       vim.g.neovide_scale_factor = factor and vim.g.neovide_scale_factor * factor or vim.g.default_scale
@@ -194,7 +214,7 @@ map(ALL, "<C-S-g>", call "require('run').lazygit()", { expr = true, desc = "Lazy
 -- Changes since the last stage (hunks.lua). Alt+F5 is VS Code's key on every
 -- system (Option+F5 on the Mac; Cmd+F5 is VoiceOver there).
 local function hunk_jump(dir)
-  return call(("require('panes').in_editor(function() require('hunks').go(%q) end)"):format(dir))
+  return in_editor(("require('hunks').go(%q)"):format(dir))
 end
 map(ALL, "<M-F5>", hunk_jump "next", { expr = true, desc = "Next change" })
 map(ALL, "<M-S-F5>", hunk_jump "prev", { expr = true, desc = "Previous change" })
