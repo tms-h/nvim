@@ -1280,6 +1280,54 @@ check("Alt+C then Alt+V in Normal pastes the whole line above", function()
   vim.cmd "edit! a.ml"
 end)
 
+-- Friction 2026-10-27 (N1, N2): pasting over a word swapped the clipboard for
+-- that word, so the second paste put back the old word.
+check("Paste over a selection twice: both get the copied text (Alt+V, p)", function()
+  for _, key in ipairs { super "v", "p" } do
+    vim.cmd "enew!"
+    api.nvim_buf_set_lines(0, 0, -1, false, { "one two three" })
+    vim.fn.setreg("+", "XY", "v")
+    vim.fn.cursor(1, 1)
+    press("viw" .. key, 150)
+    press("wviw" .. key, 150)
+    local name = key == "p" and "p" or "Alt+V"
+    expect(vim.fn.getline(1) == "XY XY three", name .. " twice made: " .. vim.fn.getline(1))
+    expect(vim.fn.getreg "+" == "XY", name .. " left the clipboard as '" .. vim.fn.getreg "+" .. "'")
+  end
+  vim.cmd "enew!"
+end)
+
+check("Changing text (c, s) keeps the copied text on the clipboard", function()
+  vim.cmd "enew!"
+  api.nvim_buf_set_lines(0, 0, -1, false, { "keep one two three" })
+  vim.fn.cursor(1, 1)
+  press("viw" .. super "c", 150)
+  for _, keys in ipairs { "wciwA<Esc>", "w2sB<Esc>", "wvecC<Esc>", "0CD<Esc>" } do
+    press(keys, 150)
+    expect(vim.fn.getreg "+" == "keep", keys .. " left the clipboard as '" .. vim.fn.getreg "+" .. "'")
+  end
+  expect(vim.fn.getline(1) == "D", "the changes made: " .. vim.fn.getline(1))
+  -- Typing over a snippet field (Select mode).
+  api.nvim_buf_set_lines(0, 0, -1, false, { "keep one" })
+  press("wviw<C-g>E<Esc>", 150)
+  expect(vim.fn.getline(1) == "keep E", "typing over the selection made: " .. vim.fn.getline(1))
+  expect(vim.fn.getreg "+" == "keep", "Select mode left the clipboard as '" .. vim.fn.getreg "+" .. "'")
+  vim.snippet.expand "f(${1:arg}, ${2:other})"
+  press("F", 150)
+  press("<Tab>", 150)
+  press("G<Esc>", 200)
+  expect(vim.fn.getline(1):find "f%(F, G%)", "snippet fields made: " .. vim.fn.getline(1))
+  expect(vim.fn.getreg "+" == "keep", "a snippet field left the clipboard as '" .. vim.fn.getreg "+" .. "'")
+  api.nvim_buf_set_lines(0, 0, -1, false, { "keep one" })
+  press('w"aciwZ<Esc>', 150)
+  expect(vim.fn.getreg "a" == "one", '"aciw filled register a with ' .. vim.fn.getreg "a")
+  press("u", 150)
+  vim.fn.cursor(1, 1)
+  press("dw", 150)
+  expect(vim.fn.getreg "+" == "keep ", "dw no longer cuts: clipboard '" .. vim.fn.getreg "+" .. "'")
+  vim.cmd "enew!"
+end)
+
 check("A file opened inside a project does not replace its session", function()
   -- This window never opened proj as a project (reset() only cd's there).
   local sdir = vim.fn.stdpath "state" .. "/sessions"

@@ -9,6 +9,8 @@
 --   terminal you land in goes back to typing. Edit chords work where you edit.
 -- * Stock Vim and Neovim keys keep their meaning (s, ;, -, H, L, gi, ga,
 --   grr, grn, gra, gri, grt, gO, K, gc, [d, ]d). Exceptions, with reasons:
+--   c, C, s, S and Visual p edit as usual but leave the clipboard alone
+--   (below);
 --   gd (go to definition: the stock heuristic aims at the same thing and
 --   misses across files); <C-h/j/k/l> (pane focus; most used keys);
 --   <C-Arrows> (move the divider: brief); <C-PageUp/Down> (file tabs, as in
@@ -161,7 +163,30 @@ map("i", "<CR>", function()
   return MiniPairs.cr()
 end, { expr = true, replace_keycodes = false, desc = "Accept completion or new line" })
 
--- ── Clipboard and zoom (Neovide: the terminal app does these elsewhere) ────
+-- ── Clipboard ──────────────────────────────────────────────────────────────
+-- The clipboard holds what was last copied or cut (y, d, x, Alt+C, Alt+X), as
+-- in VS Code. Retyping text (c, s) or pasting over a selection does not
+-- replace it, so the same text pastes again and again. A named register
+-- ("ac) still gets the old text.
+for _, key in ipairs { "c", "C", "s", "S" } do
+  map({ "n", "x" }, key, function()
+    return (vim.v.register == "+" or vim.v.register == '"') and '"_' .. key or key
+  end, { expr = true, desc = "Change, keep the clipboard" })
+end
+-- Visual P is the stock put that keeps the register.
+map("x", "p", "P", { desc = "Paste over the selection, keep the clipboard" })
+-- Typing over a Select mode selection (a snippet field) sends the old text
+-- nowhere: Select mode's CTRL-R _. Fed in front of any keys already typed; if
+-- a key beats it, it lands in Insert mode, where it inserts nothing.
+vim.api.nvim_create_autocmd("ModeChanged", {
+  group = vim.api.nvim_create_augroup("KeepClipboard", { clear = true }),
+  pattern = "*:[sS\19]",
+  callback = function()
+    vim.api.nvim_feedkeys(vim.keycode "<C-r>_", "ni", false)
+  end,
+})
+
+-- ── Clipboard and zoom keys (Neovide: the terminal app does these elsewhere)
 if vim.g.neovide then
   local function paste()
     -- A whole copied line (Alt+C with no selection) goes in above the
@@ -177,7 +202,11 @@ if vim.g.neovide then
   map("s", super "c", '<C-g>"+y', { desc = "Copy selection" })
   map("x", super "x", '"+d', { desc = "Cut selection" })
   map("s", super "x", '<C-g>"+d', { desc = "Cut selection" })
-  map({ "n", "i", "x", "s", "c", "t" }, super "v", paste, { desc = "Paste" })
+  map({ "n", "i", "c", "t" }, super "v", paste, { desc = "Paste" })
+  -- Over a selection, P: nvim_paste would put the replaced text on the
+  -- clipboard.
+  map("x", super "v", '"+P', { desc = "Paste over the selection" })
+  map("s", super "v", '<C-g>"+P', { desc = "Paste over the selection" })
   local function zoom(factor)
     return function()
       vim.g.neovide_scale_factor = factor and vim.g.neovide_scale_factor * factor or vim.g.default_scale
