@@ -17,6 +17,8 @@ g.neovide_scale_factor = g.default_scale
 -- Windows move at once.
 g.neovide_refresh_rate = is_macos and 120 or 240
 g.neovide_refresh_rate_idle = 5
+-- SUPER+W with unsaved changes: ask to save instead of refusing with E37.
+g.neovide_confirm_quit = true
 g.neovide_cursor_animation_length = 0.05
 g.neovide_cursor_short_animation_length = 0.03
 g.neovide_cursor_trail_size = 0.3
