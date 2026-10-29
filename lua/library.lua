@@ -25,7 +25,7 @@ local roots = vim.tbl_map(normalize, {
   home ".cargo/git",
   home ".pyenv/versions",
   home ".nvm/versions",
-  vim.fn.stdpath "data", -- Lazy plugins and Mason tools
+  vim.fn.stdpath "data", -- plugins (vim.pack) and Mason tools
   vim.env.VIMRUNTIME or "",
   "/usr",
   "/opt/homebrew",

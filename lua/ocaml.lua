@@ -61,9 +61,9 @@ local function root(buf)
   return vim.fs.root(buf, { "dune-project", "dune-workspace" }) or vim.fs.root(buf, ".git") or vim.fn.getcwd()
 end
 
----Run dune in a terminal pane below; `q` there closes it.
 local dune_buf -- the terminal of the last dune run
 
+---Run dune in a terminal pane below; `q` there closes it.
 function M.dune(buf, args)
   local dune = tools.find "dune"
   if not dune then
@@ -134,7 +134,8 @@ function M.setup(buf)
   vim.bo[buf].shiftwidth = 2
   vim.bo[buf].softtabstop = -1
   use_ocp_indent(buf)
-  -- Tree-sitter's FileType setup runs after this; take indenting back after.
+  -- Neovim's own indent/ocaml.vim runs after this and sets GetOCamlIndent();
+  -- take indenting back after it.
   vim.schedule(function()
     if api.nvim_buf_is_valid(buf) then
       use_ocp_indent(buf)
@@ -170,7 +171,12 @@ function M.setup(buf)
   end
   local wrap = { buffer = buf, expr = true, desc = "OCaml: wrap in (fun () -> ...)" }
   vim.keymap.set({ "n", "x" }, "gt", thunk "", wrap)
-  vim.keymap.set("n", "gtt", thunk "_", vim.tbl_extend("force", wrap, { desc = "OCaml: wrap the line in (fun () -> ...)" }))
+  vim.keymap.set(
+    "n",
+    "gtt",
+    thunk "_",
+    vim.tbl_extend("force", wrap, { desc = "OCaml: wrap the line in (fun () -> ...)" })
+  )
   -- Neovim's own OCaml plugin adds Space keys with no name, so the key hints
   -- (mini.clue) listed them blank. Same keys, now named.
   for _, mode in ipairs { "n", "x" } do

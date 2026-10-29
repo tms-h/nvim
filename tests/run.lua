@@ -1876,6 +1876,54 @@ check("OCaml keywords get tree-sitter colours; a dead query link counts as missi
   expect(vim.tbl_contains(missing, "ocaml"), "dead ocaml query link not seen as missing")
 end)
 
+check("OCaml comments show in the comment colour on every line, never in plain text", function()
+  -- Friction 2026-10-28: with the highlight queries gone, comments took the
+  -- plain text colour and blended into the code.
+  local file = proj .. "/comments.ml"
+  vim.fn.writefile({
+    "(** A doc comment that runs",
+    "   onto a second line with [code]. *)",
+    "let x = 1 (* a trailing note *)",
+  }, file)
+  vim.cmd("edit " .. file)
+  vim.treesitter.get_parser(0):parse(true)
+  -- The colour drawn at a spot: the last (highest) tree-sitter or language
+  -- server group that sets one.
+  local function fg_at(row, col)
+    local pos = vim.inspect_pos(0, row, col)
+    local fg, names = nil, {}
+    for _, items in ipairs { pos.treesitter, pos.semantic_tokens } do
+      for _, item in ipairs(items) do
+        local name = item.hl_group or (item.opts and item.opts.hl_group)
+        names[#names + 1] = name
+        local hl = api.nvim_get_hl(0, { name = name, link = false })
+        fg = hl.fg or fg
+      end
+    end
+    return fg, table.concat(names, ",")
+  end
+  local spots = {
+    { 0, 6, "doc comment" },
+    { 1, 8, "its second line" },
+    { 1, 28, "[code] in it" },
+    { 2, 14, "trailing note" },
+  }
+  local seen = {}
+  for _, spot in ipairs(spots) do
+    seen[#seen + 1] = { spot[3], fg_at(spot[1], spot[2]) }
+  end
+  local let_fg = fg_at(2, 0)
+  vim.cmd "bwipeout!"
+  vim.fn.delete(file)
+  local comment = api.nvim_get_hl(0, { name = "Comment", link = false })
+  local text = api.nvim_get_hl(0, { name = "Normal", link = false }).fg
+  expect(comment.fg and comment.fg ~= text, "Comment has the plain text colour")
+  for _, s in ipairs(seen) do
+    expect(s[2] == comment.fg, string.format("%s is not in the comment colour (groups: %s)", s[1], s[3]))
+  end
+  expect(let_fg and let_fg ~= comment.fg, "`let` is drawn in the comment colour")
+end)
+
 check("TODO / FIXME in comments are coloured words, never filled blocks", function()
   local file = proj .. "/todo.ml"
   vim.fn.writefile({ "(* TODO: one *)", "(* FIXME: two *)", 'let s = "TODO not a comment"' }, file)
