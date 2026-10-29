@@ -66,12 +66,23 @@ local function from_editor(fn)
   end
 end
 
+-- Old bot copies in cambridge-battlecode (bots/T, opp-*, ...) stay out of the
+-- file and grep lists, so a file name finds the live bots/main copy.
+local hidden = { "!bots/{T,TR2b,cppbot,fuzz-opp,starter,idle,sdk-probe}/**", "!bots/{opp,ref,dbg}-*/**" }
+
 M.files = from_editor(function()
-  MiniPick.builtin.files()
+  local command = { "rg", "--files", "--no-follow", "--color=never" }
+  for _, glob in ipairs(hidden) do
+    vim.list_extend(command, { "--glob", glob })
+  end
+  local show = function(buf, items, query)
+    MiniPick.default_show(buf, items, query, { show_icons = true })
+  end
+  MiniPick.builtin.cli({ command = command }, { source = { name = "Files", show = show } })
 end)
 
 M.grep = from_editor(function()
-  MiniPick.builtin.grep_live()
+  MiniPick.builtin.grep_live { globs = hidden }
 end)
 
 M.commands = from_editor(function()
