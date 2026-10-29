@@ -134,12 +134,21 @@ require("finder").setup()
 -- Parsers this config needs beyond the ones Neovim ships (lua, markdown,
 -- vimdoc, c, query). Installed once, in the background.
 local parsers = { "ocaml", "ocaml_interface", "python", "rust", "toml", "json", "bash", "yaml" }
-vim.schedule(function()
-  local missing = vim.tbl_filter(function(lang)
+-- A language is installed only when its parser and its highlight queries both
+-- load. The queries are links into the plugin's folder: renaming the data
+-- folder (nvim-next -> nvim, 2026-10-25) left them dead while the parsers
+-- stayed, and OCaml lost every colour but the language server's.
+local function missing_parsers()
+  return vim.tbl_filter(function(lang)
     return #vim.api.nvim_get_runtime_file("parser/" .. lang .. ".so", false) == 0
+      or #vim.api.nvim_get_runtime_file("queries/" .. lang .. "/highlights.scm", false) == 0
   end, parsers)
+end
+vim.schedule(function()
+  local missing = missing_parsers()
   if #missing > 0 and vim.fn.executable "tree-sitter" == 1 then
-    require("nvim-treesitter").install(missing)
+    -- force: a parser already in place still gets its query link redone.
+    require("nvim-treesitter").install(missing, { force = true })
   end
 end)
 vim.api.nvim_create_autocmd("FileType", {
@@ -204,3 +213,5 @@ end
 require("explorer").setup()
 require("statusline").setup()
 require("snippets").setup()
+
+return { missing_parsers = missing_parsers }

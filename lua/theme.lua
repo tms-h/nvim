@@ -260,6 +260,9 @@ local function groups(p, look)
     ["@function.builtin"] = { fg = c.green },
     ["@function.method"] = { fg = c.green },
     ["@constructor"] = { fg = c.blue },
+    -- ocamllsp tags variant constructors as enum members (Neovim's default:
+    -- a constant); one colour for `Some` and `Fight` alike.
+    ["@lsp.type.enumMember"] = { link = "@constructor" },
     ["@operator"] = { fg = c.orange },
     ["@keyword"] = { fg = c.red },
     ["@punctuation"] = { fg = comment },

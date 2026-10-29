@@ -1855,6 +1855,27 @@ check("Status line: the mode as coloured text (no block) and WakaTime's time tod
   expect(line:find("1h 20m", 1, true), "no WakaTime time: " .. line)
 end)
 
+check("OCaml keywords get tree-sitter colours; a dead query link counts as missing", function()
+  local file = proj .. "/colour.ml"
+  vim.fn.writefile({ "let x = 1 (* note *)" }, file)
+  vim.cmd("edit " .. file)
+  vim.treesitter.get_parser(0):parse(true)
+  local caps = vim.treesitter.get_captures_at_pos(0, 0, 0)
+  vim.cmd "bwipeout!"
+  vim.fn.delete(file)
+  expect(#caps > 0, "`let` has no tree-sitter capture (highlight queries not loaded)")
+  -- The 2026-10-25 data-folder rename left the query links dead.
+  local link = vim.fn.stdpath "data" .. "/site/queries/ocaml"
+  local target = vim.uv.fs_readlink(link)
+  expect(target, "queries/ocaml is not a link")
+  vim.uv.fs_unlink(link)
+  vim.uv.fs_symlink(proj .. "/no-such-folder", link)
+  local missing = require("plugins").missing_parsers()
+  vim.uv.fs_unlink(link)
+  vim.uv.fs_symlink(target, link)
+  expect(vim.tbl_contains(missing, "ocaml"), "dead ocaml query link not seen as missing")
+end)
+
 check("TODO / FIXME in comments are coloured words, never filled blocks", function()
   local file = proj .. "/todo.ml"
   vim.fn.writefile({ "(* TODO: one *)", "(* FIXME: two *)", 'let s = "TODO not a comment"' }, file)
