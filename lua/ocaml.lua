@@ -171,7 +171,12 @@ function M.setup(buf)
   end
   local wrap = { buffer = buf, expr = true, desc = "OCaml: wrap in (fun () -> ...)" }
   vim.keymap.set({ "n", "x" }, "gt", thunk "", wrap)
-  vim.keymap.set("n", "gtt", thunk "_", vim.tbl_extend("force", wrap, { desc = "OCaml: wrap the line in (fun () -> ...)" }))
+  vim.keymap.set(
+    "n",
+    "gtt",
+    thunk "_",
+    vim.tbl_extend("force", wrap, { desc = "OCaml: wrap the line in (fun () -> ...)" })
+  )
   -- Neovim's own OCaml plugin adds Space keys with no name, so the key hints
   -- (mini.clue) listed them blank. Same keys, now named.
   for _, mode in ipairs { "n", "x" } do
