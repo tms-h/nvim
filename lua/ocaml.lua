@@ -61,9 +61,9 @@ local function root(buf)
   return vim.fs.root(buf, { "dune-project", "dune-workspace" }) or vim.fs.root(buf, ".git") or vim.fn.getcwd()
 end
 
----Run dune in a terminal pane below; `q` there closes it.
 local dune_buf -- the terminal of the last dune run
 
+---Run dune in a terminal pane below; `q` there closes it.
 function M.dune(buf, args)
   local dune = tools.find "dune"
   if not dune then
@@ -134,7 +134,8 @@ function M.setup(buf)
   vim.bo[buf].shiftwidth = 2
   vim.bo[buf].softtabstop = -1
   use_ocp_indent(buf)
-  -- Tree-sitter's FileType setup runs after this; take indenting back after.
+  -- Neovim's own indent/ocaml.vim runs after this and sets GetOCamlIndent();
+  -- take indenting back after it.
   vim.schedule(function()
     if api.nvim_buf_is_valid(buf) then
       use_ocp_indent(buf)

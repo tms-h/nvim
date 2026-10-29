@@ -32,7 +32,8 @@ local function prepend(dir, first)
 end
 
 function M.setup_path()
-  -- Mason's tools: this config's own data folder, else the old config's.
+  -- Mason's tools: this config's own data folder first, then the default
+  -- one (the same folder on a normal start; a scratch test setup borrows it).
   prepend "~/.local/share/nvim/mason/bin"
   prepend(vim.fn.stdpath "data" .. "/mason/bin")
   prepend "~/.cargo/bin"
