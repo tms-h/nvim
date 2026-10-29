@@ -35,14 +35,22 @@ local function ocaml_hover(client, buf)
   end, buf)
 end
 
--- ── Format on save ────────────────────────────────────────────────────────
+-- ── Formatting ────────────────────────────────────────────────────────────
 -- OCaml: ocamlformat with the project's .ocamlformat, else the Jane Street
--- profile; where the project turns ocamlformat off, ocp-indent re-indents. Everything else: the language server's own formatter (ruff,
--- rust-analyzer, lua_ls), if it has one.
+-- profile; where the project turns ocamlformat off, ocp-indent re-indents.
+-- Markdown: prettier. Everything else: the language server's own formatter
+-- (ruff, rust-analyzer, lua_ls), if it has one. Which languages format on
+-- save: FORMAT_ON_SAVE below.
 
-local function apply_lines(buf, new)
-  local old = api.nvim_buf_get_lines(buf, 0, -1, false)
-  local a, b = table.concat(old, "\n") .. "\n", table.concat(new, "\n") .. "\n"
+---The whole buffer as one string, as a formatter reads it on stdin.
+local function buffer_text(buf)
+  return table.concat(api.nvim_buf_get_lines(buf, 0, -1, false), "\n") .. "\n"
+end
+
+---Replace the buffer's text with a formatter's output.
+local function apply_output(buf, stdout)
+  local new = vim.split(stdout:gsub("\n$", ""), "\n", { plain = true })
+  local a, b = buffer_text(buf), table.concat(new, "\n") .. "\n"
   if a == b then
     return
   end
@@ -55,9 +63,9 @@ local function apply_lines(buf, new)
   end
 end
 
----The project's .ocamlformat turns ocamlformat off (`disable = true`).
-local function ocamlformat_disabled(dir)
-  local conf = vim.fs.find(".ocamlformat", { path = dir, upward = true })[1]
+---The project's .ocamlformat (path `conf`, may be nil) turns ocamlformat off
+---(`disable = true`).
+local function ocamlformat_disabled(conf)
   if not conf then
     return false
   end
@@ -72,37 +80,30 @@ end
 ---Re-indent the whole buffer with ocp-indent: leading spaces only, so a
 ---project that turns ocamlformat off still gets Jane Street indentation.
 local function indent_ocaml(buf, dir)
-  local input = table.concat(api.nvim_buf_get_lines(buf, 0, -1, false), "\n") .. "\n"
-  local result = require("ocaml").ocp_indent(dir, {}, input)
-  if not result then
-    return false
+  local result = require("ocaml").ocp_indent(dir, {}, buffer_text(buf))
+  if result and result.code == 0 then
+    apply_output(buf, result.stdout)
   end
-  if result.code ~= 0 then
-    return true
-  end
-  apply_lines(buf, vim.split(result.stdout:gsub("\n$", ""), "\n", { plain = true }))
-  return true
 end
 
 function M.format_ocaml(buf)
   local ocamlformat = require("tools").find "ocamlformat"
   local file = api.nvim_buf_get_name(buf)
   local dir = vim.fs.dirname(file)
-  if not ocamlformat or ocamlformat_disabled(dir) then
-    return indent_ocaml(buf, dir)
+  local conf = vim.fs.find(".ocamlformat", { path = dir, upward = true })[1]
+  if not ocamlformat or ocamlformat_disabled(conf) then
+    indent_ocaml(buf, dir)
+    return
   end
   local args = { ocamlformat, "--name=" .. file, "--enable-outside-detected-project", "-" }
-  if not vim.fs.find(".ocamlformat", { path = dir, upward = true })[1] then
+  if not conf then
     table.insert(args, 2, "--profile=janestreet")
   end
-  local input = table.concat(api.nvim_buf_get_lines(buf, 0, -1, false), "\n") .. "\n"
-  local result = vim.system(args, { stdin = input, cwd = dir, text = true }):wait(5000)
-  if result.code ~= 0 then
-    -- A syntax error: leave the file as typed; the error is in diagnostics.
-    return true
+  local result = vim.system(args, { stdin = buffer_text(buf), cwd = dir, text = true }):wait(5000)
+  -- A syntax error: leave the file as typed; the error is in diagnostics.
+  if result.code == 0 then
+    apply_output(buf, result.stdout)
   end
-  apply_lines(buf, vim.split(result.stdout:gsub("\n$", ""), "\n", { plain = true }))
-  return true
 end
 
 ---Prettier for Markdown: lines up table pipes and tidies lists. Prose
@@ -114,20 +115,18 @@ local function format_markdown(buf)
   end
   local file = api.nvim_buf_get_name(buf)
   local args = { prettier, "--stdin-filepath", file ~= "" and file or "untitled.md", "--prose-wrap", "preserve" }
-  local input = table.concat(api.nvim_buf_get_lines(buf, 0, -1, false), "\n") .. "\n"
-  local result = vim.system(args, { stdin = input, text = true }):wait(5000)
-  if result.code ~= 0 then
-    -- Broken Markdown: leave the file as typed.
-    return
+  local result = vim.system(args, { stdin = buffer_text(buf), text = true }):wait(5000)
+  -- Broken Markdown: leave the file as typed.
+  if result.code == 0 then
+    apply_output(buf, result.stdout)
   end
-  apply_lines(buf, vim.split(result.stdout:gsub("\n$", ""), "\n", { plain = true }))
 end
 
 -- Formatted on every save: OCaml (ocamlformat), Rust (rust-analyzer, which
 -- runs rustfmt) and Markdown (prettier, so tables line up). Every other
 -- language only on :Format, so a save never restyles a Lua, Python or shell
 -- file.
-M.FORMAT_ON_SAVE = { ocaml = true, ocaml_interface = true, rust = true, markdown = true }
+local FORMAT_ON_SAVE = { ocaml = true, ocaml_interface = true, rust = true, markdown = true }
 
 function M.format(buf)
   buf = (buf == nil or buf == 0) and api.nvim_get_current_buf() or buf
@@ -224,7 +223,7 @@ function M.setup()
       if
         vim.g.format_on_save ~= false
         and vim.bo[args.buf].buftype == ""
-        and M.FORMAT_ON_SAVE[vim.bo[args.buf].filetype]
+        and FORMAT_ON_SAVE[vim.bo[args.buf].filetype]
       then
         M.format(args.buf)
       end
