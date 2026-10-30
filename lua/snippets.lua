@@ -58,7 +58,7 @@ function M.try_expand()
 end
 
 local BRACKETS = { python = true, rust = true, lua = true }
-local CALLABLE = { Function = true, Method = true, Constructor = false }
+local CALLABLE = { Function = true, Method = true }
 
 ---After a completion: add "()" behind a function or method, cursor inside.
 function M.auto_brackets(item)
@@ -79,7 +79,7 @@ function M.setup()
   local group = api.nvim_create_augroup("Snippets", { clear = true })
   api.nvim_create_autocmd("FileType", {
     group = group,
-    pattern = { "ocaml" },
+    pattern = "ocaml",
     callback = function(args)
       api.nvim_create_autocmd("TextChangedI", { group = group, buffer = args.buf, callback = M.try_expand })
     end,
