@@ -41,6 +41,8 @@ M.OCAML = {
 }
 
 ---Expand a trigger that ends right before the cursor, if there is one.
+---Returns nothing: an autocmd whose callback returns true is deleted, which
+---left a buffer with no snippets after its first one.
 function M.try_expand()
   local row, col = unpack(api.nvim_win_get_cursor(0))
   local line = api.nvim_get_current_line()
@@ -48,12 +50,11 @@ function M.try_expand()
   local indent, prefix, name = before:match "^(%s*)(%a+_)([%a][%w_]*) $"
   local body = prefix and M.OCAML[prefix]
   if not body or vim.trim(after) ~= "" then
-    return false
+    return
   end
   api.nvim_buf_set_text(0, row - 1, #indent, row - 1, col, {})
   api.nvim_win_set_cursor(0, { row, #indent })
   vim.snippet.expand(body(name))
-  return true
 end
 
 local BRACKETS = { python = true, rust = true, lua = true }
