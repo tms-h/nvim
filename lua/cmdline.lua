@@ -13,7 +13,8 @@
 -- Also: ui2 makes its windows 10000 cells wide and relies on Neovim to cut
 -- them to the screen. Neovide draws each window on its own (multigrid), where
 -- nothing cuts them, so a long command or message ran off the right edge and
--- never wrapped. Every ui2 window gets the real width here.
+-- never wrapped. Every ui2 window gets the real width here, except the message
+-- window, which ui2 sizes to its text itself, and the open box.
 --
 -- Suggestions: typing a `:` command opens the completion menu as you type
 -- (`:e ` lists files), the way the old config's popup did. Nothing is picked
@@ -25,11 +26,12 @@ local api = vim.api
 local TITLES = { [":"] = " Command ", ["/"] = " Search ", ["?"] = " Search back ", ["="] = " Expression " }
 
 local state = { firstc = "", prompt = "" }
+local active = false -- the command window is the box, not the bottom line
 
 ---The box: centred, its top on the finder's top row (pressed against the
 ---pane titles at the top it looked off), at most 100 cells wide, never wider
 ---than the screen less a margin.
-function M.box(height)
+local function box_config(height)
   local cols, lines = vim.o.columns, vim.o.lines
   local width = math.max(math.min(100, math.floor(cols * 0.6)), math.min(60, cols - 4))
   width = math.min(width, cols - 4)
@@ -46,7 +48,7 @@ function M.box(height)
 end
 
 ---Rows the completion menu takes under the typed line (0 when closed).
-function M.menu_rows()
+local function menu_rows()
   local info = vim.fn.cmdcomplete_info()
   if not (info.pum_visible == 1 and info.matches) then
     return 0
@@ -73,7 +75,7 @@ local function suggest()
       -- The menu opens under the line wherever the box is on screen, and the
       -- box moves only at the next redraw: with keys typed in one burst
       -- (":e ") the menu opened on the bottom line, outside the box.
-      if not M.active then
+      if not active then
         api.nvim__redraw { flush = true }
       end
       vim.fn.wildtrigger()
@@ -95,22 +97,20 @@ function M.setup()
   local cmd = ui.cmd
 
   -- Find ui2's local win_config(win, hide, height) through cmdline_show.
-  local index
+  local index, stock
   for i = 1, 30 do
-    local name = debug.getupvalue(cmd.cmdline_show, i)
-    if name == nil then
-      break
-    elseif name == "win_config" then
-      index = i
+    local name, value = debug.getupvalue(cmd.cmdline_show, i)
+    if name == "win_config" then
+      index, stock = i, value
       break
     end
   end
   if not index then
     return
   end
-  local stock = select(2, debug.getupvalue(cmd.cmdline_show, index))
 
-  local function win_config(win, hide, height)
+  -- ui2 also passes a height; the box works out its own.
+  local function win_config(win, hide)
     if hide then
       -- Back to the bottom line for messages, the stock way.
       api.nvim_win_set_config(win, {
@@ -122,39 +122,38 @@ function M.setup()
         anchor = "NW",
         border = "none",
       })
-      M.active = false
+      active = false
       return stock(win, true, ui.cmdheight)
     end
     -- Width first: the wrapped height depends on it.
-    local box = M.box(1)
-    if not M.active or api.nvim_win_get_width(win) ~= box.width then
+    local box = box_config(1)
+    if not active or api.nvim_win_get_width(win) ~= box.width then
+      local name = title()
       local cfg = vim.tbl_extend("force", box, {
         border = vim.o.winborder ~= "" and vim.o.winborder or "rounded",
-        title = title(),
-        title_pos = title() and "center" or nil,
+        title = name,
+        title_pos = name and "center" or nil,
         hide = false,
       })
       api.nvim_win_set_config(win, cfg)
-      M.active = true
+      active = true
     end
     -- Completion: the menu opens under the typed line; the box grows
     -- around it, so the list sits inside the box (as in VS Code's palette)
     -- instead of across its border.
-    local h = api.nvim_win_text_height(win, {}).all + M.menu_rows()
-    box = M.box(h)
+    local h = api.nvim_win_text_height(win, {}).all + menu_rows()
+    box = box_config(h)
     if api.nvim_win_get_height(win) ~= box.height or api.nvim_win_get_config(win).row ~= box.row then
       api.nvim_win_set_config(win, { relative = "editor", row = box.row, col = box.col, height = box.height })
     end
   end
   debug.setupvalue(cmd.cmdline_show, index, win_config)
-  M.patched = true
 
   local show = cmd.cmdline_show
   cmd.cmdline_show = function(content, pos, firstc, prompt, ...)
-    local fresh = cmd.level == 0
     state.firstc, state.prompt = firstc or "", prompt or ""
-    if fresh then
-      M.active = false
+    if cmd.level == 0 then
+      active = false
     end
     return show(content, pos, firstc, prompt, ...)
   end
@@ -164,7 +163,7 @@ function M.setup()
   ui.check_targets = function(...)
     check(...)
     for kind, win in pairs(ui.wins) do
-      if api.nvim_win_is_valid(win) and kind ~= "msg" and not (kind == "cmd" and M.active) then
+      if api.nvim_win_is_valid(win) and kind ~= "msg" and not (kind == "cmd" and active) then
         if api.nvim_win_get_width(win) ~= vim.o.columns then
           api.nvim_win_set_config(win, { width = vim.o.columns })
         end
@@ -175,9 +174,9 @@ function M.setup()
     group = api.nvim_create_augroup("CmdlineBox", { clear = true }),
     callback = function()
       ui.check_targets()
-      if M.active and api.nvim_win_is_valid(ui.wins.cmd) then
-        M.active = false
-        win_config(ui.wins.cmd, false, 1)
+      if active and api.nvim_win_is_valid(ui.wins.cmd) then
+        active = false
+        win_config(ui.wins.cmd, false)
       end
     end,
   })

@@ -24,7 +24,7 @@ end
 
 local function first_line(result)
   local out = vim.trim((result.stderr ~= "" and result.stderr) or result.stdout or "")
-  return out:match "[^\n]*" or ""
+  return out:match "[^\n]*"
 end
 
 ---Fast-forward to the remote when the checkout has no local edits.

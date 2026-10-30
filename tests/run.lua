@@ -1974,6 +1974,24 @@ check("Finder keys: C-x / C-v split, C-q sends the matches to quickfix", functio
   pcall(vim.cmd, "cclose")
 end)
 
+check("Tests never load WakaTime: no fake coding time, nothing written to the real home", function()
+  wait(700) -- it would load 500 ms after the UI starts
+  expect(vim.fn.exists ":WakaTimeToday" == 0, "vim-wakatime loaded with " .. tostring(vim.env.WAKATIME_HOME))
+end)
+
+check("A second OCaml snippet expands in the same buffer", function()
+  local file = proj .. "/snip2.ml"
+  vim.cmd("edit " .. file)
+  press("imod_board ", 300)
+  press("<Esc>", 100)
+  press("Gorec_walk ", 300)
+  press("<Esc>", 100)
+  local got = table.concat(api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+  vim.cmd "bwipeout!"
+  vim.fn.delete(file)
+  expect(got:find("let rec walk", 1, true), "second snippet stayed as typed: " .. got)
+end)
+
 check("OCaml snippets expand as you type; auto-brackets after a function", function()
   local file = proj .. "/snip.ml"
   vim.cmd("edit " .. file)

@@ -1,12 +1,12 @@
--- Silent usage counter for the config rewrite: how often each custom mapping
--- and each typed `:` command is used. Counts live in memory and are appended
+-- Silent usage counter: how often each custom mapping and each typed `:`
+-- command is used. Counts live in memory and are appended
 -- (as deltas) to ~/.local/state/nvim/usage/counts.jsonl on FocusLost and exit, so
 -- there is no disk work per keystroke. :UsageReport sums every line written.
 -- :FrictionNote <text> appends a timestamped line to usage/friction.md.
 local M = {}
 
--- One log for every config generation (nvim, nvim-next...), so counts carry
--- over when this config replaces the old one.
+-- One log for every config generation (nvim, nvim-next...), so counts from the
+-- old config still add up.
 local dir = (vim.env.XDG_STATE_HOME or vim.fn.expand "~/.local/state") .. "/nvim/usage"
 local counts_file = dir .. "/counts.jsonl"
 local friction_file = dir .. "/friction.md"
@@ -30,7 +30,7 @@ local function append(path, line)
   end
 end
 
-function M.flush()
+local function flush()
   if not dirty then
     return
   end
@@ -116,7 +116,7 @@ function M.setup()
     end,
   })
 
-  vim.api.nvim_create_autocmd({ "FocusLost", "VimLeavePre" }, { group = group, callback = M.flush })
+  vim.api.nvim_create_autocmd({ "FocusLost", "VimLeavePre" }, { group = group, callback = flush })
 
   vim.api.nvim_create_user_command("FrictionNote", function(args)
     local file = vim.fn.expand "%:~:."
@@ -133,7 +133,7 @@ function M.setup()
   end, { nargs = "+", desc = "Jot down something that got in the way" })
 
   vim.api.nvim_create_user_command("UsageReport", function()
-    M.flush()
+    flush()
     local total = {}
     local f = io.open(counts_file, "r")
     if f then

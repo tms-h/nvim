@@ -2,9 +2,9 @@
 -- the built-in vim.pack (:lua vim.pack.update() to update; versions are
 -- pinned in nvim-pack-lock.json).
 --
---   mini.nvim        finder (mini.pick), completion,
---                    key hints (mini.clue), TODO words (mini.hipatterns),
---                    git signs (mini.diff), icons, bracket pairs
+--   mini.nvim        finder (mini.pick), completion, key hints (mini.clue),
+--                    TODO words (mini.hipatterns), git signs (mini.diff),
+--                    icons, bracket pairs
 --   nvim-tree.lua    the file tree
 --   nvim-treesitter  installs the OCaml, Python, Rust... parsers
 --   orgmode          README.org files (loaded on the first .org file)
@@ -13,9 +13,9 @@
 local gh = function(repo)
   return "https://github.com/" .. repo
 end
-local later = function(plug)
+local later = function(src)
   -- Install now, load when first needed (see the autocmds below).
-  return { src = plug.src or plug, version = plug.version, data = { later = true } }
+  return { src = src, data = { later = true } }
 end
 
 vim.pack.add({
@@ -45,7 +45,7 @@ require("mini.pairs").setup {
   modes = { insert = true, command = false, terminal = false },
 }
 -- Completion as you type: language server items, else words in the buffer.
--- Docs and signatures show in one small float beside the menu.
+-- Docs and signatures show in small floats.
 require("mini.completion").setup {
   delay = { completion = 80, info = 200, signature = 80 },
   window = {
@@ -103,8 +103,7 @@ vim.api.nvim_create_autocmd("FileType", {
 
 -- Key hints: pause after Space and the keys that can follow pop up in the
 -- corner (like which-key).
-local clue = require "mini.clue"
-clue.setup {
+require("mini.clue").setup {
   triggers = {
     { mode = "n", keys = "<Leader>" },
     { mode = "x", keys = "<Leader>" },
@@ -134,8 +133,8 @@ require("finder").setup()
 -- Parsers this config needs beyond the ones Neovim ships (lua, markdown,
 -- vimdoc, c, query). Installed once, in the background.
 local parsers = { "ocaml", "ocaml_interface", "python", "rust", "toml", "json", "bash", "yaml" }
--- A language is installed only when its parser and its highlight queries both
--- load. The queries are links into the plugin's folder: renaming the data
+-- A language counts as installed only when its parser and highlight queries
+-- both load. The queries are links into the plugin's folder: renaming the data
 -- folder (nvim-next -> nvim, 2026-10-25) left them dead while the parsers
 -- stayed, and OCaml lost every colour but the language server's.
 local function missing_parsers()
@@ -199,7 +198,8 @@ vim.api.nvim_create_user_command("Mason", function(args)
   vim.cmd("Mason " .. args.args)
 end, { nargs = "*", desc = "Install language servers and tools" })
 
-if vim.uv.fs_stat(vim.fn.expand "~/.wakatime.cfg") then
+-- Where the plugin itself looks for its settings.
+if vim.uv.fs_stat((vim.env.WAKATIME_HOME or vim.fn.expand "~") .. "/.wakatime.cfg") then
   vim.api.nvim_create_autocmd("UIEnter", {
     once = true,
     callback = function()
