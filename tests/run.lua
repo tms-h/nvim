@@ -1974,6 +1974,11 @@ check("Finder keys: C-x / C-v split, C-q sends the matches to quickfix", functio
   pcall(vim.cmd, "cclose")
 end)
 
+check("Tests never load WakaTime: no fake coding time, nothing written to the real home", function()
+  wait(700) -- it would load 500 ms after the UI starts
+  expect(vim.fn.exists ":WakaTimeToday" == 0, "vim-wakatime loaded with " .. tostring(vim.env.WAKATIME_HOME))
+end)
+
 check("OCaml snippets expand as you type; auto-brackets after a function", function()
   local file = proj .. "/snip.ml"
   vim.cmd("edit " .. file)

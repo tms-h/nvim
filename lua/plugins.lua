@@ -199,7 +199,8 @@ vim.api.nvim_create_user_command("Mason", function(args)
   vim.cmd("Mason " .. args.args)
 end, { nargs = "*", desc = "Install language servers and tools" })
 
-if vim.uv.fs_stat(vim.fn.expand "~/.wakatime.cfg") then
+-- Where the plugin itself looks for its settings.
+if vim.uv.fs_stat((vim.env.WAKATIME_HOME or vim.fn.expand "~") .. "/.wakatime.cfg") then
   vim.api.nvim_create_autocmd("UIEnter", {
     once = true,
     callback = function()
