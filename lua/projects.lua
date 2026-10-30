@@ -298,8 +298,16 @@ function M.pick_folder()
       for _, skip in ipairs { "node_modules", "_build", "_opam", "target", ".git" } do
         vim.list_extend(cmd, { "--exclude", skip })
       end
+      -- The Mac's app data and media folders: never projects, and reading
+      -- them from Neovide waits on a macOS permission prompt that may never
+      -- show, which froze the editor. The timeout keeps any other slow folder
+      -- from doing the same.
+      for _, skip in ipairs { "/Library", "/Pictures", "/Music", "/Movies" } do
+        vim.list_extend(cmd, { "--exclude", skip })
+      end
       vim.list_extend(cmd, { ".", where[1] })
-      local found = vim.split(vim.system(cmd, { text = true }):wait().stdout or "", "\n", { trimempty = true })
+      local found =
+        vim.split(vim.system(cmd, { text = true, timeout = 2000 }):wait().stdout or "", "\n", { trimempty = true })
       found = vim.tbl_map(normalize, found)
       table.sort(found, function(a, b)
         local da, db = select(2, a:gsub("/", "")), select(2, b:gsub("/", ""))

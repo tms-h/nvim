@@ -250,6 +250,22 @@ for i = 1, #chars do
     end
   end
 end
+-- ── Alt on the Mac too ─────────────────────────────────────────────────────
+-- Every Cmd chord also answers to (left) Option, so the Linux Alt keys work
+-- unchanged on the Mac. An Alt key that already has an action keeps it.
+if require("util").is_macos then
+  for _, m in ipairs { "n", "i", "x", "s", "o", "t" } do
+    for _, km in ipairs(vim.api.nvim_get_keymap(m)) do
+      -- (Neovim stores Cmd+Shift+Left as <S-D-Left>.)
+      local mods, rest = km.lhs:match "^<([%u%-]-)D%-(.+)>$"
+      local alt = mods and "<" .. mods .. "M-" .. rest .. ">"
+      if alt and vim.fn.maparg(alt, m) == "" then
+        map(m, alt, km.lhs, { remap = true, desc = km.desc })
+      end
+    end
+  end
+end
+
 -- Space is the leader; on its own it does not move the cursor.
 map({ "n", "x" }, "<Space>", "<Nop>")
 
