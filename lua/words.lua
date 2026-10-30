@@ -1,6 +1,6 @@
 -- Double-click selects a word and marks its other occurrences in that pane,
 -- like VS Code. The marks are their own soft highlight, not a search: the
--- search pattern, `n`/`N` and the green search hits are left alone, and the
+-- search pattern, `n`/`N` and the search hits are left alone, and the
 -- marks go away as soon as the selection does.
 local M = {}
 
@@ -20,19 +20,15 @@ function M.select_word()
   -- On a space, select the space alone (<cword> would name the next word).
   local char = vim.fn.getline("."):sub(vim.fn.col ".", vim.fn.col ".")
   local word = vim.fn.expand "<cword>"
-  if word == "" or char:match "^%s?$" then
-    vim.cmd "normal! viw"
-    return
+  if word ~= "" and not char:match "^%s?$" then
+    local text = vim.fn.escape(word, "\\")
+    local pattern = word:match "^[%w_]+$" and "\\V\\<" .. text .. "\\>" or "\\V" .. text
+    marked = { win = api.nvim_get_current_win(), match = vim.fn.matchadd("WordOccurrence", pattern, -1) }
   end
-  local pattern = "\\V" .. vim.fn.escape(word, "\\")
-  if word:match "^[%w_]+$" then
-    pattern = "\\V\\<" .. vim.fn.escape(word, "\\") .. "\\>"
-  end
-  marked = { win = api.nvim_get_current_win(), match = vim.fn.matchadd("WordOccurrence", pattern, -1) }
   vim.cmd "normal! viw"
 end
 
--- The WordOccurrence colour is set with the theme (plugins/ui.lua).
+-- The WordOccurrence colour is set with the theme (theme.lua).
 function M.setup()
   local group = api.nvim_create_augroup("WordOccurrences", { clear = true })
   api.nvim_create_autocmd("ModeChanged", {
