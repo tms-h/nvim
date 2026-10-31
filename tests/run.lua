@@ -6,14 +6,12 @@ local api = vim.api
 local out_path = vim.env.TEST_OUT or "/tmp/nvnext/results.txt"
 local proj = vim.env.TEST_PROJ or "/tmp/nvnext/proj"
 local only = vim.env.TEST_ONLY
-local lines = {}
 local super = require("util").chord
 
 local function log(line)
-  lines[#lines + 1] = line
-  local f = io.open(out_path, "w")
+  local f = io.open(out_path, "a")
   if f then
-    f:write(table.concat(lines, "\n"), "\n")
+    f:write(line, "\n")
     f:close()
   end
 end
@@ -197,12 +195,9 @@ check("stray keys in the tree: no popups, at most one short line each", function
   local bad = {}
   for _, k in ipairs(stray) do
     vim.cmd "messages clear"
-    -- Key and Esc in one go: keys like q, m, f wait for one more key, and
+    -- Key and Esc in one go: keys like m, g, z wait for one more key, and
     -- while they wait Neovim runs no timers (this runner would stall).
     press(k .. "<Esc>", 80)
-    if vim.fn.reg_recording() ~= "" then
-      press("q", 30)
-    end
     local msgs = vim.split(vim.trim(vim.fn.execute "messages"), "\n", { trimempty = true })
     if #msgs > 1 then
       bad[#bad + 1] = k .. " => " .. #msgs .. " lines: " .. table.concat(msgs, " / ")
@@ -1738,9 +1733,9 @@ check("Tree spacing: two-cell gutter, folder arrows, sort row above the folder n
     press("R", 300)
     expect(vim.fn.getwininfo(win)[1].textoff >= 2, "no left gutter: textoff " .. vim.fn.getwininfo(win)[1].textoff)
     expect(vim.wo[win].winbar ~= "", "no Sort row above the tree")
-    local lines_ = api.nvim_buf_get_lines(api.nvim_win_get_buf(win), 0, -1, false)
-    local folder = lines_[tree_row "sub$"] or ""
-    local file = lines_[tree_row "a%.ml$"] or ""
+    local rows = api.nvim_buf_get_lines(api.nvim_win_get_buf(win), 0, -1, false)
+    local folder = rows[tree_row "sub$"] or ""
+    local file = rows[tree_row "a%.ml$"] or ""
     -- A closed folder starts with its arrow; a file at the same level is
     -- padded by the arrow's width so the icons line up.
     expect(vim.fn.strdisplaywidth(folder:match "^(.-)sub$") >= 4, "folder row '" .. folder .. "' has no arrow + icon")
@@ -2233,7 +2228,7 @@ check("Alt/Cmd+O lists recent projects first, newest first, with their age; typi
   press("<Esc>", 200)
 end)
 
--- ── Jane Street steals (compare.md 4-8) ──────────────────────────────────
+-- ── Space key names, change keys, symbols, OCaml gt ──────────────────────
 
 -- What mini.clue would show after Space, in this buffer and mode: keys with
 -- no name, and groups (a prefix of 2+ keys) with no name.
@@ -2268,7 +2263,7 @@ local function unnamed_space_keys(mode)
   return missing, groups
 end
 
-check("Every Space key and Space group has a name (OCaml, org, Lua; normal and selection)", function()
+check("Every Space key and Space group has a name (OCaml, org, Python; normal and selection)", function()
   local missing = {}
   for _, f in ipairs { "a.ml", "a.mli", "README.org", "hello.py", "a.ml" } do
     vim.cmd("edit! " .. f)
