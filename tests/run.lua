@@ -1351,6 +1351,7 @@ end)
 check("A project's session is saved under its own name and comes back", function()
   local dir = proj .. "/sub-c"
   vim.fn.mkdir(dir, "p")
+  vim.fn.mkdir(proj .. "/sub-a", "p") -- the other folder it visits
   vim.fn.writefile({ "let z = 0" }, dir .. "/z.ml")
   local projects = require "projects"
   projects.open_folder(dir)
@@ -1409,6 +1410,9 @@ check("The status line shows the git branch, also in a git worktree", function()
   local line = require("statusline").render()
   vim.cmd("cd " .. proj)
   local head = vim.trim(vim.fn.system { "git", "-C", repo, "branch", "--show-current" })
+  if head == "" then -- detached: the status line shows the short commit
+    head = vim.trim(vim.fn.system { "git", "-C", repo, "rev-parse", "--short", "HEAD" })
+  end
   expect(head ~= "" and line:find(head, 1, true), "branch '" .. head .. "' not in: " .. line)
 end)
 
@@ -2375,6 +2379,82 @@ check("OCaml gt wraps a motion, a selection or a line in (fun () -> ...)", funct
   vim.cmd "edit! c.ml"
   vim.cmd "silent! undo 0"
   vim.cmd "edit! c.ml"
+end)
+
+-- ── The test tools themselves ────────────────────────────────────────────
+
+local tests_dir = vim.fn.stdpath "config" .. "/tests"
+
+-- Run a tests/ script against a scratch folder that does not exist yet, with
+-- stand-ins for tmux (logs its arguments, runs the command of a new session)
+-- and nvim (logs TEST_ONLY, ends the run). Returns its output and the log.
+local function run_tool(script, env)
+  local dir = vim.fn.tempname()
+  vim.fn.mkdir(dir .. "/bin", "p")
+  local function stand_in(name, body)
+    local file = dir .. "/bin/" .. name
+    vim.fn.writefile({ "#!/bin/sh", body }, file)
+    vim.fn.setfperm(file, "rwxr-xr-x")
+  end
+  stand_in("tmux", [[echo "tmux $*" >>"$FAKE_LOG"; case "$*" in *new-session*) for c; do :; done; sh -c "$c" ;; esac]])
+  stand_in("nvim", [[echo "nvim TEST_ONLY=$TEST_ONLY" >>"$FAKE_LOG"; echo DONE >>"$NVNEXT/results.txt"]])
+  local log_file = dir .. "/log"
+  local full_env = vim.tbl_extend("force", {
+    NVNEXT = dir .. "/world",
+    TMUX_SOCK = "tool-check",
+    FAKE_LOG = log_file,
+    PATH = dir .. "/bin:" .. vim.env.PATH,
+  }, env or {})
+  local result = vim.system(script, { cwd = dir, env = full_env, text = true }):wait(30000)
+  local logged = vim.uv.fs_stat(log_file) and table.concat(vim.fn.readfile(log_file), "\n") or ""
+  return result.stdout or "", logged
+end
+
+check("Test tools: check.sh passes TEST_ONLY as typed, a quote in it too", function()
+  local name = "A project's session"
+  local out, logged = run_tool({ tests_dir .. "/check.sh" }, { TEST_ONLY = name })
+  expect(logged:find("nvim TEST_ONLY=" .. name, 1, true), "nvim got: " .. logged .. "\ncheck.sh said: " .. out)
+end)
+
+check("Test tools: live.sh starts when the scratch folder is new", function()
+  local _, logged = run_tool { tests_dir .. "/live.sh" }
+  expect(logged:find("nvim TEST_ONLY", 1, true), "nvim never started: " .. logged)
+end)
+
+check("Test tools: capture/all.sh starts when the output folder is new", function()
+  local dir = vim.fn.tempname()
+  vim.fn.mkdir(dir, "p")
+  vim.uv.fs_copyfile(tests_dir .. "/capture/all.sh", dir .. "/all.sh")
+  vim.fn.setfperm(dir .. "/all.sh", "rwxr-xr-x")
+  vim.fn.writefile({ "#!/bin/sh", 'mkdir -p "$2"; touch "$2/shot.png"' }, dir .. "/shoot.sh")
+  vim.fn.setfperm(dir .. "/shoot.sh", "rwxr-xr-x")
+  local out = run_tool({ dir .. "/all.sh", dir .. "/new/out" }, { ONLY = "new" })
+  expect(out:find("new-glass: 1 shots", 1, true) and out:find("new-flat: 1 shots", 1, true), "all.sh said: " .. out)
+end)
+
+check("Test tools: open-time.sh uses the run's own tmux socket", function()
+  local _, logged = run_tool(
+    { tests_dir .. "/open-time.sh", "a.ml" },
+    { N = "1", SETTLE = "0", TMUX_SOCK = "my-own-socket" }
+  )
+  expect(
+    logged:find("tmux -L my-own-socket", 1, true) and not logged:find("nvnext-time", 1, true),
+    "tmux got: " .. logged
+  )
+end)
+
+check("Test tools: captures never reach the real WakaTime", function()
+  local shoot = table.concat(vim.fn.readfile(tests_dir .. "/capture/shoot.sh"), "\n")
+  expect(shoot:find("WAKATIME_HOME=$S/wakatime", 1, true), "shoot.sh leaves WAKATIME_HOME unset")
+end)
+
+check("Test tools: old-copy.sh makes the old config, without its WakaTime plugin", function()
+  local result = vim.system({ tests_dir .. "/old-copy.sh" }, { text = true }):wait(30000)
+  local made = vim.uv.fs_stat "/tmp/nvold/cfg/nvim/init.lua" ~= nil
+  local waka = vim.uv.fs_stat "/tmp/nvold/cfg/nvim/lua/plugins/wakatime.lua" ~= nil
+  vim.fn.delete("/tmp/nvold", "rf")
+  expect(made, "no copy made: " .. (result.stderr or ""))
+  expect(not waka, "the copy still has its WakaTime plugin")
 end)
 
 -- ── Runner ────────────────────────────────────────────────────────────────

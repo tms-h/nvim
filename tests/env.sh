@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run the new config in a scratch world: its own config link, data, state and
+# Run this config in a scratch world: its own config link, data, state and
 # cache under $NVNEXT (default /tmp/nvnext), under the default app name
 # (no NVIM_APPNAME). Never touches ~/.local/*/nvim, never pulls from GitHub.
 #   tests/env.sh nvim --headless ...      any command, with the env set

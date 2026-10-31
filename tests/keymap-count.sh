@@ -25,8 +25,7 @@ io.open(vim.env.OUT .. ".nop", "w"):write(vim.tbl_count(nop) .. "\n")'
 run() { OUT=$1 "${@:2}" --headless --cmd 'let g:neovide = v:true | let g:no_restore = 1' +"lua $LUA" +'qa!' >/dev/null 2>&1; sort -o "$1" "$1"; }
 run "$TMP/stock" nice -n 19 nvim --clean
 if [ -n "${OLD:-}" ]; then
-  run "$TMP/cfg" env XDG_CONFIG_HOME=/tmp/nvold/cfg XDG_DATA_HOME=/tmp/nvold/data \
-    XDG_STATE_HOME=/tmp/nvold/state XDG_CACHE_HOME=/tmp/nvold/cache nice -n 19 nvim
+  run "$TMP/cfg" "$HERE/old-env.sh" nvim
 else
   run "$TMP/cfg" "$HERE/env.sh" nvim
 fi
