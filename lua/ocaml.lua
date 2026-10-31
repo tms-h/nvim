@@ -57,6 +57,27 @@ local function use_ocp_indent(buf)
   end
 end
 
+---The column ocamlformat wraps at for this file: the project's `margin`, else
+---its profile's width (Jane Street 90, every other profile 80). 90 without an
+---.ocamlformat, where a save uses the Jane Street profile (lsp.lua). nil where
+---the project turns ocamlformat off: nothing wraps there.
+local function wrap_column(buf)
+  local dir = vim.fs.dirname(api.nvim_buf_get_name(buf))
+  local conf = vim.fs.find(".ocamlformat", { path = dir, upward = true })[1]
+  if not conf then
+    return "90"
+  end
+  local margin, profile
+  for line in io.lines(conf) do
+    if line:match "^%s*disable%s*=%s*true%s*$" then
+      return nil
+    end
+    margin = line:match "^%s*margin%s*=%s*(%d+)" or margin
+    profile = line:match "^%s*profile%s*=%s*(%w+)" or profile
+  end
+  return margin or (profile == "janestreet" and "90" or "80")
+end
+
 local function root(buf)
   return vim.fs.root(buf, { "dune-project", "dune-workspace" }) or vim.fs.root(buf, ".git") or vim.fn.getcwd()
 end
@@ -133,6 +154,7 @@ function M.setup(buf)
   vim.bo[buf].expandtab = true
   vim.bo[buf].shiftwidth = 2
   vim.bo[buf].softtabstop = -1
+  vim.opt_local.colorcolumn = wrap_column(buf) or ""
   use_ocp_indent(buf)
   -- Neovim's own indent/ocaml.vim runs after this and sets GetOCamlIndent();
   -- take indenting back after it.

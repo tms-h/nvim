@@ -899,6 +899,25 @@ check("OCaml: :w re-indents (Jane Street) where .ocamlformat says disable", func
   expect(vim.fn.getline(1) == "let prices = List.map (fun item ->", "line 1 reflowed: " .. vim.fn.getline(1))
 end)
 
+check("OCaml: the ruler sits where ocamlformat wraps, and only in OCaml files", function()
+  for dir, conf in pairs { wide = { "profile = default", "margin = 110" }, plain = { "profile = default" } } do
+    vim.fn.mkdir(proj .. "/" .. dir, "p")
+    vim.fn.writefile(conf, proj .. "/" .. dir .. "/.ocamlformat")
+    vim.fn.writefile({ "let x = 1" }, proj .. "/" .. dir .. "/x.ml")
+  end
+  for _, case in ipairs {
+    { "noformat/indent_me.ml", "" },
+    { "wide/x.ml", "110" },
+    { "plain/x.ml", "80" },
+    { "a.ml", "90" },
+    { "README.md", "" },
+  } do
+    vim.cmd("edit! " .. case[1])
+    expect(vim.wo.colorcolumn == case[2], case[1] .. " has the ruler at '" .. vim.wo.colorcolumn .. "'")
+  end
+  expect(api.nvim_get_hl(0, { name = "ColorColumn" }).bg, "ColorColumn has no fill, so the ruler is invisible")
+end)
+
 check("gd goes to a definition; K shows the type", function()
   vim.cmd "edit! b.ml"
   local buf = api.nvim_get_current_buf()

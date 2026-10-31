@@ -1,8 +1,8 @@
 -- Every colour, built from the desktop's palette (Omarchy colors.toml) with a
 -- built-in copy for machines without one (the Mac). One surface: no group
 -- paints a background of its own except the selection, search hits, the
--- cursor line, diff hunks and the completion choice. Words get colour; boxes
--- do not.
+-- cursor line, the ruler, diff hunks and the completion choice. Words get
+-- colour; boxes do not.
 --
 -- Two looks, each designed for its own setting:
 --   glass  see-through card over wallpaper + blur (Linux). Background, text
@@ -111,7 +111,7 @@ local function groups(p, look)
     Cursor = { fg = bg, bg = fg },
     CursorLine = look == "flat" and { bg = band } or {},
     CursorColumn = look == "flat" and { bg = band } or {},
-    ColorColumn = {},
+    ColorColumn = { bg = mix(bg, fg, 0.1) },
     Visual = { bg = p.selection },
     VisualNOS = { bg = p.selection },
     Search = { fg = fg, bg = mix(bg, c.yellow, 0.28) },
@@ -407,6 +407,7 @@ local KEEP_BG = {
   "^CursorLine",
   "^ListCurrent$",
   "^CursorColumn$",
+  "^ColorColumn$",
   "^Diff",
   "^MiniDiffOver",
   "^Snippet",
