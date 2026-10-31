@@ -472,13 +472,16 @@ check("unfocused panes stay easy to read; the focused one has an accent title", 
   for _, w in ipairs { left, right } do
     expect(vim.wo[w].winbar:find "focus", "pane " .. name_of(w) .. " has no title row")
   end
-  expect(vim.wo[tree].winbar ~= "" and vim.fn.luaeval "require('explorer').winbar()":find "FocusTitle", "the tree's title is not a focus title")
+  expect(
+    vim.wo[tree].winbar ~= "" and vim.fn.luaeval("require('explorer').winbar()"):find "FocusTitle",
+    "the tree's title is not a focus title"
+  )
   expect(title_fg(left) == accent, "focused title is not the accent")
   expect(title_fg(right) ~= accent and title_fg(tree) ~= accent, "an unfocused title is in the accent")
   -- The focused title is a tinted bar to the row's end, found at a glance.
   local title_bg = api.nvim_get_hl(api.nvim_get_hl_ns { winid = left }, { name = "FocusTitle", link = false }).bg
   expect(title_bg and title_bg ~= bg, "focused title row has no tint")
-  expect(vim.fn.luaeval "require('focus').title()":find "%%=$", "focused title tint stops at the name")
+  expect(vim.fn.luaeval("require('focus').title()"):find "%%=$", "focused title tint stops at the name")
 end)
 
 check("markup never hides words: markdown and org show every character", function()
@@ -697,7 +700,10 @@ check("Alt+B with the panel shown or the editor split top/bottom: tree full size
   expect(not tree(), "Alt+B did not hide the tree")
   press(super "b", 400)
   local t = tree()
-  expect(t and api.nvim_win_get_width(t) == width, "tree came back " .. (t and api.nvim_win_get_width(t) or 0) .. " wide, not " .. width)
+  expect(
+    t and api.nvim_win_get_width(t) == width,
+    "tree came back " .. (t and api.nvim_win_get_width(t) or 0) .. " wide, not " .. width
+  )
   expect(t and api.nvim_get_current_win() == t, "focus not in the tree")
   local panel = win_of(function(w)
     return is_term(w)
@@ -716,7 +722,10 @@ check("Alt+B with the panel shown or the editor split top/bottom: tree full size
   press(super "b", 300)
   press(super "b", 400)
   t = tree()
-  expect(t and api.nvim_win_get_width(t) == width, "with a top/bottom split the tree came back " .. (t and api.nvim_win_get_width(t) or 0) .. " wide")
+  expect(
+    t and api.nvim_win_get_width(t) == width,
+    "with a top/bottom split the tree came back " .. (t and api.nvim_win_get_width(t) or 0) .. " wide"
+  )
 end)
 
 check("Alt+F zooms a pane and brings the layout back", function()
@@ -1125,20 +1134,31 @@ check("Typed commands show in a centred box on the finder's row; long input wrap
     local cfg = api.nvim_win_get_config(w)
     local row = require("finder").window().row
     expect(row > 3, "the finder's row is " .. row)
-    expect(cfg.relative == "editor" and cfg.row == row and not cfg.hide, what .. ": not on the finder's row: " .. vim.inspect {
-      cfg.relative,
-      cfg.row,
-      cfg.hide,
-    })
+    expect(
+      cfg.relative == "editor" and cfg.row == row and not cfg.hide,
+      what
+        .. ": not on the finder's row: "
+        .. vim.inspect {
+          cfg.relative,
+          cfg.row,
+          cfg.hide,
+        }
+    )
     local mid = cfg.col + (cfg.width + 2) / 2
-    expect(math.abs(mid - cols / 2) <= 2 and cfg.width < cols, what .. ": not centred, col " .. cfg.col .. " width " .. cfg.width)
+    expect(
+      math.abs(mid - cols / 2) <= 2 and cfg.width < cols,
+      what .. ": not centred, col " .. cfg.col .. " width " .. cfg.width
+    )
     return w, cfg
   end
   local long = ("word "):rep(80)
   press(":echo '" .. long, 300)
-  local w, cfg = boxed(":")
+  local w, cfg = boxed ":"
   local th = api.nvim_win_text_height(w, {}).all
-  expect(th >= 3 and api.nvim_win_get_height(w) == th, "long input: " .. th .. " text rows in a " .. cfg.height .. "-row box")
+  expect(
+    th >= 3 and api.nvim_win_get_height(w) == th,
+    "long input: " .. th .. " text rows in a " .. cfg.height .. "-row box"
+  )
   expect(vim.o.cmdheight == 0, "the bottom line opened too")
   press("<C-u>e ", 100)
   press("<Tab>", 300)
@@ -1154,7 +1174,10 @@ check("Typed commands show in a centred box on the finder's row; long input wrap
   w = cmdwin()
   cfg = api.nvim_win_get_config(w)
   expect(cfg.relative == "laststatus", "the message is not on the bottom line: " .. cfg.relative)
-  expect(table.concat(api.nvim_buf_get_lines(api.nvim_win_get_buf(w), 0, -1, false)):find "seen at the bottom", "message not shown")
+  expect(
+    table.concat(api.nvim_buf_get_lines(api.nvim_win_get_buf(w), 0, -1, false)):find "seen at the bottom",
+    "message not shown"
+  )
   -- Every ui2 window is cut to the screen (Neovide does not cut floats).
   for _, x in ipairs(api.nvim_list_wins()) do
     local ft = vim.bo[api.nvim_win_get_buf(x)].filetype
@@ -1175,7 +1198,14 @@ check("Suggestions pop up as you type a command (:e shows files), inside the box
     local cfg, pum = api.nvim_win_get_config(w), vim.fn.pum_getpos()
     expect(
       pum.row and pum.row > cfg.row and pum.row + pum.height <= cfg.row + 1 + cfg.height,
-      what .. ": the menu (row " .. tostring(pum.row) .. ") is outside the box (rows " .. cfg.row .. "+" .. cfg.height .. ")"
+      what
+        .. ": the menu (row "
+        .. tostring(pum.row)
+        .. ") is outside the box (rows "
+        .. cfg.row
+        .. "+"
+        .. cfg.height
+        .. ")"
     )
   end
   -- Typed in one burst, before the box has been drawn.
@@ -1690,7 +1720,10 @@ check("Tree sort: gn / ga / gs keys and the clickable Sort row", function()
     expect(vim.fn.maparg(lhs, "n", false, true).buffer == 1, lhs .. " is not a tree key")
   end
   local bar = api.nvim_eval_statusline(vim.wo[win].winbar, { winid = win, use_winbar = true }).str
-  expect(bar:find("Sort", 1, true) and bar:find("Name (gn)", 1, true) and bar:find("Added (ga)", 1, true), "Sort row: '" .. bar .. "'")
+  expect(
+    bar:find("Sort", 1, true) and bar:find("Name (gn)", 1, true) and bar:find("Added (ga)", 1, true),
+    "Sort row: '" .. bar .. "'"
+  )
   -- A file made now is the newest: Added puts it above a.ml, Name below.
   local newest = proj .. "/zz_newest.ml"
   vim.fn.writefile({ "let z = 0" }, newest)
@@ -1806,7 +1839,10 @@ end)
 
 check("Diagnostics: text at every line end, not redrawn while typing", function()
   local cfg = vim.diagnostic.config()
-  expect(type(cfg.virtual_text) == "table" and not cfg.virtual_text.current_line, "virtual text only on the cursor line")
+  expect(
+    type(cfg.virtual_text) == "table" and not cfg.virtual_text.current_line,
+    "virtual text only on the cursor line"
+  )
   expect(cfg.update_in_insert == false, "diagnostics update in Insert")
 end)
 
@@ -1823,7 +1859,10 @@ check("Markdown always wraps at word boundaries, also a file with a pipe table",
   vim.fn.delete(plain)
   vim.fn.delete(tabled)
   for i, g in ipairs(got) do
-    expect(g[1] and g[2] and g[3], (i == 1 and "prose" or "table") .. " file: wrap/linebreak/breakindent = " .. vim.inspect(g))
+    expect(
+      g[1] and g[2] and g[3],
+      (i == 1 and "prose" or "table") .. " file: wrap/linebreak/breakindent = " .. vim.inspect(g)
+    )
   end
 end)
 
@@ -1836,7 +1875,10 @@ check("Mac: Cmd keys reach Neovim and nvm's node is on PATH (old Mac branch)", f
   local cfg = vim.fn.stdpath "config"
   local gui = table.concat(vim.fn.readfile(cfg .. "/lua/gui.lua"), "\n")
   local tools = table.concat(vim.fn.readfile(cfg .. "/lua/tools.lua"), "\n")
-  expect(gui:find "if is_macos then%s+[^\n]*\n[^\n]*neovide_input_use_logo = true", "gui.lua sets no neovide_input_use_logo on macOS")
+  expect(
+    gui:find "if is_macos then%s+[^\n]*\n[^\n]*neovide_input_use_logo = true",
+    "gui.lua sets no neovide_input_use_logo on macOS"
+  )
   expect(tools:find("nvm/alias/default", 1, true), "tools.lua has no nvm PATH on macOS")
 end)
 
@@ -2079,7 +2121,10 @@ check("Tab bar: close button, error count per tab, right-click and x close", fun
   _G.Tabs_close(c, 1, "l", "    ")
   wait(200)
   expect(not api.nvim_buf_is_valid(c) or not vim.bo[c].buflisted, "x did not close c.ml")
-  expect(name_of(api.nvim_get_current_win()) == "a.ml", "after closing, editor shows " .. name_of(api.nvim_get_current_win()))
+  expect(
+    name_of(api.nvim_get_current_win()) == "a.ml",
+    "after closing, editor shows " .. name_of(api.nvim_get_current_win())
+  )
 end)
 
 check("Tab bar: left click from the tree opens the tab in the editor pane", function()
@@ -2361,9 +2406,12 @@ check("Space f s lists the project's symbols from ocamllsp", function()
       break
     end
   end
-  local text = table.concat(vim.tbl_map(function(i)
-    return type(i) == "table" and (i.text or "") or tostring(i)
-  end, items), "\n")
+  local text = table.concat(
+    vim.tbl_map(function(i)
+      return type(i) == "table" and (i.text or "") or tostring(i)
+    end, items),
+    "\n"
+  )
   press("<Esc>", 200)
   expect(text:find "helper" and text:find "greeting", "symbols listed: " .. text:sub(1, 200))
 end)
