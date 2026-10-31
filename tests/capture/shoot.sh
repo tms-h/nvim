@@ -5,10 +5,10 @@
 # still image), live blur, border, Omarchy's default window opacity. One
 # Neovide runs WHICH config (new = this config via tests/env.sh's scratch
 # world; old = the copy from tests/old-copy.sh) in PROJECT_DIR. SCENARIO.sh is
-# sourced with R (nvim remote-expr), SHOT name (grim) and WHICH.
+# sourced with R (nvim remote-expr), L (lua through R), SHOT name (grim), WHICH
+# and N (this folder).
 # OPAQUE=1 gives the flat look (the new config's :Look flat; the old one only
 # had opacity 1).
-# Adapted from the 2026-10-22 look-fixes harness.
 set -u
 WHICH=$1 OUT=$2 SCEN=$(readlink -f "$3")
 PROJ=${4:-$HOME/Work/interview-prep/ocaml/workshop/03-snake}
@@ -53,7 +53,7 @@ if [ "$WHICH" = new ]; then
   mkdir -p "$S/cfg"
   ln -sfn "$(cd "$N/../.." && pwd -P)" "$S/cfg/nvim"
   ENVS=(XDG_CONFIG_HOME=$S/cfg XDG_DATA_HOME=$S/data XDG_STATE_HOME=$OUT/state XDG_CACHE_HOME=$S/cache
-    NVIM_NO_CONFIG_PULL=1 NEOVIDE_CONFIG=$S/cfg/nvim/neovide.toml)
+    NVIM_NO_CONFIG_PULL=1 WAKATIME_HOME=$S/wakatime NEOVIDE_CONFIG=$S/cfg/nvim/neovide.toml)
 else
   S=/tmp/nvold
   ENVS=(XDG_CONFIG_HOME=$S/cfg XDG_DATA_HOME=$S/data XDG_STATE_HOME=$OUT/state XDG_CACHE_HOME=$S/cache)
@@ -67,6 +67,7 @@ for _ in $(seq 60); do [ -S "$SOCK" ] && break; sleep 0.25; done
 [ -S "$SOCK" ] || { echo "neovide did not start (see $OUT/neovide.log)"; exit 1; }
 sleep 3
 R() { nvim --server "$SOCK" --remote-expr "$1"; }
+L() { R "luaeval('$1')"; }
 SHOT() {
   inner hyprctl dismissnotify >/dev/null 2>&1
   sleep 0.2

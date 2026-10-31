@@ -53,9 +53,12 @@ printf 'disable = true\n' >"$PROJ/noformat/.ocamlformat"
 printf 'let prices = List.map (fun item ->\n    item * 2) [ 1; 2; 3 ]\n' >"$PROJ/noformat/indent_me.ml"
 (cd "$PROJ" && git init -q . 2>/dev/null)
 
+# Through the environment, not spliced into the command: a check's name can
+# hold a quote.
+export TEST_OUT=$OUT TEST_PROJ=$PROJ TEST_ONLY=${TEST_ONLY:-}
 tmux -L "$SOCK" kill-server 2>/dev/null
 tmux -L "$SOCK" -f /dev/null new-session -d -x 200 -y 50 -c "$PROJ" \
-  "TEST_OUT=$OUT TEST_PROJ=$PROJ TEST_ONLY='${TEST_ONLY:-}' $HERE/env.sh nvim --listen $NVNEXT/test.sock --cmd 'let g:neovide = v:true | let g:no_restore = 1' --cmd 'source $HERE/clipboard.vim' -c 'luafile $HERE/run.lua' 2>$NVNEXT/check.err; sleep 2"
+  "$HERE/env.sh nvim --listen $NVNEXT/test.sock --cmd 'let g:neovide = v:true | let g:no_restore = 1' --cmd 'source $HERE/clipboard.vim' -c 'luafile $HERE/run.lua' 2>$NVNEXT/check.err; sleep 2"
 for _ in $(seq "${WAIT_TICKS:-600}"); do
   grep -q '^DONE' "$OUT" 2>/dev/null && break
   [ -S "$NVNEXT/test.sock" ] || [ "$(date +%s)" -lt "$((START + 5))" ] || break

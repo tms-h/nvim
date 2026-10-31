@@ -8,15 +8,12 @@ HERE=$(cd "$(dirname "$0")" && pwd -P)
 FILE=$1
 N=${N:-7}
 OUT=$(mktemp -d)
-SOCK=nvnext-time
+SOCK=${TMUX_SOCK:-nvnext-time}
+RUN=$HERE/env.sh
+[ -n "${OLD:-}" ] && RUN=$HERE/old-env.sh
 for i in $(seq "$N"); do
-  if [ -n "${OLD:-}" ]; then
-    CMD="XDG_CONFIG_HOME=/tmp/nvold/cfg XDG_DATA_HOME=/tmp/nvold/data XDG_STATE_HOME=/tmp/nvold/state XDG_CACHE_HOME=/tmp/nvold/cache nice -n 19 nvim"
-  else
-    CMD="$HERE/env.sh nvim"
-  fi
   tmux -L "$SOCK" -f /dev/null new-session -d -x 200 -y 50 -c "$(dirname "$FILE")" \
-    "$CMD --startuptime $OUT/$i.log $FILE"
+    "$RUN nvim --startuptime $OUT/$i.log $FILE"
   sleep "${SETTLE:-3}"
   tmux -L "$SOCK" kill-server 2>/dev/null
   sleep 0.3

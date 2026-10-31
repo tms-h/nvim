@@ -6,14 +6,12 @@ local api = vim.api
 local out_path = vim.env.TEST_OUT or "/tmp/nvnext/results.txt"
 local proj = vim.env.TEST_PROJ or "/tmp/nvnext/proj"
 local only = vim.env.TEST_ONLY
-local lines = {}
 local super = require("util").chord
 
 local function log(line)
-  lines[#lines + 1] = line
-  local f = io.open(out_path, "w")
+  local f = io.open(out_path, "a")
   if f then
-    f:write(table.concat(lines, "\n"), "\n")
+    f:write(line, "\n")
     f:close()
   end
 end
@@ -66,8 +64,29 @@ local function is_term(w)
   return vim.bo[api.nvim_win_get_buf(w)].buftype == "terminal"
 end
 
+local function editor_win()
+  return win_of(function(w)
+    return not is_term(w)
+  end)
+end
+
+local function tree_win()
+  return win_of(function(_, b)
+    return vim.bo[b].filetype == "NvimTree"
+  end)
+end
+
 local function name_of(w)
   return vim.fn.fnamemodify(api.nvim_buf_get_name(api.nvim_win_get_buf(w)), ":t")
+end
+
+-- The command line's window (ui2's, floating, so not in wins()).
+local function cmd_win()
+  for _, w in ipairs(api.nvim_list_wins()) do
+    if vim.bo[api.nvim_win_get_buf(w)].filetype == "cmd" then
+      return w
+    end
+  end
 end
 
 -- A window's own 'fillchars' ("" = it uses the global value).
@@ -119,11 +138,19 @@ end
 -- Editor left, terminal right (Alt+Return from a wide pane).
 local function editor_and_terminal()
   press(super "CR", 400)
-  local term = win_of(function(w)
-    return is_term(w)
-  end)
+  local term = win_of(is_term)
   expect(term, "Alt+Return made no terminal")
   return term
+end
+
+-- Up to 10 s for a language server to attach to buf and go idle.
+local function wait_for_lsp(buf)
+  for _ = 1, 40 do
+    wait(250)
+    if #vim.lsp.get_clients { bufnr = buf } > 0 and vim.lsp.status() == "" then
+      return
+    end
+  end
 end
 
 local function picker_active()
@@ -168,12 +195,9 @@ check("stray keys in the tree: no popups, at most one short line each", function
   local bad = {}
   for _, k in ipairs(stray) do
     vim.cmd "messages clear"
-    -- Key and Esc in one go: keys like q, m, f wait for one more key, and
+    -- Key and Esc in one go: keys like m, g, z wait for one more key, and
     -- while they wait Neovim runs no timers (this runner would stall).
     press(k .. "<Esc>", 80)
-    if vim.fn.reg_recording() ~= "" then
-      press("q", 30)
-    end
     local msgs = vim.split(vim.trim(vim.fn.execute "messages"), "\n", { trimempty = true })
     if #msgs > 1 then
       bad[#bad + 1] = k .. " => " .. #msgs .. " lines: " .. table.concat(msgs, " / ")
@@ -201,9 +225,7 @@ end)
 
 check("pane focus works the same from Normal, Insert, Visual and Terminal", function()
   local term = editor_and_terminal()
-  local editor = win_of(function(w)
-    return not is_term(w)
-  end)
+  local editor = editor_win()
   local failed = {}
   for _, k in ipairs { "<C-h>", super "Left" } do
     -- from Terminal mode (the terminal just opened is in it)
@@ -336,9 +358,7 @@ end)
 
 check("Ctrl+Arrow moves the divider toward the arrow (editor and terminal)", function()
   local term = editor_and_terminal()
-  local editor = win_of(function(w)
-    return not is_term(w)
-  end)
+  local editor = editor_win()
   local function divider()
     return api.nvim_win_get_width(editor)
   end
@@ -365,9 +385,7 @@ check("Ctrl+Arrow moves the divider toward the arrow (editor and terminal)", fun
   vim.cmd "stopinsert"
   vim.cmd "belowright 10split | terminal"
   wait(200)
-  local top = win_of(function(w)
-    return not is_term(w)
-  end)
+  local top = editor_win()
   local h0 = api.nvim_win_get_height(top)
   press "<C-Up>"
   expect(api.nvim_win_get_height(top) < h0, "terminal Ctrl+Up: divider did not move up")
@@ -472,13 +490,16 @@ check("unfocused panes stay easy to read; the focused one has an accent title", 
   for _, w in ipairs { left, right } do
     expect(vim.wo[w].winbar:find "focus", "pane " .. name_of(w) .. " has no title row")
   end
-  expect(vim.wo[tree].winbar ~= "" and vim.fn.luaeval "require('explorer').winbar()":find "FocusTitle", "the tree's title is not a focus title")
+  expect(
+    vim.wo[tree].winbar ~= "" and vim.fn.luaeval("require('explorer').winbar()"):find "FocusTitle",
+    "the tree's title is not a focus title"
+  )
   expect(title_fg(left) == accent, "focused title is not the accent")
   expect(title_fg(right) ~= accent and title_fg(tree) ~= accent, "an unfocused title is in the accent")
   -- The focused title is a tinted bar to the row's end, found at a glance.
   local title_bg = api.nvim_get_hl(api.nvim_get_hl_ns { winid = left }, { name = "FocusTitle", link = false }).bg
   expect(title_bg and title_bg ~= bg, "focused title row has no tint")
-  expect(vim.fn.luaeval "require('focus').title()":find "%%=$", "focused title tint stops at the name")
+  expect(vim.fn.luaeval("require('focus').title()"):find "%%=$", "focused title tint stops at the name")
 end)
 
 check("markup never hides words: markdown and org show every character", function()
@@ -509,30 +530,38 @@ check("markup never hides words: markdown and org show every character", functio
   expect(nonzero, "comment text has the background colour")
 end)
 
+-- Where projects.lua keeps a folder's session.
+local function session_file(dir)
+  return vim.fn.stdpath "state" .. "/sessions/" .. vim.uv.fs_realpath(dir):gsub("[/\\:]", "%%") .. ".vim"
+end
+
+-- Another Neovim (a live process) has dir open. Returns the way to end it.
+local function open_in_other_window(dir)
+  local job = vim.fn.jobstart { "sleep", "30" }
+  local open_dir = vim.env.XDG_STATE_HOME .. "/nvim/open-projects"
+  local file = open_dir .. "/" .. vim.fn.jobpid(job)
+  vim.fn.mkdir(open_dir, "p")
+  vim.fn.writefile({ vim.uv.fs_realpath(dir) }, file)
+  return function()
+    vim.fn.jobstop(job)
+    os.remove(file)
+  end
+end
+
 check("a new window never reopens a project another window shows", function()
   local projects = require "projects"
   local a, b = proj .. "/sub-a", proj .. "/sub-b"
   vim.fn.mkdir(a, "p")
   vim.fn.mkdir(b, "p")
-  local sdir = vim.fn.stdpath "state" .. "/sessions"
-  vim.fn.mkdir(sdir, "p")
-  local function sess(dir)
-    return sdir .. "/" .. dir:gsub("[/\\:]", "%%") .. ".vim"
-  end
-  vim.fn.writefile({ '" test' }, sess(b))
+  vim.fn.mkdir(vim.fn.stdpath "state" .. "/sessions", "p")
+  vim.fn.writefile({ '" test' }, session_file(b))
   vim.uv.sleep(1100)
-  vim.fn.writefile({ '" test' }, sess(a)) -- a is the newest
-  -- Another Neovim (a live process) has `a` open.
-  local job = vim.fn.jobstart { "sleep", "30" }
-  local pid = vim.fn.jobpid(job)
-  local open_dir = vim.env.XDG_STATE_HOME .. "/nvim/open-projects"
-  vim.fn.mkdir(open_dir, "p")
-  vim.fn.writefile({ vim.uv.fs_realpath(a) }, open_dir .. "/" .. pid)
+  vim.fn.writefile({ '" test' }, session_file(a)) -- a is the newest
+  local close_other = open_in_other_window(a)
   local got = projects.last_project()
-  vim.fn.jobstop(job)
-  os.remove(open_dir .. "/" .. pid)
-  os.remove(sess(a))
-  os.remove(sess(b))
+  close_other()
+  os.remove(session_file(a))
+  os.remove(session_file(b))
   expect(got and vim.uv.fs_realpath(got) == vim.uv.fs_realpath(b), "reopened " .. tostring(got))
 end)
 
@@ -543,12 +572,7 @@ check("library files are read-only with no diagnostics", function()
   end
   vim.cmd("edit " .. lib)
   local buf = api.nvim_get_current_buf()
-  for _ = 1, 40 do
-    wait(250)
-    if #vim.lsp.get_clients { bufnr = buf } > 0 and vim.lsp.status() == "" then
-      break
-    end
-  end
+  wait_for_lsp(buf)
   wait(1500)
   expect(vim.bo[buf].readonly, "not read-only")
   expect(#vim.lsp.get_clients { bufnr = buf } > 0, "no language server (hover would not work)")
@@ -569,9 +593,7 @@ end)
 
 check("the tree shows the folder name and opens files in the last editor, no prompt", function()
   local term = editor_and_terminal()
-  local editor = win_of(function(w)
-    return not is_term(w)
-  end)
+  local editor = editor_win()
   -- Focus the terminal last, then open a file from the tree.
   api.nvim_set_current_win(term)
   press(super "b", 400)
@@ -681,27 +703,22 @@ check("Ctrl+` toggles a full-width terminal panel at the bottom, from every mode
 end)
 
 check("Alt+B with the panel shown or the editor split top/bottom: tree full size, panel full width", function()
-  local function tree()
-    return win_of(function(_, b)
-      return vim.bo[b].filetype == "NvimTree"
-    end)
-  end
   press(super "b", 400)
-  if not tree() then
+  if not tree_win() then
     press(super "b", 400)
   end
-  local width = api.nvim_win_get_width(tree())
+  local width = api.nvim_win_get_width(tree_win())
   press("<C-`>", 400)
-  local p = api.nvim_get_current_win()
   press(super "b", 300)
-  expect(not tree(), "Alt+B did not hide the tree")
+  expect(not tree_win(), "Alt+B did not hide the tree")
   press(super "b", 400)
-  local t = tree()
-  expect(t and api.nvim_win_get_width(t) == width, "tree came back " .. (t and api.nvim_win_get_width(t) or 0) .. " wide, not " .. width)
+  local t = tree_win()
+  expect(
+    t and api.nvim_win_get_width(t) == width,
+    "tree came back " .. (t and api.nvim_win_get_width(t) or 0) .. " wide, not " .. width
+  )
   expect(t and api.nvim_get_current_win() == t, "focus not in the tree")
-  local panel = win_of(function(w)
-    return is_term(w)
-  end)
+  local panel = win_of(is_term)
   expect(panel and api.nvim_win_get_width(panel) == vim.o.columns, "panel not full width after the tree came back")
   expect(
     t and panel and api.nvim_win_get_position(t)[1] + api.nvim_win_get_height(t) < api.nvim_win_get_position(panel)[1],
@@ -709,14 +726,16 @@ check("Alt+B with the panel shown or the editor split top/bottom: tree full size
   )
   api.nvim_set_current_win(panel)
   press("<C-`>", 300)
-  expect(p ~= nil, "setup")
   -- Two editors along the tree's edge, one above the other.
   require("panes").editor()
   vim.cmd "split b.ml"
   press(super "b", 300)
   press(super "b", 400)
-  t = tree()
-  expect(t and api.nvim_win_get_width(t) == width, "with a top/bottom split the tree came back " .. (t and api.nvim_win_get_width(t) or 0) .. " wide")
+  t = tree_win()
+  expect(
+    t and api.nvim_win_get_width(t) == width,
+    "with a top/bottom split the tree came back " .. (t and api.nvim_win_get_width(t) or 0) .. " wide"
+  )
 end)
 
 check("Alt+F zooms a pane and brings the layout back", function()
@@ -883,12 +902,7 @@ end)
 check("gd goes to a definition; K shows the type", function()
   vim.cmd "edit! b.ml"
   local buf = api.nvim_get_current_buf()
-  for _ = 1, 40 do
-    wait(250)
-    if #vim.lsp.get_clients { bufnr = buf } > 0 and vim.lsp.status() == "" then
-      break
-    end
-  end
+  wait_for_lsp(buf)
   wait(800)
   vim.fn.search "helper"
   press("gd", 1200)
@@ -902,13 +916,17 @@ end)
 check("F5 runs a Python file in a terminal pane", function()
   vim.cmd "edit! hello.py"
   press("<F5>", 1200)
-  local term = win_of(function(w)
-    return is_term(w)
-  end)
+  local term = win_of(is_term)
   expect(term, "no terminal pane")
   local text = table.concat(api.nvim_buf_get_lines(api.nvim_win_get_buf(term), 0, -1, false), "\n")
   expect(text:find "hello from python", "output: " .. text:sub(1, 80))
 end)
+
+local function word_marks()
+  return vim.tbl_filter(function(m)
+    return m.group == "WordOccurrence"
+  end, vim.fn.getmatches())
+end
 
 check("Double-click selects the word and marks its other occurrences", function()
   vim.cmd "edit! a.ml"
@@ -916,15 +934,9 @@ check("Double-click selects the word and marks its other occurrences", function(
   require("words").select_word()
   wait(100)
   expect(mode() == "v", "not in Visual: " .. mode())
-  local marks = vim.tbl_filter(function(m)
-    return m.group == "WordOccurrence"
-  end, vim.fn.getmatches())
-  expect(#marks == 1, "no occurrence marks")
+  expect(#word_marks() == 1, "no occurrence marks")
   press "<Esc>"
-  marks = vim.tbl_filter(function(m)
-    return m.group == "WordOccurrence"
-  end, vim.fn.getmatches())
-  expect(#marks == 0, "marks stayed after the selection ended")
+  expect(#word_marks() == 0, "marks stayed after the selection ended")
 end)
 
 -- ── The other keys ────────────────────────────────────────────────────────
@@ -1016,12 +1028,7 @@ end)
 check("Completion pops up by itself with language-server items", function()
   vim.cmd "edit! c.ml"
   local buf = api.nvim_get_current_buf()
-  for _ = 1, 40 do
-    wait(250)
-    if #vim.lsp.get_clients { bufnr = buf } > 0 and vim.lsp.status() == "" then
-      break
-    end
-  end
+  wait_for_lsp(buf)
   wait(500)
   vim.fn.cursor(1, 1)
   press("olet z = List.ma", 1500)
@@ -1084,12 +1091,7 @@ end)
 
 check("A message takes one line: three lines show as one with [+2]", function()
   press(':echo "one\\ntwo\\nthree"<CR>', 300)
-  local cmd
-  for _, w in ipairs(api.nvim_list_wins()) do
-    if vim.bo[api.nvim_win_get_buf(w)].filetype == "cmd" then
-      cmd = w
-    end
-  end
+  local cmd = cmd_win()
   expect(
     cmd and api.nvim_win_get_height(cmd) == 1,
     "command line is " .. (cmd and api.nvim_win_get_height(cmd) or "?") .. " rows"
@@ -1111,34 +1113,38 @@ check("Sizing panes (Neovide zoom, tree open) leaves no empty rows under the sta
 end)
 
 check("Typed commands show in a centred box on the finder's row; long input wraps, all of it in view", function()
-  local function cmdwin()
-    for _, w in ipairs(api.nvim_list_wins()) do
-      if vim.bo[api.nvim_win_get_buf(w)].filetype == "cmd" then
-        return w
-      end
-    end
-  end
   local cols = vim.o.columns
   local function boxed(what)
-    local w = cmdwin()
+    local w = cmd_win()
     expect(w, what .. ": no command line window")
     local cfg = api.nvim_win_get_config(w)
     local row = require("finder").window().row
     expect(row > 3, "the finder's row is " .. row)
-    expect(cfg.relative == "editor" and cfg.row == row and not cfg.hide, what .. ": not on the finder's row: " .. vim.inspect {
-      cfg.relative,
-      cfg.row,
-      cfg.hide,
-    })
+    expect(
+      cfg.relative == "editor" and cfg.row == row and not cfg.hide,
+      what
+        .. ": not on the finder's row: "
+        .. vim.inspect {
+          cfg.relative,
+          cfg.row,
+          cfg.hide,
+        }
+    )
     local mid = cfg.col + (cfg.width + 2) / 2
-    expect(math.abs(mid - cols / 2) <= 2 and cfg.width < cols, what .. ": not centred, col " .. cfg.col .. " width " .. cfg.width)
+    expect(
+      math.abs(mid - cols / 2) <= 2 and cfg.width < cols,
+      what .. ": not centred, col " .. cfg.col .. " width " .. cfg.width
+    )
     return w, cfg
   end
   local long = ("word "):rep(80)
   press(":echo '" .. long, 300)
-  local w, cfg = boxed(":")
+  local w, cfg = boxed ":"
   local th = api.nvim_win_text_height(w, {}).all
-  expect(th >= 3 and api.nvim_win_get_height(w) == th, "long input: " .. th .. " text rows in a " .. cfg.height .. "-row box")
+  expect(
+    th >= 3 and api.nvim_win_get_height(w) == th,
+    "long input: " .. th .. " text rows in a " .. cfg.height .. "-row box"
+  )
   expect(vim.o.cmdheight == 0, "the bottom line opened too")
   press("<C-u>e ", 100)
   press("<Tab>", 300)
@@ -1151,10 +1157,13 @@ check("Typed commands show in a centred box on the finder's row; long input wrap
   boxed "/"
   press("<Esc>", 150)
   press(":echo 'seen at the bottom'<CR>", 300)
-  w = cmdwin()
+  w = cmd_win()
   cfg = api.nvim_win_get_config(w)
   expect(cfg.relative == "laststatus", "the message is not on the bottom line: " .. cfg.relative)
-  expect(table.concat(api.nvim_buf_get_lines(api.nvim_win_get_buf(w), 0, -1, false)):find "seen at the bottom", "message not shown")
+  expect(
+    table.concat(api.nvim_buf_get_lines(api.nvim_win_get_buf(w), 0, -1, false)):find "seen at the bottom",
+    "message not shown"
+  )
   -- Every ui2 window is cut to the screen (Neovide does not cut floats).
   for _, x in ipairs(api.nvim_list_wins()) do
     local ft = vim.bo[api.nvim_win_get_buf(x)].filetype
@@ -1166,16 +1175,17 @@ end)
 
 check("Suggestions pop up as you type a command (:e shows files), inside the box, without changing the text", function()
   local function inside(what)
-    local w
-    for _, x in ipairs(api.nvim_list_wins()) do
-      if vim.bo[api.nvim_win_get_buf(x)].filetype == "cmd" then
-        w = x
-      end
-    end
-    local cfg, pum = api.nvim_win_get_config(w), vim.fn.pum_getpos()
+    local cfg, pum = api.nvim_win_get_config(cmd_win()), vim.fn.pum_getpos()
     expect(
       pum.row and pum.row > cfg.row and pum.row + pum.height <= cfg.row + 1 + cfg.height,
-      what .. ": the menu (row " .. tostring(pum.row) .. ") is outside the box (rows " .. cfg.row .. "+" .. cfg.height .. ")"
+      what
+        .. ": the menu (row "
+        .. tostring(pum.row)
+        .. ") is outside the box (rows "
+        .. cfg.row
+        .. "+"
+        .. cfg.height
+        .. ")"
     )
   end
   -- Typed in one burst, before the box has been drawn.
@@ -1205,9 +1215,7 @@ check("dune keys open a new pane; the .ml file stays in the editor", function()
   vim.cmd "edit! a.ml"
   local editor = api.nvim_get_current_win()
   press(" ob", 800)
-  local term = win_of(function(w)
-    return is_term(w)
-  end)
+  local term = win_of(is_term)
   expect(term, "no dune pane")
   expect(name_of(editor) == "a.ml", "the editor shows " .. name_of(editor))
   expect(api.nvim_win_get_buf(term) ~= api.nvim_win_get_buf(editor), "dune took over a.ml")
@@ -1343,13 +1351,14 @@ end)
 check("A project's session is saved under its own name and comes back", function()
   local dir = proj .. "/sub-c"
   vim.fn.mkdir(dir, "p")
+  vim.fn.mkdir(proj .. "/sub-a", "p") -- the other folder it visits
   vim.fn.writefile({ "let z = 0" }, dir .. "/z.ml")
   local projects = require "projects"
   projects.open_folder(dir)
   wait(300)
   vim.cmd "edit z.ml"
   projects.save()
-  local session = vim.fn.stdpath "state" .. "/sessions/" .. vim.uv.fs_realpath(dir):gsub("[/\\:]", "%%") .. ".vim"
+  local session = session_file(dir)
   expect(vim.uv.fs_stat(session), "no session at " .. session)
   -- Open another folder, then come back: z.ml is open again.
   projects.open_folder(proj .. "/sub-a")
@@ -1371,7 +1380,7 @@ check("A zoom is not saved as a tab; no files left = no session", function()
   press(super "f", 200)
   expect(#api.nvim_list_tabpages() == 2, "zoom made no tab")
   projects.save()
-  local session = vim.fn.stdpath "state" .. "/sessions/" .. vim.uv.fs_realpath(dir):gsub("[/\\:]", "%%") .. ".vim"
+  local session = session_file(dir)
   local text = table.concat(vim.fn.readfile(session), "\n")
   expect(not text:find "tabnew", "the zoom tab was saved")
   vim.cmd "silent! tabonly"
@@ -1401,6 +1410,9 @@ check("The status line shows the git branch, also in a git worktree", function()
   local line = require("statusline").render()
   vim.cmd("cd " .. proj)
   local head = vim.trim(vim.fn.system { "git", "-C", repo, "branch", "--show-current" })
+  if head == "" then -- detached: the status line shows the short commit
+    head = vim.trim(vim.fn.system { "git", "-C", repo, "rev-parse", "--short", "HEAD" })
+  end
   expect(head ~= "" and line:find(head, 1, true), "branch '" .. head .. "' not in: " .. line)
 end)
 
@@ -1408,9 +1420,7 @@ end)
 
 check("Tree with no editor left: a file opens beside it, the tree keeps its width", function()
   local term = editor_and_terminal()
-  api.nvim_set_current_win(win_of(function(w)
-    return not is_term(w)
-  end))
+  api.nvim_set_current_win(editor_win())
   vim.cmd "close"
   press(super "b", 400)
   local tree = api.nvim_get_current_win()
@@ -1504,9 +1514,7 @@ check("Double-click on a space marks nothing", function()
   vim.fn.cursor(1, 4) -- the space after "let"
   require("words").select_word()
   wait(100)
-  local marks = vim.tbl_filter(function(m)
-    return m.group == "WordOccurrence"
-  end, vim.fn.getmatches())
+  local marks = word_marks()
   press "<Esc>"
   expect(#marks == 0, "marked " .. #marks)
 end)
@@ -1619,16 +1627,11 @@ end)
 check("Alt+O will not open a project another window has", function()
   local dir = proj .. "/sub-e"
   vim.fn.mkdir(dir, "p")
-  local job = vim.fn.jobstart { "sleep", "30" }
-  local pid = vim.fn.jobpid(job)
-  local open_dir = vim.env.XDG_STATE_HOME .. "/nvim/open-projects"
-  vim.fn.mkdir(open_dir, "p")
-  vim.fn.writefile({ vim.uv.fs_realpath(dir) }, open_dir .. "/" .. pid)
+  local close_other = open_in_other_window(dir)
   local before = require("projects").current()
   require("projects").open_folder(dir)
   local after = require("projects").current()
-  vim.fn.jobstop(job)
-  os.remove(open_dir .. "/" .. pid)
+  close_other()
   expect(after == before, "opened it anyway")
 end)
 
@@ -1668,12 +1671,6 @@ end)
 
 -- ── Tree layout and sort (the old config's, which the usage log could not see) ──
 
-local function tree_win()
-  return win_of(function(w)
-    return vim.bo[api.nvim_win_get_buf(w)].filetype == "NvimTree"
-  end)
-end
-
 local function tree_row(pattern)
   for i, line in ipairs(api.nvim_buf_get_lines(api.nvim_win_get_buf(tree_win()), 0, -1, false)) do
     if line:find(pattern) then
@@ -1690,7 +1687,10 @@ check("Tree sort: gn / ga / gs keys and the clickable Sort row", function()
     expect(vim.fn.maparg(lhs, "n", false, true).buffer == 1, lhs .. " is not a tree key")
   end
   local bar = api.nvim_eval_statusline(vim.wo[win].winbar, { winid = win, use_winbar = true }).str
-  expect(bar:find("Sort", 1, true) and bar:find("Name (gn)", 1, true) and bar:find("Added (ga)", 1, true), "Sort row: '" .. bar .. "'")
+  expect(
+    bar:find("Sort", 1, true) and bar:find("Name (gn)", 1, true) and bar:find("Added (ga)", 1, true),
+    "Sort row: '" .. bar .. "'"
+  )
   -- A file made now is the newest: Added puts it above a.ml, Name below.
   local newest = proj .. "/zz_newest.ml"
   vim.fn.writefile({ "let z = 0" }, newest)
@@ -1737,9 +1737,9 @@ check("Tree spacing: two-cell gutter, folder arrows, sort row above the folder n
     press("R", 300)
     expect(vim.fn.getwininfo(win)[1].textoff >= 2, "no left gutter: textoff " .. vim.fn.getwininfo(win)[1].textoff)
     expect(vim.wo[win].winbar ~= "", "no Sort row above the tree")
-    local lines_ = api.nvim_buf_get_lines(api.nvim_win_get_buf(win), 0, -1, false)
-    local folder = lines_[tree_row "sub$"] or ""
-    local file = lines_[tree_row "a%.ml$"] or ""
+    local rows = api.nvim_buf_get_lines(api.nvim_win_get_buf(win), 0, -1, false)
+    local folder = rows[tree_row "sub$"] or ""
+    local file = rows[tree_row "a%.ml$"] or ""
     -- A closed folder starts with its arrow; a file at the same level is
     -- padded by the arrow's width so the icons line up.
     expect(vim.fn.strdisplaywidth(folder:match "^(.-)sub$") >= 4, "folder row '" .. folder .. "' has no arrow + icon")
@@ -1762,20 +1762,6 @@ check("Tree paste with nothing copied: one short line, clipboard text never read
 end)
 
 check("Flat look is at least as clear as the old opaque look", function()
-  local function lum(n)
-    local function ch(c)
-      c = c / 255
-      return c <= 0.03928 and c / 12.92 or ((c + 0.055) / 1.055) ^ 2.4
-    end
-    return 0.2126 * ch(bit.rshift(n, 16) % 256) + 0.7152 * ch(bit.rshift(n, 8) % 256) + 0.0722 * ch(n % 256)
-  end
-  local function ratio(a, b)
-    local x, y = lum(a), lum(b)
-    if x < y then
-      x, y = y, x
-    end
-    return (x + 0.05) / (y + 0.05)
-  end
   local look = require("theme").look
   vim.cmd "Look flat"
   local bg = api.nvim_get_hl(0, { name = "Normal" }).bg
@@ -1793,7 +1779,7 @@ check("Flat look is at least as clear as the old opaque look", function()
   for _, f in ipairs(floor) do
     local hl = api.nvim_get_hl(f[1], { name = f[2], link = false })
     local fg = hl.fg or api.nvim_get_hl(f[1], { name = "Normal", link = false }).fg
-    local r = ratio(fg, bg)
+    local r = contrast(fg, bg)
     if r < f[3] then
       low[#low + 1] = string.format("%s%s %.2f < %.2f", f[1] == 0 and "" or "dim ", f[2], r, f[3])
     end
@@ -1806,7 +1792,10 @@ end)
 
 check("Diagnostics: text at every line end, not redrawn while typing", function()
   local cfg = vim.diagnostic.config()
-  expect(type(cfg.virtual_text) == "table" and not cfg.virtual_text.current_line, "virtual text only on the cursor line")
+  expect(
+    type(cfg.virtual_text) == "table" and not cfg.virtual_text.current_line,
+    "virtual text only on the cursor line"
+  )
   expect(cfg.update_in_insert == false, "diagnostics update in Insert")
 end)
 
@@ -1823,7 +1812,10 @@ check("Markdown always wraps at word boundaries, also a file with a pipe table",
   vim.fn.delete(plain)
   vim.fn.delete(tabled)
   for i, g in ipairs(got) do
-    expect(g[1] and g[2] and g[3], (i == 1 and "prose" or "table") .. " file: wrap/linebreak/breakindent = " .. vim.inspect(g))
+    expect(
+      g[1] and g[2] and g[3],
+      (i == 1 and "prose" or "table") .. " file: wrap/linebreak/breakindent = " .. vim.inspect(g)
+    )
   end
 end)
 
@@ -1836,7 +1828,10 @@ check("Mac: Cmd keys reach Neovim and nvm's node is on PATH (old Mac branch)", f
   local cfg = vim.fn.stdpath "config"
   local gui = table.concat(vim.fn.readfile(cfg .. "/lua/gui.lua"), "\n")
   local tools = table.concat(vim.fn.readfile(cfg .. "/lua/tools.lua"), "\n")
-  expect(gui:find "if is_macos then%s+[^\n]*\n[^\n]*neovide_input_use_logo = true", "gui.lua sets no neovide_input_use_logo on macOS")
+  expect(
+    gui:find "if is_macos then%s+[^\n]*\n[^\n]*neovide_input_use_logo = true",
+    "gui.lua sets no neovide_input_use_logo on macOS"
+  )
   expect(tools:find("nvm/alias/default", 1, true), "tools.lua has no nvm PATH on macOS")
 end)
 
@@ -2079,7 +2074,10 @@ check("Tab bar: close button, error count per tab, right-click and x close", fun
   _G.Tabs_close(c, 1, "l", "    ")
   wait(200)
   expect(not api.nvim_buf_is_valid(c) or not vim.bo[c].buflisted, "x did not close c.ml")
-  expect(name_of(api.nvim_get_current_win()) == "a.ml", "after closing, editor shows " .. name_of(api.nvim_get_current_win()))
+  expect(
+    name_of(api.nvim_get_current_win()) == "a.ml",
+    "after closing, editor shows " .. name_of(api.nvim_get_current_win())
+  )
 end)
 
 check("Tab bar: left click from the tree opens the tab in the editor pane", function()
@@ -2181,9 +2179,7 @@ check("A folder opened at start shows the tree at its full width, not a one-cell
   local editor = api.nvim_get_current_win()
   require("projects").open_folder(proj .. "/sub-start", { startup = true })
   wait(600)
-  local tree = win_of(function(_, b)
-    return vim.bo[b].filetype == "NvimTree"
-  end)
+  local tree = tree_win()
   expect(tree, "no tree")
   expect(api.nvim_win_get_width(tree) >= 25, "the tree is " .. api.nvim_win_get_width(tree) .. " cells wide")
   expect(api.nvim_get_current_win() == editor, "focus moved to the tree")
@@ -2197,7 +2193,7 @@ check("Alt/Cmd+O lists recent projects first, newest first, with their age; typi
   local sessions = vim.fn.stdpath "state" .. "/sessions"
   vim.fn.mkdir(sessions, "p")
   local function session(dir, age)
-    local file = sessions .. "/" .. real(dir):gsub("[/\\:]", "%%") .. ".vim"
+    local file = session_file(real(dir))
     vim.fn.writefile({ "" }, file)
     vim.uv.fs_utime(file, os.time() - age, os.time() - age)
   end
@@ -2236,7 +2232,7 @@ check("Alt/Cmd+O lists recent projects first, newest first, with their age; typi
   press("<Esc>", 200)
 end)
 
--- ── Jane Street steals (compare.md 4-8) ──────────────────────────────────
+-- ── Space key names, change keys, symbols, OCaml gt ──────────────────────
 
 -- What mini.clue would show after Space, in this buffer and mode: keys with
 -- no name, and groups (a prefix of 2+ keys) with no name.
@@ -2271,7 +2267,7 @@ local function unnamed_space_keys(mode)
   return missing, groups
 end
 
-check("Every Space key and Space group has a name (OCaml, org, Lua; normal and selection)", function()
+check("Every Space key and Space group has a name (OCaml, org, Python; normal and selection)", function()
   local missing = {}
   for _, f in ipairs { "a.ml", "a.mli", "README.org", "hello.py", "a.ml" } do
     vim.cmd("edit! " .. f)
@@ -2343,12 +2339,7 @@ check("Space f s lists the project's symbols from ocamllsp", function()
   vim.system({ "dune", "build", "@check" }, { cwd = proj }):wait(60000)
   vim.cmd "edit! b.ml"
   local buf = api.nvim_get_current_buf()
-  for _ = 1, 40 do
-    wait(250)
-    if #vim.lsp.get_clients { bufnr = buf } > 0 and vim.lsp.status() == "" then
-      break
-    end
-  end
+  wait_for_lsp(buf)
   wait(800)
   vim.cmd "edit! a.ml"
   wait(300)
@@ -2361,9 +2352,12 @@ check("Space f s lists the project's symbols from ocamllsp", function()
       break
     end
   end
-  local text = table.concat(vim.tbl_map(function(i)
-    return type(i) == "table" and (i.text or "") or tostring(i)
-  end, items), "\n")
+  local text = table.concat(
+    vim.tbl_map(function(i)
+      return type(i) == "table" and (i.text or "") or tostring(i)
+    end, items),
+    "\n"
+  )
   press("<Esc>", 200)
   expect(text:find "helper" and text:find "greeting", "symbols listed: " .. text:sub(1, 200))
 end)
@@ -2385,6 +2379,82 @@ check("OCaml gt wraps a motion, a selection or a line in (fun () -> ...)", funct
   vim.cmd "edit! c.ml"
   vim.cmd "silent! undo 0"
   vim.cmd "edit! c.ml"
+end)
+
+-- ── The test tools themselves ────────────────────────────────────────────
+
+local tests_dir = vim.fn.stdpath "config" .. "/tests"
+
+-- Run a tests/ script against a scratch folder that does not exist yet, with
+-- stand-ins for tmux (logs its arguments, runs the command of a new session)
+-- and nvim (logs TEST_ONLY, ends the run). Returns its output and the log.
+local function run_tool(script, env)
+  local dir = vim.fn.tempname()
+  vim.fn.mkdir(dir .. "/bin", "p")
+  local function stand_in(name, body)
+    local file = dir .. "/bin/" .. name
+    vim.fn.writefile({ "#!/bin/sh", body }, file)
+    vim.fn.setfperm(file, "rwxr-xr-x")
+  end
+  stand_in("tmux", [[echo "tmux $*" >>"$FAKE_LOG"; case "$*" in *new-session*) for c; do :; done; sh -c "$c" ;; esac]])
+  stand_in("nvim", [[echo "nvim TEST_ONLY=$TEST_ONLY" >>"$FAKE_LOG"; echo DONE >>"$NVNEXT/results.txt"]])
+  local log_file = dir .. "/log"
+  local full_env = vim.tbl_extend("force", {
+    NVNEXT = dir .. "/world",
+    TMUX_SOCK = "tool-check",
+    FAKE_LOG = log_file,
+    PATH = dir .. "/bin:" .. vim.env.PATH,
+  }, env or {})
+  local result = vim.system(script, { cwd = dir, env = full_env, text = true }):wait(30000)
+  local logged = vim.uv.fs_stat(log_file) and table.concat(vim.fn.readfile(log_file), "\n") or ""
+  return result.stdout or "", logged
+end
+
+check("Test tools: check.sh passes TEST_ONLY as typed, a quote in it too", function()
+  local name = "A project's session"
+  local out, logged = run_tool({ tests_dir .. "/check.sh" }, { TEST_ONLY = name })
+  expect(logged:find("nvim TEST_ONLY=" .. name, 1, true), "nvim got: " .. logged .. "\ncheck.sh said: " .. out)
+end)
+
+check("Test tools: live.sh starts when the scratch folder is new", function()
+  local _, logged = run_tool { tests_dir .. "/live.sh" }
+  expect(logged:find("nvim TEST_ONLY", 1, true), "nvim never started: " .. logged)
+end)
+
+check("Test tools: capture/all.sh starts when the output folder is new", function()
+  local dir = vim.fn.tempname()
+  vim.fn.mkdir(dir, "p")
+  vim.uv.fs_copyfile(tests_dir .. "/capture/all.sh", dir .. "/all.sh")
+  vim.fn.setfperm(dir .. "/all.sh", "rwxr-xr-x")
+  vim.fn.writefile({ "#!/bin/sh", 'mkdir -p "$2"; touch "$2/shot.png"' }, dir .. "/shoot.sh")
+  vim.fn.setfperm(dir .. "/shoot.sh", "rwxr-xr-x")
+  local out = run_tool({ dir .. "/all.sh", dir .. "/new/out" }, { ONLY = "new" })
+  expect(out:find("new-glass: 1 shots", 1, true) and out:find("new-flat: 1 shots", 1, true), "all.sh said: " .. out)
+end)
+
+check("Test tools: open-time.sh uses the run's own tmux socket", function()
+  local _, logged = run_tool(
+    { tests_dir .. "/open-time.sh", "a.ml" },
+    { N = "1", SETTLE = "0", TMUX_SOCK = "my-own-socket" }
+  )
+  expect(
+    logged:find("tmux -L my-own-socket", 1, true) and not logged:find("nvnext-time", 1, true),
+    "tmux got: " .. logged
+  )
+end)
+
+check("Test tools: captures never reach the real WakaTime", function()
+  local shoot = table.concat(vim.fn.readfile(tests_dir .. "/capture/shoot.sh"), "\n")
+  expect(shoot:find("WAKATIME_HOME=$S/wakatime", 1, true), "shoot.sh leaves WAKATIME_HOME unset")
+end)
+
+check("Test tools: old-copy.sh makes the old config, without its WakaTime plugin", function()
+  local result = vim.system({ tests_dir .. "/old-copy.sh" }, { text = true }):wait(30000)
+  local made = vim.uv.fs_stat "/tmp/nvold/cfg/nvim/init.lua" ~= nil
+  local waka = vim.uv.fs_stat "/tmp/nvold/cfg/nvim/lua/plugins/wakatime.lua" ~= nil
+  vim.fn.delete("/tmp/nvold", "rf")
+  expect(made, "no copy made: " .. (result.stderr or ""))
+  expect(not waka, "the copy still has its WakaTime plugin")
 end)
 
 -- ── Runner ────────────────────────────────────────────────────────────────
