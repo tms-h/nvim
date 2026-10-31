@@ -2166,14 +2166,30 @@ check("A window resize scales every pane; the terminal is never squeezed to a st
     wait(500)
   end
   local editor = api.nvim_get_current_win()
-  local term = editor_and_terminal()
+  -- A bare shell: this check is about the pane, and a zsh that loads nvm takes
+  -- a second, or 20 and more on a busy machine (tests run at nice 19).
+  local shell = vim.o.shell
+  vim.o.shell = "sh"
+  local made, term = pcall(editor_and_terminal)
+  vim.o.shell = shell
+  expect(made, term)
   api.nvim_win_set_width(term, 60)
   local buf = api.nvim_win_get_buf(term)
   vim.fn.chansend(
     vim.b[buf].terminal_job_id,
     "clear; printf 'line %s: the quick brown fox jumps over the lazy dog and keeps running\\n' 1 2 3 4 5 6\n"
   )
-  wait(800)
+  -- Only text already there can rewrap.
+  local function shell_text()
+    return table.concat(api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+  end
+  for _ = 1, 300 do
+    if shell_text():find "line 6: the quick brown fox" then
+      break
+    end
+    wait(100)
+  end
+  expect(shell_text():find "line 6: the quick brown fox", "the shell printed nothing:\n" .. shell_text())
   local ok, err = pcall(function()
     screen(100)
     expect(vim.o.columns == 100, "the screen did not shrink: " .. vim.o.columns)
@@ -2184,7 +2200,7 @@ check("A window resize scales every pane; the terminal is never squeezed to a st
     expect(math.abs(w - 60) <= 1, "back at 200 columns the terminal is " .. w .. " wide, not 60")
     expect(math.abs(api.nvim_win_get_width(editor) - 139) <= 1, "editor " .. api.nvim_win_get_width(editor))
     -- The shell's text rewrapped with the pane, never one letter per line.
-    local text = table.concat(api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+    local text = shell_text()
     expect(text:find "line 6: the quick brown fox", "the terminal text is mangled:\n" .. text)
   end)
   screen(200)
