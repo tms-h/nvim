@@ -38,7 +38,7 @@ end
 -- act when a terminal or the tree has focus.
 local last_editor
 function M.last_editor()
-  if last_editor and api.nvim_win_is_valid(last_editor) and M.is_editor(last_editor) then
+  if last_editor and M.is_editor(last_editor) then
     if api.nvim_win_get_tabpage(last_editor) == api.nvim_get_current_tabpage() then
       return last_editor
     end
@@ -444,12 +444,10 @@ local closed = {} -- recently closed files, newest last
 -- closes a pane by accident. Like Chrome: the tab to its right, else the
 -- one to its left.
 local function replace_everywhere(buf)
-  local list = require("tabs").list()
-  local i = require("tabs").index(buf)
+  local tabs = require "tabs"
+  local list = tabs.list()
+  local i = tabs.index(buf)
   local next_buf = i and (list[i + 1] or list[i - 1])
-  if next_buf == buf then
-    next_buf = nil
-  end
   for _, win in ipairs(api.nvim_list_wins()) do
     if api.nvim_win_get_buf(win) == buf then
       if next_buf then
@@ -463,11 +461,12 @@ local function replace_everywhere(buf)
   end
 end
 
+-- Close a terminal or help/list pane; the last pane left shows an empty
+-- file instead.
 local function close_pane(win)
-  local editors = vim.tbl_filter(M.is_editor, panes())
   if #panes() > 1 then
     api.nvim_win_close(win, true)
-  elseif #editors == 0 then
+  else
     api.nvim_win_call(win, function()
       vim.cmd "enew"
     end)
