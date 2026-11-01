@@ -24,6 +24,8 @@ function M.is_editor(win)
   return api.nvim_win_is_valid(win) and not M.is_float(win) and vim.bo[api.nvim_win_get_buf(win)].buftype == ""
 end
 
+-- A pane other than the tree: one that can be swapped, zoomed, flipped or
+-- split for a terminal.
 local function is_pane(win)
   return api.nvim_win_is_valid(win) and not M.is_float(win) and not M.is_tree(win)
 end
@@ -38,7 +40,7 @@ end
 -- act when a terminal or the tree has focus.
 local last_editor
 function M.last_editor()
-  if last_editor and api.nvim_win_is_valid(last_editor) and M.is_editor(last_editor) then
+  if last_editor and M.is_editor(last_editor) then
     if api.nvim_win_get_tabpage(last_editor) == api.nvim_get_current_tabpage() then
       return last_editor
     end
@@ -94,7 +96,7 @@ local function type_if_terminal()
 end
 
 ---Run a pane action from a key. Keys first leave insert, a selection or a
----terminal (keys.lua from_any_mode), so every action starts in Normal mode.
+---terminal (keys.lua `call`), so every action starts in Normal mode.
 function M.run(name, arg)
   M[name](arg)
   type_if_terminal()
@@ -190,6 +192,20 @@ local function panel_win()
   end
 end
 
+-- Open the panel: full width along the bottom, `height` rows, showing `buf`
+-- (the panel's shell) or, without one, a new shell.
+local function show_panel(height, buf)
+  vim.cmd(("botright %dsplit"):format(height))
+  if buf then
+    api.nvim_win_set_buf(0, buf)
+  else
+    vim.cmd.terminal()
+    panel.buf = api.nvim_get_current_buf()
+  end
+  vim.w.panel = true
+  terminal_window()
+end
+
 ---Run `fn` with the panel out of the layout, then show it again, full width
 ---at the height it had, with the same shell. A pane that opens down the
 ---whole left edge (the tree) would otherwise run past the panel and cut it
@@ -204,10 +220,7 @@ function M.without_panel(fn)
   fn()
   -- Focus stays where `fn` put it.
   local here = api.nvim_get_current_win()
-  vim.cmd(("botright %dsplit"):format(height))
-  api.nvim_win_set_buf(0, panel.buf)
-  vim.w.panel = true
-  terminal_window()
+  show_panel(height, panel.buf)
   api.nvim_set_current_win(here)
 end
 
@@ -236,16 +249,7 @@ function M.toggle_panel()
   end
   panel.back = api.nvim_get_current_win()
   panel.sizes = M.snapshot()
-  local height = panel.height or math.max(8, math.floor(vim.o.lines * 0.3))
-  vim.cmd(("botright %dsplit"):format(height))
-  if panel_alive() then
-    api.nvim_win_set_buf(0, panel.buf)
-  else
-    vim.cmd.terminal()
-    panel.buf = api.nvim_get_current_buf()
-  end
-  vim.w.panel = true
-  terminal_window()
+  show_panel(panel.height or math.max(8, math.floor(vim.o.lines * 0.3)), panel_alive() and panel.buf or nil)
 end
 
 ---Zoom: the pane alone fills the window; the same key brings the layout
@@ -263,7 +267,8 @@ function M.zoom()
     if api.nvim_win_is_valid(origin) then
       api.nvim_set_current_win(origin)
       local same = api.nvim_get_current_buf() == buf
-      if not same and M.is_editor(origin) and vim.bo[buf].buftype == "" and api.nvim_buf_is_valid(buf) then
+      -- A page wiped when hidden is gone once its tab closes.
+      if not same and M.is_editor(origin) and api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == "" then
         api.nvim_win_set_buf(origin, buf)
         same = true
       end
@@ -443,12 +448,10 @@ local closed = {} -- recently closed files, newest last
 -- closes a pane by accident. Like Chrome: the tab to its right, else the
 -- one to its left.
 local function replace_everywhere(buf)
-  local list = require("tabs").list()
-  local i = require("tabs").index(buf)
+  local tabs = require "tabs"
+  local list = tabs.list()
+  local i = tabs.index(buf)
   local next_buf = i and (list[i + 1] or list[i - 1])
-  if next_buf == buf then
-    next_buf = nil
-  end
   for _, win in ipairs(api.nvim_list_wins()) do
     if api.nvim_win_get_buf(win) == buf then
       if next_buf then
@@ -462,11 +465,12 @@ local function replace_everywhere(buf)
   end
 end
 
+-- Close a terminal or help/list pane; the last pane left shows an empty
+-- file instead.
 local function close_pane(win)
-  local editors = vim.tbl_filter(M.is_editor, panes())
   if #panes() > 1 then
     api.nvim_win_close(win, true)
-  elseif #editors == 0 then
+  else
     api.nvim_win_call(win, function()
       vim.cmd "enew"
     end)

@@ -4,8 +4,8 @@
 -- folder is skipped.
 local M = {}
 
-local is_macos = vim.fn.has "macunix" == 1
-local is_windows = vim.fn.has "win32" == 1
+local util = require "util"
+local is_macos, is_windows = util.is_macos, util.is_windows
 local sep = is_windows and ";" or ":"
 
 ---Put `dir` on PATH. A folder already there keeps its place, unless

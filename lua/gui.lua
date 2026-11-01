@@ -5,7 +5,7 @@ if not vim.g.neovide then
 end
 
 local g = vim.g
-local is_macos = vim.fn.has "macunix" == 1
+local is_macos = require("util").is_macos
 
 vim.o.guifont = "JetBrainsMono Nerd Font Mono:h14"
 -- Start two zoom steps below the font size; Alt/Cmd+0 comes back here.
