@@ -1624,6 +1624,21 @@ check("A zoom tab left alone (:tabonly) acts as a plain tab", function()
   expect(#vim.tbl_filter(is_term, wins()) == 1, "Alt+Return made no terminal")
 end)
 
+check("Unzoom from a page that is wiped when hidden gives no error", function()
+  vim.cmd "edit! a.ml"
+  vim.cmd "vsplit b.ml"
+  press(super "f", 200)
+  expect(#api.nvim_list_tabpages() == 2, "no zoom")
+  -- A throwaway page (plugins open these): gone as soon as no pane shows it.
+  vim.cmd "enew"
+  vim.bo.bufhidden = "wipe"
+  vim.v.errmsg = ""
+  press(super "f", 200)
+  expect(#api.nvim_list_tabpages() == 1, "still zoomed")
+  expect(vim.v.errmsg == "", vim.v.errmsg)
+  expect(vim.fn.expand "%:t" == "b.ml", "the pane shows " .. vim.fn.expand "%:t")
+end)
+
 check("Alt+O will not open a project another window has", function()
   local dir = proj .. "/sub-e"
   vim.fn.mkdir(dir, "p")

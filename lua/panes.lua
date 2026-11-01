@@ -263,7 +263,8 @@ function M.zoom()
     if api.nvim_win_is_valid(origin) then
       api.nvim_set_current_win(origin)
       local same = api.nvim_get_current_buf() == buf
-      if not same and M.is_editor(origin) and vim.bo[buf].buftype == "" and api.nvim_buf_is_valid(buf) then
+      -- A page wiped when hidden is gone once its tab closes.
+      if not same and M.is_editor(origin) and api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == "" then
         api.nvim_win_set_buf(origin, buf)
         same = true
       end
