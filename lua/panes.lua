@@ -192,6 +192,20 @@ local function panel_win()
   end
 end
 
+-- Open the panel: full width along the bottom, `height` rows, showing `buf`
+-- (the panel's shell) or, without one, a new shell.
+local function show_panel(height, buf)
+  vim.cmd(("botright %dsplit"):format(height))
+  if buf then
+    api.nvim_win_set_buf(0, buf)
+  else
+    vim.cmd.terminal()
+    panel.buf = api.nvim_get_current_buf()
+  end
+  vim.w.panel = true
+  terminal_window()
+end
+
 ---Run `fn` with the panel out of the layout, then show it again, full width
 ---at the height it had, with the same shell. A pane that opens down the
 ---whole left edge (the tree) would otherwise run past the panel and cut it
@@ -206,10 +220,7 @@ function M.without_panel(fn)
   fn()
   -- Focus stays where `fn` put it.
   local here = api.nvim_get_current_win()
-  vim.cmd(("botright %dsplit"):format(height))
-  api.nvim_win_set_buf(0, panel.buf)
-  vim.w.panel = true
-  terminal_window()
+  show_panel(height, panel.buf)
   api.nvim_set_current_win(here)
 end
 
@@ -238,16 +249,7 @@ function M.toggle_panel()
   end
   panel.back = api.nvim_get_current_win()
   panel.sizes = M.snapshot()
-  local height = panel.height or math.max(8, math.floor(vim.o.lines * 0.3))
-  vim.cmd(("botright %dsplit"):format(height))
-  if panel_alive() then
-    api.nvim_win_set_buf(0, panel.buf)
-  else
-    vim.cmd.terminal()
-    panel.buf = api.nvim_get_current_buf()
-  end
-  vim.w.panel = true
-  terminal_window()
+  show_panel(panel.height or math.max(8, math.floor(vim.o.lines * 0.3)), panel_alive() and panel.buf or nil)
 end
 
 ---Zoom: the pane alone fills the window; the same key brings the layout
