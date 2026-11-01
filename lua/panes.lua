@@ -24,6 +24,8 @@ function M.is_editor(win)
   return api.nvim_win_is_valid(win) and not M.is_float(win) and vim.bo[api.nvim_win_get_buf(win)].buftype == ""
 end
 
+-- A pane other than the tree: one that can be swapped, zoomed, flipped or
+-- split for a terminal.
 local function is_pane(win)
   return api.nvim_win_is_valid(win) and not M.is_float(win) and not M.is_tree(win)
 end
@@ -94,7 +96,7 @@ local function type_if_terminal()
 end
 
 ---Run a pane action from a key. Keys first leave insert, a selection or a
----terminal (keys.lua from_any_mode), so every action starts in Normal mode.
+---terminal (keys.lua `call`), so every action starts in Normal mode.
 function M.run(name, arg)
   M[name](arg)
   type_if_terminal()

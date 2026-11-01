@@ -5,7 +5,7 @@
 -- * Alt/Cmd chords (`super`) are the VS Code / Chrome shortcuts: Alt on
 --   Linux and Windows, Cmd on macOS (util.lua).
 -- * Pane, tab, find and file chords do the same thing from Normal, Insert, a
---   selection or a terminal: they first leave that mode (from_any_mode); a
+--   selection or a terminal: they first leave that mode (`call`); a
 --   terminal you land in goes back to typing. Edit chords work where you edit.
 -- * Stock Vim and Neovim keys keep their meaning (s, ;, -, H, L, gi, ga,
 --   grr, grn, gra, gri, grt, gO, K, gc, [d, ]d). Exceptions, with reasons:
