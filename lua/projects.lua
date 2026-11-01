@@ -10,7 +10,7 @@
 local M = {}
 
 local api, uv = vim.api, vim.uv
-local is_windows = vim.fn.has "win32" == 1
+local is_windows = require("util").is_windows
 
 local session_dir = vim.fn.stdpath "state" .. "/sessions"
 -- Shared with every config generation, so the old and new config see each

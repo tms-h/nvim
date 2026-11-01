@@ -6,7 +6,7 @@
 -- LSP still attaches, so hover and go-to-definition keep working there.
 local M = {}
 
-local is_windows = vim.fn.has "win32" == 1
+local is_windows = require("util").is_windows
 
 local function normalize(path)
   path = path:gsub("\\", "/")
