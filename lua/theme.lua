@@ -51,9 +51,9 @@ local function read_palette()
   return palette
 end
 
--- shell.toml [menu] as written by the surface-recipe hook: this config's own
--- lua/surface.lua when it is the live config, else the copy the hook writes
--- for ~/.config/nvim.
+-- shell.toml [menu] (opacity, bg, fg), which the surface-recipe hook writes to
+-- ~/.config/nvim/lua/surface.lua. A copy of this config elsewhere without its
+-- own (a worktree) reads that file; none at all (the Mac) gives nil: flat.
 local function read_surface()
   local ok, surface = pcall(require, "surface")
   if ok and type(surface) == "table" then
