@@ -51,9 +51,9 @@ local function read_palette()
   return palette
 end
 
--- shell.toml [menu] as written by the surface-recipe hook: this config's own
--- lua/surface.lua when it is the live config, else the copy the hook writes
--- for ~/.config/nvim.
+-- shell.toml [menu] (opacity, bg, fg), which the surface-recipe hook writes to
+-- ~/.config/nvim/lua/surface.lua. A copy of this config elsewhere without its
+-- own (a worktree) reads that file; none at all (the Mac) gives nil: flat.
 local function read_surface()
   local ok, surface = pcall(require, "surface")
   if ok and type(surface) == "table" then
@@ -429,15 +429,12 @@ end
 ---Safety net for groups a plugin defines on its own: drop any background
 ---that is not a selection, search, cursor or diff fill.
 function M.one_surface()
-  for name in pairs(api.nvim_get_hl(0, {})) do
+  for name, hl in pairs(api.nvim_get_hl(0, {})) do
     -- A link takes its fill from its target, which is judged on its own
     -- (stripping NvimTreeCursorLine -> ListCurrent would lose the row fill).
-    if not keeps_bg(name) and not api.nvim_get_hl(0, { name = name, create = false }).link then
-      local hl = api.nvim_get_hl(0, { name = name, link = false, create = false })
-      if hl.bg or hl.reverse then
-        hl.bg, hl.ctermbg, hl.reverse, hl.default = nil, nil, nil, nil
-        pcall(api.nvim_set_hl, 0, name, hl)
-      end
+    if not hl.link and not keeps_bg(name) and (hl.bg or hl.reverse) then
+      hl.bg, hl.ctermbg, hl.reverse, hl.default = nil, nil, nil, nil
+      pcall(api.nvim_set_hl, 0, name, hl)
     end
   end
 end

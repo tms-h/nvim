@@ -3,7 +3,7 @@
 --   usage       counts mapped keys; :UsageReport and :FrictionNote
 --   options     plain Vim options; also loads tools (language tools on PATH)
 --               and cmdline (typed commands in a centred box)
---   gui         Neovide: font, motion, see-through surface
+--   gui         Neovide: font, motion, floats, padding
 --   theme       every colour, built from the desktop palette (surface); :Look
 --   plugins     the few plugins and their setup; loads explorer, statusline,
 --               tabs (the tab bar), snippets and finder (mini.pick waits for
