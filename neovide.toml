@@ -1,7 +1,8 @@
 # Neovide's startup-only settings (everything else is lua/gui.lua), shared by
 # Linux and Windows. Neovide reads this file when NEOVIDE_CONFIG points at it,
 # or when it is linked to ~/.config/neovide/config.toml. The Mac uses
-# neovide-macos.toml (the same plus window chrome Linux rejects).
+# neovide-macos.toml (the same dividers, drawn thicker for Retina, plus window
+# chrome Linux rejects).
 
 # Dividers are drawn as lines, not font glyphs: every joint lines up, and the
 # width is set here in pixels. Light (│ ─) is the resting divider; heavy
