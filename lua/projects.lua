@@ -1,7 +1,8 @@
 -- A project is a folder. Each folder keeps its own session (its tabs and
 -- splits), saved on exit and when you switch folders.
 --
---   nvim / neovide          reopen the last project that no other window has
+--   nvim / neovide          open the project you started in (its repository
+--                           root), else the last project no other window has
 --                           open (two windows never show the same project)
 --   nvim some/folder        open that folder: its session and the tree
 --   Alt/Cmd+O, :OpenFolder  switch this window to another folder
