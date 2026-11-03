@@ -157,7 +157,7 @@ function M.save()
   vim.o.sessionoptions = saved
 end
 
-local function load(dir)
+local function load_session(dir)
   local file = session_file(dir)
   if uv.fs_stat(file) then
     vim.cmd("silent! source " .. vim.fn.fnameescape(file))
@@ -208,7 +208,7 @@ function M.open_folder(path, opts)
   vim.cmd.cd(vim.fn.fnameescape(path))
   project = path
   record_open()
-  load(path)
+  load_session(path)
   vim.schedule(require("explorer").show)
 end
 
