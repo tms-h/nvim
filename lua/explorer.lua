@@ -265,11 +265,7 @@ local function beside_tree(change)
     end
   end
   for win in pairs(sizes) do
-    if
-      not api.nvim_win_is_valid(win)
-      or panes.is_tree(win)
-      or api.nvim_win_get_position(win)[2] == edge
-    then
+    if not api.nvim_win_is_valid(win) or panes.is_tree(win) or api.nvim_win_get_position(win)[2] == edge then
       sizes[win] = nil
     end
   end
