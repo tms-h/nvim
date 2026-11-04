@@ -59,6 +59,10 @@ if is_macos then
   -- menu-bar row. Rift's Alt+F (~/.config/rift/scripts/fullscreen.sh) turns
   -- g:neovide_fullscreen on and off through this Neovim's server socket.
   g.neovide_macos_simple_fullscreen = true
+  -- Rift sizes the window. A remembered size came back as "Maximized" after
+  -- quitting from fullscreen: the window opened screen-sized, could not be
+  -- resized, and its bottom rows sat under the screen edge.
+  g.neovide_remember_window_size = false
 end
 
 -- The pointer's position is needed for the divider hover (dividers.lua).
