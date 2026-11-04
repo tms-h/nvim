@@ -8,9 +8,10 @@ local M = {}
 local api = vim.api
 local ns = api.nvim_create_namespace "focus_dim"
 -- Divider hover (dividers.lua) colours a window's separator by giving it a
--- lit namespace: dimmed + lit, or full strength + lit.
+-- lit namespace: dimmed + lit, or full strength + lit (ns_bright_lit, set
+-- by build() with the cue's colours).
 local ns_lit = api.nvim_create_namespace "focus_dim_lit"
-local ns_bright_lit = api.nvim_create_namespace "focus_bright_lit"
+local ns_bright_lit
 
 -- How the focused pane stands out (vim.g.focus_cue, :FocusCue to switch).
 -- Other panes must stay easy to read, so dimming alone cannot be the cue:
@@ -36,8 +37,7 @@ M.cue = cue
 local function strength()
   return cue() == "dim" and 0.45 or 0.2
 end
--- The focused pane's own groups (cue colours) live here.
-local ns_focus = api.nvim_create_namespace "focus_cue"
+-- The focused pane's namespace: 0 (the global groups) or the cue's colours.
 local focus_ns = 0
 -- Dividers belong to two panes at once, so they never dim.
 local SEPARATORS = { WinSeparator = true, NvimTreeWinSeparator = true }
@@ -97,6 +97,10 @@ function M.build()
   elseif cue() == "number" then
     cue_groups.CursorLineNr = { fg = accent, bold = true }
   end
+  -- Each cue has its own pair of namespaces, so a cue switched off leaves
+  -- none of its colours behind.
+  local ns_focus = api.nvim_create_namespace("focus_cue_" .. cue())
+  ns_bright_lit = api.nvim_create_namespace("focus_bright_lit_" .. cue())
   for _, space in ipairs { ns_focus, ns_bright_lit } do
     for name, hl in pairs(cue_groups) do
       api.nvim_set_hl(space, name, hl)
