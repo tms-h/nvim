@@ -118,16 +118,16 @@ end
 
 -- Names, with the parent folder when two tabs share a name.
 local function names(list)
-  local tails, count = {}, {}
+  local full, tails, count = {}, {}, {}
   for _, buf in ipairs(list) do
-    local full = api.nvim_buf_get_name(buf)
-    local tail = full == "" and "untitled" or vim.fn.fnamemodify(full, ":t")
+    full[buf] = api.nvim_buf_get_name(buf)
+    local tail = full[buf] == "" and "untitled" or vim.fn.fnamemodify(full[buf], ":t")
     tails[buf] = tail
     count[tail] = (count[tail] or 0) + 1
   end
   for _, buf in ipairs(list) do
-    if count[tails[buf]] > 1 and api.nvim_buf_get_name(buf) ~= "" then
-      tails[buf] = vim.fn.fnamemodify(api.nvim_buf_get_name(buf), ":h:t") .. "/" .. tails[buf]
+    if count[tails[buf]] > 1 and full[buf] ~= "" then
+      tails[buf] = vim.fn.fnamemodify(full[buf], ":h:t") .. "/" .. tails[buf]
     end
   end
   return tails
@@ -142,7 +142,7 @@ local STEPS = {
   { name = 0, no_close = true },
 }
 
----One tab as { text = plain text, s = statusline string }.
+---One tab as { s = statusline string, width = its width in cells }.
 local function tab(buf, name, step, current)
   local icon, icon_hl = "", nil
   if MiniIcons then
@@ -162,6 +162,7 @@ local function tab(buf, name, step, current)
   local hl = "Tabs" .. (modified and "Modified" or "") .. kind
   local err = errors(buf)
   local close = current or not step.no_close
+  -- The same tab as plain text, to measure it.
   local text = " "
     .. icon
     .. (name ~= "" and " " .. name or "")
@@ -184,7 +185,7 @@ local function tab(buf, name, step, current)
   end
   -- The gap after a tab is never underlined with it.
   s[#s + 1] = "%#TabsFill# "
-  return { text = text, s = table.concat(s), width = vim.fn.strdisplaywidth(text) }
+  return { s = table.concat(s), width = vim.fn.strdisplaywidth(text) }
 end
 
 ---The step the bar is drawn at now (1 = full names), for checks.
