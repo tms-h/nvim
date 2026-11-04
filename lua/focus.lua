@@ -1,8 +1,8 @@
 -- The focused pane is obvious: it is the one at full strength. Every other
 -- pane's words are pulled toward the background (like Hyprland's
 -- dim_inactive), and only the focused pane shows its cursor line and search
--- hits. Backgrounds are never copied, so every pane stays on the one surface
--- and dividers stay single thin lines.
+-- hits. A background in the surface colour is never copied, so every pane
+-- stays on the one surface and dividers stay single thin lines.
 local M = {}
 
 local api = vim.api
