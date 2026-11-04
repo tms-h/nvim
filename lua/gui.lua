@@ -55,10 +55,9 @@ if is_macos then
   -- Neovide otherwise kept the old grid size until the next key or mouse move.
   -- Costs some battery.
   g.neovide_no_idle = true
-  -- Fullscreen without a macOS Space or its slide animation, covering the
-  -- menu-bar row. Rift's Alt+F (~/.config/rift/scripts/fullscreen.sh) turns
-  -- g:neovide_fullscreen on and off through this Neovim's server socket.
-  g.neovide_macos_simple_fullscreen = true
+  -- Not g.neovide_macos_simple_fullscreen here: set at startup it makes the
+  -- window a fixed screen-sized one Rift can't tile. Rift's Alt+F
+  -- (~/.config/rift/scripts/fullscreen.sh) sets it only while fullscreen.
   -- Rift sizes the window. A remembered size came back as "Maximized" after
   -- quitting from fullscreen: the window opened screen-sized, could not be
   -- resized, and its bottom rows sat under the screen edge.
