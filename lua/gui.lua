@@ -49,6 +49,12 @@ if is_macos then
   -- Cmd reaches Neovim as <D-...> (every Cmd chord in keys.lua).
   g.neovide_input_use_logo = true
   g.neovide_input_macos_option_key_is_meta = "only_left"
+  -- Blur the desktop behind the glass, like Hyprland's blur on Omarchy.
+  g.neovide_window_blurred = true
+  -- Keep redrawing while idle: after Rift resizes the window (Alt+F fullscreen),
+  -- Neovide otherwise kept the old grid size until the next key or mouse move.
+  -- Costs some battery.
+  g.neovide_no_idle = true
 end
 
 -- The pointer's position is needed for the divider hover (dividers.lua).
