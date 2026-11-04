@@ -61,6 +61,12 @@ map(ALL, "<C-`>", pane "toggle_panel", { expr = true, desc = "Toggle the bottom 
 map(ALL, super "f", pane "zoom", { expr = true, desc = "Zoom pane (toggle)" })
 map(ALL, super "j", pane "flip", { expr = true, desc = "Flip split direction" })
 map(ALL, super "w", call "require('panes').close()", { expr = true, desc = "Close what has focus" })
+-- Option+W on the Mac is Super+W (Hyprland's killactive): quit this Neovide
+-- window, like its red close button (asks only about unsaved files).
+-- Karabiner passes Option+W through to Neovide unchanged for this.
+if require("util").is_macos then
+  map(ALL, "<M-w>", "<Cmd>confirm qa<CR>", { desc = "Quit Neovide (Super+W)" })
+end
 
 -- ── Tabs (Chrome) ──────────────────────────────────────────────────────────
 local function step(n)
