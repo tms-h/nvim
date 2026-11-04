@@ -55,6 +55,10 @@ if is_macos then
   -- Neovide otherwise kept the old grid size until the next key or mouse move.
   -- Costs some battery.
   g.neovide_no_idle = true
+  -- Fullscreen without a macOS Space or its slide animation, covering the
+  -- menu-bar row. Rift's Alt+F (~/.config/rift/scripts/fullscreen.sh) turns
+  -- g:neovide_fullscreen on and off through this Neovim's server socket.
+  g.neovide_macos_simple_fullscreen = true
 end
 
 -- The pointer's position is needed for the divider hover (dividers.lua).
