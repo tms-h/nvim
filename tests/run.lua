@@ -502,6 +502,29 @@ check("unfocused panes stay easy to read; the focused one has an accent title", 
   expect(vim.fn.luaeval("require('focus').title()"):find "%%=$", "focused title tint stops at the name")
 end)
 
+check("Switching the focus cue leaves none of the old cue's colours behind", function()
+  vim.cmd "vsplit b.ml"
+  local win = api.nvim_get_current_win()
+  local accent = api.nvim_get_hl(0, { name = "WinSeparatorHover", link = false }).fg
+  local line = api.nvim_get_hl(0, { name = "WinSeparator", link = false }).fg
+  local function fg(name)
+    return api.nvim_get_hl(api.nvim_get_hl_ns { winid = win }, { name = name, link = false }).fg
+  end
+  local focus = require "focus"
+  -- "divider" tints the focused pane's dividers; "number" must not keep them.
+  focus.set_cue "divider"
+  focus.set_cue "number"
+  local sep = fg "WinSeparator"
+  -- "number" puts the cursor's line number in the accent; "title" must not
+  -- keep it, also while the pointer lights the pane's divider.
+  focus.set_cue "title"
+  focus.set_lit { [win] = true }
+  local number = fg "CursorLineNr"
+  focus.set_lit {}
+  expect(sep == nil or sep == line, "divider then number: the focused pane's divider is still tinted")
+  expect(number ~= accent, "number then title: a lit pane's line number is still in the accent")
+end)
+
 check("markup never hides words: markdown and org show every character", function()
   for _, file in ipairs { "README.md", "README.org" } do
     vim.cmd("edit " .. file)
