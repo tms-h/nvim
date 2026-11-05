@@ -502,6 +502,29 @@ check("unfocused panes stay easy to read; the focused one has an accent title", 
   expect(vim.fn.luaeval("require('focus').title()"):find "%%=$", "focused title tint stops at the name")
 end)
 
+check("Switching the focus cue leaves none of the old cue's colours behind", function()
+  vim.cmd "vsplit b.ml"
+  local win = api.nvim_get_current_win()
+  local accent = api.nvim_get_hl(0, { name = "WinSeparatorHover", link = false }).fg
+  local line = api.nvim_get_hl(0, { name = "WinSeparator", link = false }).fg
+  local function fg(name)
+    return api.nvim_get_hl(api.nvim_get_hl_ns { winid = win }, { name = name, link = false }).fg
+  end
+  local focus = require "focus"
+  -- "divider" tints the focused pane's dividers; "number" must not keep them.
+  focus.set_cue "divider"
+  focus.set_cue "number"
+  local sep = fg "WinSeparator"
+  -- "number" puts the cursor's line number in the accent; "title" must not
+  -- keep it, also while the pointer lights the pane's divider.
+  focus.set_cue "title"
+  focus.set_lit { [win] = true }
+  local number = fg "CursorLineNr"
+  focus.set_lit {}
+  expect(sep == nil or sep == line, "divider then number: the focused pane's divider is still tinted")
+  expect(number ~= accent, "number then title: a lit pane's line number is still in the accent")
+end)
+
 check("markup never hides words: markdown and org show every character", function()
   for _, file in ipairs { "README.md", "README.org" } do
     vim.cmd("edit " .. file)
@@ -1957,12 +1980,19 @@ check("TODO / FIXME in comments are coloured words, never filled blocks", functi
   local file = proj .. "/todo.ml"
   vim.fn.writefile({ "(* TODO: one *)", "(* FIXME: two *)", 'let s = "TODO not a comment"' }, file)
   vim.cmd("edit " .. file)
-  wait(400)
+  -- mini.hipatterns colours after a debounce; wait for it (up to 3 s on a
+  -- busy machine) rather than a fixed time. One pass colours every line.
   local groups = {}
-  for _, m in ipairs(api.nvim_buf_get_extmarks(0, -1, 0, -1, { details = true })) do
-    local g = m[4].hl_group
-    if type(g) == "string" and g:find "^TodoText" then
-      groups[#groups + 1] = m[2] .. ":" .. g
+  for _ = 1, 30 do
+    wait(100)
+    for _, m in ipairs(api.nvim_buf_get_extmarks(0, -1, 0, -1, { details = true })) do
+      local g = m[4].hl_group
+      if type(g) == "string" and g:find "^TodoText" then
+        groups[#groups + 1] = m[2] .. ":" .. g
+      end
+    end
+    if #groups > 0 then
+      break
     end
   end
   vim.cmd "bwipeout!"
@@ -1975,6 +2005,40 @@ check("TODO / FIXME in comments are coloured words, never filled blocks", functi
     local hl = api.nvim_get_hl(0, { name = g, link = false })
     expect(hl.fg and not hl.bg and not hl.reverse, g .. " is a filled block")
   end
+end)
+
+check("A '%' in a file or branch name shows as typed in the title row and status line", function()
+  -- A "%" starts a status line item: unescaped, "50%done.txt" threw E539.
+  local dir = vim.fn.tempname()
+  vim.fn.mkdir(dir .. "/.git", "p")
+  vim.fn.writefile({ "ref: refs/heads/fix-100%-done" }, dir .. "/.git/HEAD")
+  vim.cmd.cd(dir)
+  vim.cmd("edit " .. vim.fn.fnameescape(dir .. "/50%done.txt"))
+  local ok_title, title = pcall(api.nvim_eval_statusline, require("focus").title(), { winid = 0, use_winbar = true })
+  local ok_status, status = pcall(api.nvim_eval_statusline, require("statusline").render(), { winid = 0 })
+  vim.cmd "bwipeout!"
+  vim.cmd.cd(proj)
+  vim.fn.delete(dir, "rf")
+  expect(ok_title and title.str:find("50%done.txt", 1, true), "title row: " .. vim.inspect(title))
+  expect(ok_status and status.str:find("fix-100%-done", 1, true), "status line: " .. vim.inspect(status))
+end)
+
+check("TODO in a comment is coloured even before the background syntax parse", function()
+  -- Tree-sitter parses in the background; on a busy machine mini.hipatterns
+  -- looked first, found no comment, and left TODO plain until the next edit
+  -- (the 2026-11-05 nightly merge failed the check above this way). Setting
+  -- the filetype starts the highlighter, and nothing here yields, so the
+  -- parse has not run when the TODO highlighter decides each word's colour.
+  vim.cmd "enew"
+  local buf = api.nvim_get_current_buf()
+  api.nvim_buf_set_lines(buf, 0, -1, false, { "(* TODO: one *)", 'let s = "TODO not a comment"' })
+  vim.bo[buf].filetype = "ocaml"
+  local group = MiniHipatterns.config.highlighters.todo.group
+  local in_comment = group(buf, "TODO", { line = 1, from_col = 4 })
+  local in_string = group(buf, "TODO", { line = 2, from_col = 10 })
+  vim.cmd "bwipeout!"
+  expect(in_comment == "TodoTextTodo", "TODO in the comment got " .. tostring(in_comment))
+  expect(in_string == nil, "TODO inside a string got " .. tostring(in_string))
 end)
 
 check("Key hints pop up after a Space pause (mini.clue)", function()

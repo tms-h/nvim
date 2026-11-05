@@ -6,32 +6,24 @@ local M = {}
 
 local api = vim.api
 
+-- Each mode's name and colour (theme.lua: StatusLineMode<colour>, text only).
 local MODES = {
-  n = "NORMAL",
-  i = "INSERT",
-  R = "REPLACE",
-  v = "VISUAL",
-  V = "V-LINE",
-  ["\22"] = "V-BLOCK",
-  s = "SELECT",
-  S = "S-LINE",
-  t = "TERMINAL",
-  c = "COMMAND",
+  n = { "NORMAL", "Normal" },
+  i = { "INSERT", "Insert" },
+  R = { "REPLACE", "Replace" },
+  v = { "VISUAL", "Visual" },
+  V = { "V-LINE", "Visual" },
+  ["\22"] = { "V-BLOCK", "Visual" },
+  s = { "SELECT", "Visual" },
+  S = { "S-LINE", "Visual" },
+  t = { "TERMINAL", "Terminal" },
+  c = { "COMMAND", "Command" },
 }
 
--- Each mode's colour (theme.lua: StatusLineMode<Name>, text only).
-local MODE_HL = {
-  n = "Normal",
-  i = "Insert",
-  R = "Replace",
-  v = "Visual",
-  V = "Visual",
-  ["\22"] = "Visual",
-  s = "Visual",
-  S = "Visual",
-  t = "Terminal",
-  c = "Command",
-}
+-- Text shown as is: a "%" in it would start a status line item.
+local function escape(text)
+  return (text:gsub("%%", "%%%%"))
+end
 
 local branch = ""
 
@@ -99,8 +91,7 @@ local function file_part()
   end
   local rel = vim.fn.fnamemodify(name, ":~:.")
   local dir, tail = rel:match "^(.*[/\\])([^/\\]+)$"
-  local s = dir and ("%#StatusLineDim#" .. dir:gsub("%%", "%%%%") .. "%*" .. tail:gsub("%%", "%%%%"))
-    or rel:gsub("%%", "%%%%")
+  local s = dir and ("%#StatusLineDim#" .. escape(dir) .. "%*" .. escape(tail)) or escape(rel)
   if vim.bo[buf].modified then
     s = s .. " %#StatusLineAccent#●%*"
   end
@@ -125,10 +116,9 @@ end
 
 function M.render()
   local parts = {}
-  local key = api.nvim_get_mode().mode:sub(1, 1)
-  local mode = MODES[key]
+  local mode = MODES[api.nvim_get_mode().mode:sub(1, 1)]
   if mode then
-    parts[#parts + 1] = "%#StatusLineMode" .. MODE_HL[key] .. "#" .. mode .. "%*"
+    parts[#parts + 1] = "%#StatusLineMode" .. mode[2] .. "#" .. mode[1] .. "%*"
   end
   local reg = vim.fn.reg_recording()
   if reg ~= "" then
@@ -138,7 +128,7 @@ function M.render()
   local right = {}
   local progress = vim.lsp.status()
   if progress ~= "" then
-    right[#right + 1] = "%#StatusLineDim#" .. progress:sub(1, 40):gsub("%%", "%%%%") .. "%*"
+    right[#right + 1] = "%#StatusLineDim#" .. escape(progress:sub(1, 40)) .. "%*"
   end
   local diag = diagnostics()
   if diag ~= "" then
@@ -156,11 +146,11 @@ function M.render()
     right[#right + 1] = table.concat(d, " ")
   end
   if branch ~= "" then
-    right[#right + 1] = "%#StatusLineDim# " .. branch .. "%*"
+    right[#right + 1] = "%#StatusLineDim# " .. escape(branch) .. "%*"
   end
   local today = M.wakatime()
   if today ~= "" then
-    right[#right + 1] = "%#StatusLineDim#" .. today:gsub("%%", "%%%%") .. "%*"
+    right[#right + 1] = "%#StatusLineDim#" .. escape(today) .. "%*"
   end
   right[#right + 1] = "%l:%c"
   return " " .. table.concat(parts, "  ") .. "%=" .. table.concat(right, "   ") .. " "
