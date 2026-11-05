@@ -127,7 +127,8 @@ function M.title()
   local buf = api.nvim_win_get_buf(win)
   local name = vim.bo[buf].buftype == "terminal" and "terminal" or vim.fn.fnamemodify(api.nvim_buf_get_name(buf), ":t")
   -- "%=" carries the title's tint to the end of the row.
-  return "%#FocusTitle# " .. (name ~= "" and name or "[No Name]") .. " %="
+  -- A "%" in the name would start a status line item.
+  return "%#FocusTitle# " .. (name ~= "" and name:gsub("%%", "%%%%") or "[No Name]") .. " %="
 end
 local TITLE = "%!v:lua.require'focus'.title()"
 

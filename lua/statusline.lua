@@ -146,7 +146,7 @@ function M.render()
     right[#right + 1] = table.concat(d, " ")
   end
   if branch ~= "" then
-    right[#right + 1] = "%#StatusLineDim# " .. branch .. "%*"
+    right[#right + 1] = "%#StatusLineDim# " .. escape(branch) .. "%*"
   end
   local today = M.wakatime()
   if today ~= "" then

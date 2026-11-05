@@ -2007,6 +2007,22 @@ check("TODO / FIXME in comments are coloured words, never filled blocks", functi
   end
 end)
 
+check("A '%' in a file or branch name shows as typed in the title row and status line", function()
+  -- A "%" starts a status line item: unescaped, "50%done.txt" threw E539.
+  local dir = vim.fn.tempname()
+  vim.fn.mkdir(dir .. "/.git", "p")
+  vim.fn.writefile({ "ref: refs/heads/fix-100%-done" }, dir .. "/.git/HEAD")
+  vim.cmd.cd(dir)
+  vim.cmd("edit " .. vim.fn.fnameescape(dir .. "/50%done.txt"))
+  local ok_title, title = pcall(api.nvim_eval_statusline, require("focus").title(), { winid = 0, use_winbar = true })
+  local ok_status, status = pcall(api.nvim_eval_statusline, require("statusline").render(), { winid = 0 })
+  vim.cmd "bwipeout!"
+  vim.cmd.cd(proj)
+  vim.fn.delete(dir, "rf")
+  expect(ok_title and title.str:find("50%done.txt", 1, true), "title row: " .. vim.inspect(title))
+  expect(ok_status and status.str:find("fix-100%-done", 1, true), "status line: " .. vim.inspect(status))
+end)
+
 check("TODO in a comment is coloured even before the background syntax parse", function()
   -- Tree-sitter parses in the background; on a busy machine mini.hipatterns
   -- looked first, found no comment, and left TODO plain until the next edit
