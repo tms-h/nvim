@@ -1957,12 +1957,19 @@ check("TODO / FIXME in comments are coloured words, never filled blocks", functi
   local file = proj .. "/todo.ml"
   vim.fn.writefile({ "(* TODO: one *)", "(* FIXME: two *)", 'let s = "TODO not a comment"' }, file)
   vim.cmd("edit " .. file)
-  wait(400)
+  -- mini.hipatterns colours after a debounce; wait for it (up to 3 s on a
+  -- busy machine) rather than a fixed time. One pass colours every line.
   local groups = {}
-  for _, m in ipairs(api.nvim_buf_get_extmarks(0, -1, 0, -1, { details = true })) do
-    local g = m[4].hl_group
-    if type(g) == "string" and g:find "^TodoText" then
-      groups[#groups + 1] = m[2] .. ":" .. g
+  for _ = 1, 30 do
+    wait(100)
+    for _, m in ipairs(api.nvim_buf_get_extmarks(0, -1, 0, -1, { details = true })) do
+      local g = m[4].hl_group
+      if type(g) == "string" and g:find "^TodoText" then
+        groups[#groups + 1] = m[2] .. ":" .. g
+      end
+    end
+    if #groups > 0 then
+      break
     end
   end
   vim.cmd "bwipeout!"
