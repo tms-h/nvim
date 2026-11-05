@@ -1977,6 +1977,24 @@ check("TODO / FIXME in comments are coloured words, never filled blocks", functi
   end
 end)
 
+check("TODO in a comment is coloured even before the background syntax parse", function()
+  -- Tree-sitter parses in the background; on a busy machine mini.hipatterns
+  -- looked first, found no comment, and left TODO plain until the next edit
+  -- (the 2026-11-05 nightly merge failed the check above this way). Setting
+  -- the filetype starts the highlighter, and nothing here yields, so the
+  -- parse has not run when the TODO highlighter decides each word's colour.
+  vim.cmd "enew"
+  local buf = api.nvim_get_current_buf()
+  api.nvim_buf_set_lines(buf, 0, -1, false, { "(* TODO: one *)", 'let s = "TODO not a comment"' })
+  vim.bo[buf].filetype = "ocaml"
+  local group = MiniHipatterns.config.highlighters.todo.group
+  local in_comment = group(buf, "TODO", { line = 1, from_col = 4 })
+  local in_string = group(buf, "TODO", { line = 2, from_col = 10 })
+  vim.cmd "bwipeout!"
+  expect(in_comment == "TodoTextTodo", "TODO in the comment got " .. tostring(in_comment))
+  expect(in_string == nil, "TODO inside a string got " .. tostring(in_string))
+end)
+
 check("Key hints pop up after a Space pause (mini.clue)", function()
   -- (The hint window itself waits inside getcharstr, which this runner's
   -- timers cannot see; this checks the trigger and its groups.)
