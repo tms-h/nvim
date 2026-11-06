@@ -67,6 +67,9 @@ end
 map(ALL, super "f", pane "zoom", { expr = true, desc = "Zoom pane (toggle)" })
 map(ALL, super "j", pane "flip", { expr = true, desc = "Flip split direction" })
 map(ALL, super "w", call "require('panes').close()", { expr = true, desc = "Close what has focus" })
+-- Quit the editor, like Cmd+Q quits an app (asks about unsaved files). In tmux
+-- the pane then closes or drops to its shell; tmux leaves Alt+Q to Neovim.
+map(ALL, super "q", "<Cmd>confirm qa<CR>", { desc = "Quit Neovim" })
 -- Option+W on the Mac is Super+W (Hyprland's killactive): quit this Neovide
 -- window, like its red close button (asks only about unsaved files).
 -- Karabiner passes Option+W through to Neovide unchanged for this.
