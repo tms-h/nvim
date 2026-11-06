@@ -22,7 +22,8 @@
 -- Ctrl+Alt+S / Ctrl+K Ctrl+R (stage / revert change: Ctrl+K is focus up) ->
 -- Space g s / Space g r.
 local map = vim.keymap.set
-local super = require("util").chord
+local util = require "util"
+local super = util.chord
 local panes = require "panes"
 
 local ALL = { "n", "i", "x", "s", "t" }
@@ -58,7 +59,7 @@ end
 -- Inside tmux, terminals and tabs are tmux's (util.in_mux): Alt+Return
 -- splits a tmux pane, Alt+T / Alt+Shift+T / Alt+1..9 / Ctrl+Tab act on tmux
 -- tabs (tmux.conf binds them outright), and Neovim maps none of them.
-local in_mux = require("util").in_mux
+local in_mux = util.in_mux
 if not in_mux then
   map(ALL, super "CR", pane "new_terminal", { expr = true, desc = "New terminal on the longer side" })
   -- Ctrl+` (Ctrl on the Mac too, as in VS Code): the terminal panel at the bottom.
@@ -73,7 +74,7 @@ map(ALL, super "q", "<Cmd>confirm qa<CR>", { desc = "Quit Neovim" })
 -- Option+W on the Mac is Super+W (Hyprland's killactive): quit this Neovide
 -- window, like its red close button (asks only about unsaved files).
 -- Karabiner passes Option+W through to Neovide unchanged for this.
-if require("util").is_macos then
+if util.is_macos then
   map(ALL, "<M-w>", "<Cmd>confirm qa<CR>", { desc = "Quit Neovide (Super+W)" })
 end
 
@@ -254,7 +255,7 @@ end, { desc = "Show old lines (toggle)" })
 -- counts these, so it shows which shortcuts get reached for.
 local chars = "abcdefghijklmnopqrstuvwxyz0123456789,./;'[]\\`=-!@#$%^&*()_+{}:\"<>?~|"
 -- macOS keeps Cmd+Q/H/M/N/` for the app and the system.
-local system_keys = require("util").is_macos and { q = true, h = true, m = true, n = true, ["`"] = true } or {}
+local system_keys = util.is_macos and { q = true, h = true, m = true, n = true, ["`"] = true } or {}
 for i = 1, #chars do
   local c = chars:sub(i, i)
   local name = ({ ["<"] = "lt", ["|"] = "Bar" })[c] or c
@@ -270,7 +271,7 @@ end
 -- ── Alt on the Mac too ─────────────────────────────────────────────────────
 -- Every Cmd chord also answers to (left) Option, so the Linux Alt keys work
 -- unchanged on the Mac. An Alt key that already has an action keeps it.
-if require("util").is_macos then
+if util.is_macos then
   for _, m in ipairs { "n", "i", "x", "s", "o", "t" } do
     for _, km in ipairs(vim.api.nvim_get_keymap(m)) do
       -- (Neovim stores Cmd+Shift+Left as <S-D-Left>.)
