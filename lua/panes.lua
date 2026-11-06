@@ -102,8 +102,23 @@ function M.run(name, arg)
   type_if_terminal()
 end
 
+-- Inside tmux, tmux sends Alt keys to Neovim first (~/.config/tmux/tmux.conf,
+-- "same key, same job"). What Neovim can't do itself it hands back, so one
+-- key works across Neovim splits and tmux panes alike.
+local function tmux(...)
+  if vim.env.TMUX then
+    vim.system { "tmux", ... }
+    return true
+  end
+end
+
 function M.focus(dir)
+  local before = api.nvim_get_current_win()
   vim.cmd.wincmd(dir)
+  if api.nvim_get_current_win() == before then
+    -- At the edge: move to the tmux pane beyond it.
+    tmux("select-pane", ({ h = "-L", j = "-D", k = "-U", l = "-R" })[dir])
+  end
 end
 
 ---Swap this pane's content with its neighbour in `dir`; sizes stay, focus
@@ -280,6 +295,8 @@ function M.zoom()
   end
   local win = api.nvim_get_current_win()
   if not is_pane(win) or #panes() < 2 then
+    -- Nothing to zoom inside Neovim: zoom (or unzoom) its tmux pane instead.
+    tmux("resize-pane", "-Z")
     return
   end
   vim.cmd "tab split"
