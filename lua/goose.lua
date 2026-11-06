@@ -2,14 +2,11 @@
 -- pseudocode... when you exit insert mode, it turns it into real code... it
 -- can only edit the area that you typed in").
 --
---   Goose ("loosey-goosey mode"):
---   Alt+K / Cmd+K (Cursor's inline edit key), :Goose  one-shot: start an
---     insert (this line if blank, else a new one below); its Esc sends only
---     the typed lines to `claude -p`. In a selection, converts it at once.
---   Ctrl+Alt+K / Cmd+Ctrl+K, :GooseAuto  toggle auto: every insert converts
---     (badge GOOSE in the status line); leaving the buffer turns it off.
---     (Alt+Shift+K, the first choice, is Move line up.)
---   Plain i/a/o never fire unless one of these is on.
+--   Goose ("loosey-goosey mode"): type pseudocode with plain i/a/o and Esc;
+--   nothing fires. The lines typed since the last send are the draft (dotted
+--   underline); an insert away from the draft replaces it.
+--   Alt+K / Cmd+K (Cursor's inline edit key), :Goose  send the draft to
+--     `claude -p`. In a selection, sends the selected lines.
 --   While it writes: the region greys out with "writing…"; edit elsewhere
 --   freely. An edit inside the region throws the answer away. One `u` brings
 --   the pseudocode back.
@@ -212,9 +209,10 @@ end
 ---Convert lines s..e (0-based, inclusive) of buf. `errors` = a retry.
 run = function(buf, s, e, errors)
   local lines = vim.api.nvim_buf_get_lines(buf, s, e + 1, false)
-  if not table.concat(lines, ""):match "%S" then
+  if #lines == 0 or not table.concat(lines, ""):match "%S" then
     return
   end
+  e = s + #lines - 1 -- a region past the buffer's end is cut to what exists
   local mark = vim.api.nvim_buf_set_extmark(buf, ns, s, 0, {
     end_row = e,
     end_col = #lines[#lines],
@@ -235,53 +233,81 @@ end
 M.convert = run
 
 -- ── Goose (loosey-goosey mode) ─────────────────────────────────────────────
--- One-shot (Alt+K, :Goose): this insert's Esc converts, then inserts are
--- plain again. Auto (Ctrl+Alt+K, :GooseAuto): every insert converts until
--- toggled off or you leave the buffer. Plain inserts never fire otherwise.
--- Pending conversions keep running either way, and :w never touches them.
+-- Type anything with plain i/a/o and Esc; nothing fires. The lines you typed
+-- since the last send are the draft (dotted underline). Alt+K sends the
+-- draft: those lines become code. The draft is one block: an insert away
+-- from it starts a new draft and drops the old one, so Alt+K never reaches
+-- old or distant text. In a selection, Alt+K sends the selected lines.
 
-local armed = {} -- armed[buf]: the next insert converts (one-shot)
+local draft_ns = vim.api.nvim_create_namespace "goose_draft"
+local draft = {} -- draft[buf] = extmark id over the draft lines
 local start = {} -- start[buf] = { from, before, orig } for the current insert
+M.max_draft = 60 -- more lines than this must be selected explicitly
 
-local function begin(buf)
-  start[buf] = {
-    from = vim.fn.line "." - 1,
-    before = vim.api.nvim_buf_line_count(buf),
-    orig = vim.api.nvim_get_current_line(),
-  }
-end
-
----One-shot: start insert (this line if blank, else a new line below); its
----Esc converts what was typed. In insert mode, from the cursor's line.
-function M.once()
-  local buf = vim.api.nvim_get_current_buf()
-  local mode = vim.api.nvim_get_mode().mode
-  if mode:sub(1, 1) == "i" then
-    begin(buf)
-    return ""
+local function draft_range(buf)
+  local id = draft[buf]
+  if not id then
+    return
   end
-  armed[buf] = true
-  return vim.api.nvim_get_current_line():match "%S" and "o" or "cc"
+  local m = vim.api.nvim_buf_get_extmark_by_id(buf, draft_ns, id, { details = true })
+  if not m[1] then
+    draft[buf] = nil
+    return
+  end
+  return m[1], m[3].end_row
+end
+M.draft_range = draft_range -- for tests
+
+local function drop_draft(buf)
+  if draft[buf] then
+    pcall(vim.api.nvim_buf_del_extmark, buf, draft_ns, draft[buf])
+  end
+  draft[buf] = nil
 end
 
-function M.toggle(buf)
-  buf = buf or vim.api.nvim_get_current_buf()
-  vim.b[buf].goose_auto = not vim.b[buf].goose_auto or nil
-  vim.cmd.redrawstatus()
-  vim.notify(vim.b[buf].goose_auto and "goose: auto on (every insert becomes code; Ctrl+Alt+K off)" or "goose: auto off")
+local function set_draft(buf, s, e)
+  drop_draft(buf)
+  local last = vim.api.nvim_buf_get_lines(buf, e, e + 1, false)[1] or ""
+  draft[buf] = vim.api.nvim_buf_set_extmark(buf, draft_ns, s, 0, {
+    end_row = e,
+    end_col = #last,
+    hl_group = "GooseDraft",
+    right_gravity = false,
+    end_right_gravity = true,
+  })
+end
+
+local function set_hl()
+  local hint = vim.api.nvim_get_hl(0, { name = "DiagnosticHint", link = false })
+  vim.api.nvim_set_hl(0, "GooseDraft", { default = true, underdotted = true, sp = hint.fg })
+end
+
+---Send the draft (or nothing). Called after the insert has ended.
+function M.send()
+  local buf = vim.api.nvim_get_current_buf()
+  local s, e = draft_range(buf)
+  drop_draft(buf)
+  if not s then
+    return vim.notify "goose: nothing typed since the last send"
+  end
+  if e - s + 1 > M.max_draft then
+    return vim.notify(("goose: %d lines is a lot for one go; select the lines you mean and press Alt+K"):format(e - s + 1), vim.log.levels.WARN)
+  end
+  run(buf, s, e)
 end
 
 function M.setup()
+  set_hl()
   local group = vim.api.nvim_create_augroup("Goose", { clear = true })
+  vim.api.nvim_create_autocmd("ColorScheme", { group = group, callback = set_hl })
   vim.api.nvim_create_autocmd("InsertEnter", {
     group = group,
     callback = function(a)
-      if armed[a.buf] or vim.b[a.buf].goose_auto then
-        armed[a.buf] = nil
-        begin(a.buf)
-      else
-        start[a.buf] = nil
-      end
+      start[a.buf] = {
+        from = vim.fn.line "." - 1,
+        before = vim.api.nvim_buf_line_count(a.buf),
+        orig = vim.api.nvim_get_current_line(),
+      }
     end,
   })
   vim.api.nvim_create_autocmd("InsertLeave", {
@@ -302,37 +328,32 @@ function M.setup()
       if s == e and lines[1] == st.orig then
         return -- nothing typed
       end
-      run(a.buf, s, e)
-    end,
-  })
-  vim.api.nvim_create_autocmd("BufLeave", {
-    group = group,
-    callback = function(a)
-      vim.b[a.buf].goose_auto = nil
-      armed[a.buf] = nil
+      -- Touching or overlapping the draft grows it; anywhere else replaces it.
+      local ds, de = draft_range(a.buf)
+      if ds and s <= de + 1 and e >= ds - 1 then
+        s, e = math.min(s, ds), math.max(e, de)
+      end
+      set_draft(a.buf, s, e)
     end,
   })
   local chord = require("util").chord
   local map = vim.keymap.set
-  map({ "n", "i" }, chord "k", M.once, { expr = true, desc = "Goose: this insert becomes code on Esc" })
+  map("n", chord "k", M.send, { desc = "Goose: the underlined lines you typed become code" })
+  map("i", chord "k", function()
+    vim.cmd.stopinsert() -- InsertLeave records this insert, then send
+    vim.schedule(M.send)
+  end, { desc = "Goose: what you typed becomes code" })
   map("x", chord "k", function()
     local s, e = vim.fn.line "v" - 1, vim.fn.line "." - 1
     if s > e then
       s, e = e, s
     end
     vim.api.nvim_feedkeys(vim.keycode "<Esc>", "nx", false)
-    run(vim.api.nvim_get_current_buf(), s, e)
+    local buf = vim.api.nvim_get_current_buf()
+    drop_draft(buf)
+    run(buf, s, e)
   end, { desc = "Goose: selection becomes code" })
-  -- Alt+Shift+K is Move line up (keys.lua), so auto takes Ctrl+Alt+K.
-  map({ "n", "i", "x" }, chord "C-k", function()
-    M.toggle()
-  end, { desc = "Goose auto: every insert becomes code (toggle)" })
-  vim.api.nvim_create_user_command("Goose", function()
-    vim.api.nvim_feedkeys(M.once(), "n", false)
-  end, { desc = "Goose: the next insert becomes code on Esc" })
-  vim.api.nvim_create_user_command("GooseAuto", function()
-    M.toggle()
-  end, { desc = "Goose auto mode (toggle)" })
+  vim.api.nvim_create_user_command("Goose", M.send, { desc = "Goose: send the typed lines" })
 end
 
 return M

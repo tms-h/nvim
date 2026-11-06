@@ -17,7 +17,7 @@
 --   lsp         language servers, diagnostics, format on save
 --   library     installed code is read-only, without diagnostics
 --   sync        pulls this config from GitHub after startup (clean checkout only)
---   goose       Alt+K: this insert becomes code (claude -p); Ctrl+Alt+K auto
+--   goose       type pseudocode, Alt+K: the underlined typed lines become code
 --   seconder    Space r: a reviewer that writes CR comments; ]r / [r jump
 --
 -- Loaded on first use: hunks (change keys), run (F5, lazygit), ocaml

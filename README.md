@@ -36,7 +36,7 @@ line). Restart to apply a pull.
 | `lua/lsp.lua`, `lsp/*.lua` | language servers, format on save (ocamlformat for OCaml) |
 | `lua/ocaml.lua` | ocp-indent, `.ml`/`.mli` switch, dune |
 | `lua/usage.lua` | usage log, `:FrictionNote`, `:UsageReport` |
-| `lua/goose.lua` | goose: `Alt+K` the next insert's pseudocode becomes code on Esc (`claude -p`); `Ctrl+Alt+K` auto mode for the buffer |
+| `lua/goose.lua` | goose: type pseudocode with plain inserts (dotted underline = draft), `Alt+K` sends the draft or a selection to `claude -p`; one `u` undoes |
 | `lua/seconder.lua`, `rubric/seconder.md` | `Space r` review that writes CR comments; `]r` / `[r` jump between CRs |
 
 ## Tests
