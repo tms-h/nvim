@@ -104,7 +104,7 @@ local function prompt_for(buf, s, e, lines, errors)
   local before = table.concat(vim.list_slice(all, 1, s), "\n")
   local after = table.concat(vim.list_slice(all, e + 2), "\n")
   local parts = {
-    ("File: %s (filetype %s)"):format(vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":t"), vim.bo[buf].filetype),
+    ("File: %s (filetype %s)"):format(vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":~:."), vim.bo[buf].filetype),
   }
   local sib, text = M.sibling(buf)
   if sib then

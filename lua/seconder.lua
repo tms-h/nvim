@@ -106,7 +106,14 @@ local function prompt_for(buf)
     end
     parts[#parts + 1] = "Existing CR comments (XCR = the author's reply to your CR):\n" .. table.concat(list, "\n")
   end
-  parts[#parts + 1] = ("File %s:\n%s"):format(vim.fn.fnamemodify(name, ":t"), numbered(lines))
+  -- The file's role (library vs executable) decides whether some CRs apply,
+  -- so send its path from the project root and the dune file next to it.
+  local rel = root and vim.fs.relpath and vim.fs.relpath(root, name) or vim.fn.fnamemodify(name, ":~:.")
+  local dune = read(vim.fs.joinpath(vim.fs.dirname(name), "dune"))
+  if dune then
+    parts[#parts + 1] = "dune file in the same folder:\n" .. dune
+  end
+  parts[#parts + 1] = ("File %s:\n%s"):format(rel, numbered(lines))
   return table.concat(parts, "\n\n"), lines
 end
 
