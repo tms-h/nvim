@@ -1,5 +1,7 @@
--- Every global key, in one place. Buffer-local keys live with their feature:
--- OCaml (ocaml.lua), the tree (explorer.lua), completion (below).
+-- Every global key, in one place, except the two Claude helpers' own keys:
+-- Alt+K (goose.lua) and Space r, ]r, [r (seconder.lua). Buffer-local keys
+-- live with their feature: OCaml (ocaml.lua, and K in lsp.lua), the tree
+-- (explorer.lua), a terminal's click (panes.lua).
 --
 -- Rules:
 -- * Alt/Cmd chords (`super`) are the VS Code / Chrome shortcuts: Alt on
