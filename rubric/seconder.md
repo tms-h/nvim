@@ -21,6 +21,11 @@ Rank, and raise in this order:
    (or none in the project) showing what it does on the edge case you found.
 5. Idiom. Only when the better way is clearly better, not taste.
 
+Every CR, at any rank, needs a concrete cost in THIS file's role. A general
+rule with no cost here is not a CR. Example: `let () = ...` at top level of an
+executable (under bin/, or a dune `executable`) is its entry point, not a
+side effect on importers; only library modules can surprise a linker.
+
 Kinds:
 - CR: blocks seconding (1-3, or 4 for risky code).
 - CR-soon: works, but there is a clearly better way (4-5).
