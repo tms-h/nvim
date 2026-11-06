@@ -1,5 +1,7 @@
--- Every global key, in one place. Buffer-local keys live with their feature:
--- OCaml (ocaml.lua), the tree (explorer.lua), completion (below).
+-- Every global key, in one place, except the two Claude helpers' own keys:
+-- Alt+K (goose.lua) and Space r, ]r, [r (seconder.lua). Buffer-local keys
+-- live with their feature: OCaml (ocaml.lua, and K in lsp.lua), the tree
+-- (explorer.lua), a terminal's click (panes.lua).
 --
 -- Rules:
 -- * Alt/Cmd chords (`super`) are the VS Code / Chrome shortcuts: Alt on
@@ -22,7 +24,8 @@
 -- Ctrl+Alt+S / Ctrl+K Ctrl+R (stage / revert change: Ctrl+K is focus up) ->
 -- Space g s / Space g r.
 local map = vim.keymap.set
-local super = require("util").chord
+local util = require "util"
+local super = util.chord
 local panes = require "panes"
 
 local ALL = { "n", "i", "x", "s", "t" }
@@ -58,7 +61,7 @@ end
 -- Inside tmux, terminals and tabs are tmux's (util.in_mux): Alt+Return
 -- splits a tmux pane, Alt+T / Alt+Shift+T / Alt+1..9 / Ctrl+Tab act on tmux
 -- tabs (tmux.conf binds them outright), and Neovim maps none of them.
-local in_mux = require("util").in_mux
+local in_mux = util.in_mux
 if not in_mux then
   map(ALL, super "CR", pane "new_terminal", { expr = true, desc = "New terminal on the longer side" })
   -- Ctrl+` (Ctrl on the Mac too, as in VS Code): the terminal panel at the bottom.
@@ -73,7 +76,7 @@ map(ALL, super "q", "<Cmd>confirm qa<CR>", { desc = "Quit Neovim" })
 -- Option+W on the Mac is Super+W (Hyprland's killactive): quit this Neovide
 -- window, like its red close button (asks only about unsaved files).
 -- Karabiner passes Option+W through to Neovide unchanged for this.
-if require("util").is_macos then
+if util.is_macos then
   map(ALL, "<M-w>", "<Cmd>confirm qa<CR>", { desc = "Quit Neovide (Super+W)" })
 end
 
@@ -220,9 +223,11 @@ if vim.g.neovide then
       vim.g.neovide_scale_factor = factor and vim.g.neovide_scale_factor * factor or vim.g.default_scale
     end
   end
-  map({ "n", "i", "x", "s", "c", "t" }, super "=", zoom(1.25), { desc = "Zoom in" })
-  map({ "n", "i", "x", "s", "c", "t" }, super "-", zoom(1 / 1.25), { desc = "Zoom out" })
-  map({ "n", "i", "x", "s", "c", "t" }, super "0", zoom(), { desc = "Reset zoom" })
+  -- Zoom works while typing a command too.
+  local modes = { "n", "i", "x", "s", "c", "t" }
+  map(modes, super "=", zoom(1.25), { desc = "Zoom in" })
+  map(modes, super "-", zoom(1 / 1.25), { desc = "Zoom out" })
+  map(modes, super "0", zoom(), { desc = "Reset zoom" })
 end
 
 -- ── Run and git ────────────────────────────────────────────────────────────
@@ -254,7 +259,7 @@ end, { desc = "Show old lines (toggle)" })
 -- counts these, so it shows which shortcuts get reached for.
 local chars = "abcdefghijklmnopqrstuvwxyz0123456789,./;'[]\\`=-!@#$%^&*()_+{}:\"<>?~|"
 -- macOS keeps Cmd+Q/H/M/N/` for the app and the system.
-local system_keys = require("util").is_macos and { q = true, h = true, m = true, n = true, ["`"] = true } or {}
+local system_keys = util.is_macos and { q = true, h = true, m = true, n = true, ["`"] = true } or {}
 for i = 1, #chars do
   local c = chars:sub(i, i)
   local name = ({ ["<"] = "lt", ["|"] = "Bar" })[c] or c
@@ -270,7 +275,7 @@ end
 -- ── Alt on the Mac too ─────────────────────────────────────────────────────
 -- Every Cmd chord also answers to (left) Option, so the Linux Alt keys work
 -- unchanged on the Mac. An Alt key that already has an action keeps it.
-if require("util").is_macos then
+if util.is_macos then
   for _, m in ipairs { "n", "i", "x", "s", "o", "t" } do
     for _, km in ipairs(vim.api.nvim_get_keymap(m)) do
       -- (Neovim stores Cmd+Shift+Left as <S-D-Left>.)
