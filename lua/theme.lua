@@ -7,7 +7,11 @@
 -- Two looks, each designed for its own setting:
 --   glass  see-through card over wallpaper + blur (Linux). Background, text
 --          and opacity come from shell.toml [menu] through the surface-recipe
---          hook, so Neovide matches kitty, Files and the shell popups.
+--          hook, so Neovide matches kitty, Files and the shell popups. In a
+--          terminal (kitty, also inside tmux) Neovim paints no background at
+--          all: kitty's own card (the same [menu] colour and opacity, Hyprland
+--          blur) shows through every pane and float, and the [menu] colour is
+--          only what dims and tints are mixed toward.
 --   flat   opaque (the Mac, or transparency off). The theme's dark editor
 --          background (dark_background) under its own text, so body
 --          text, comments and the dim are at least as clear as the old
@@ -92,7 +96,7 @@ local function groups(p, look)
   local c = p -- the theme's named colours: c.red, c.accent, ...
   return {
     -- The one surface
-    Normal = { fg = fg, bg = bg },
+    Normal = { fg = fg, bg = not p.see_through and bg or nil },
     NormalNC = { link = "Normal" },
     NormalFloat = { link = "Normal" },
     FloatBorder = { fg = mix(bg, fg, 0.28) },
@@ -449,10 +453,11 @@ function M.apply()
   local surface = read_surface()
   local look = vim.g.look
   if look ~= "glass" and look ~= "flat" then
-    look = (surface and vim.g.neovide) and "glass" or "flat"
+    look = surface and "glass" or "flat"
   end
   if look == "glass" and surface then
     p.bg, p.fg = surface.bg, surface.fg
+    p.see_through = not vim.g.neovide
   else
     p.bg, p.fg = p.dark_background, p.foreground
   end

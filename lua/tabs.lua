@@ -273,6 +273,12 @@ _G.Tabs_close = function(buf, _, button)
 end
 
 function M.setup()
+  -- Inside tmux the tabs are tmux's (Alt+T, Alt+1..9, Ctrl+Tab): no bar here.
+  -- Files are switched with the finder (Alt+P, Space f b).
+  if require("util").in_tmux then
+    vim.o.showtabline = 0
+    return
+  end
   vim.o.showtabline = 2
   vim.o.tabline = "%!v:lua.require'tabs'.render()"
   api.nvim_create_autocmd({ "DiagnosticChanged", "BufModifiedSet" }, {

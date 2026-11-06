@@ -8,10 +8,18 @@
 --   Alt/Cmd+O, :OpenFolder  switch this window to another folder
 --
 -- Files changed on disk (by agents, git) reload without a keypress.
+--
+-- Inside tmux (util.in_tmux) tmux keeps the session: the running Neovim
+-- lives in its tmux session, and a closed tab comes back through tmux-tabs.
+-- So there `nvim folder` just opens the folder and the tree: no session is
+-- loaded or saved (Neovide's own session for that folder stays untouched),
+-- and the window is not counted as "open", so Neovide and tmux never refuse
+-- a folder because the other has it.
 local M = {}
 
 local api, uv = vim.api, vim.uv
 local is_windows = require("util").is_windows
+local in_tmux = require("util").in_tmux
 
 local session_dir = vim.fn.stdpath "state" .. "/sessions"
 -- Shared with every config generation, so the old and new config see each
@@ -70,6 +78,9 @@ function M.current()
 end
 
 local function record_open()
+  if in_tmux then
+    return
+  end
   vim.fn.mkdir(open_dir, "p")
   vim.fn.writefile({ project or "" }, open_file)
 end
@@ -127,7 +138,7 @@ end
 ---session is removed, so the next start is empty too.
 function M.save()
   local cwd = normalize(vim.fn.getcwd(-1, -1))
-  if not project or cwd ~= project or not is_project(cwd) then
+  if in_tmux or not project or cwd ~= project or not is_project(cwd) then
     return
   end
   if not has_files() then
@@ -158,6 +169,9 @@ function M.save()
 end
 
 local function load_session(dir)
+  if in_tmux then
+    return
+  end
   local file = session_file(dir)
   if uv.fs_stat(file) then
     vim.cmd("silent! source " .. vim.fn.fnameescape(file))
@@ -185,7 +199,7 @@ function M.open_folder(path, opts)
     return
   end
   -- One window per project: two would overwrite each other's session.
-  if path ~= project and M.open_elsewhere()[path] then
+  if not in_tmux and path ~= project and M.open_elsewhere()[path] then
     vim.notify(vim.fn.fnamemodify(path, ":t") .. " is open in another window")
     return
   end
@@ -379,10 +393,10 @@ function M.setup()
           vim.fs.root(cwd, ".git") or vim.fs.root(cwd, { "dune-project", "Cargo.toml", "pyproject.toml" }) or cwd
         )
         if is_project(here) then
-          if not M.open_elsewhere()[here] then
+          if in_tmux or not M.open_elsewhere()[here] then
             M.open_folder(here, { startup = true })
           end
-        else
+        elseif not in_tmux then
           local dir = M.last_project()
           if dir then
             M.open_folder(dir, { startup = true })

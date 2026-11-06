@@ -55,9 +55,15 @@ for arrow, dir in pairs { Left = "h", Down = "j", Up = "k", Right = "l" } do
     panes.move_divider(arrow)
   end, { desc = "Move divider " .. arrow:lower() })
 end
-map(ALL, super "CR", pane "new_terminal", { expr = true, desc = "New terminal on the longer side" })
--- Ctrl+` (Ctrl on the Mac too, as in VS Code): the terminal panel at the bottom.
-map(ALL, "<C-`>", pane "toggle_panel", { expr = true, desc = "Toggle the bottom terminal panel" })
+-- Inside tmux, terminals and tabs are tmux's (util.in_tmux): Alt+Return
+-- splits a tmux pane, Alt+T / Alt+Shift+T / Alt+1..9 / Ctrl+Tab act on tmux
+-- tabs (tmux.conf binds them outright), and Neovim maps none of them.
+local in_tmux = require("util").in_tmux
+if not in_tmux then
+  map(ALL, super "CR", pane "new_terminal", { expr = true, desc = "New terminal on the longer side" })
+  -- Ctrl+` (Ctrl on the Mac too, as in VS Code): the terminal panel at the bottom.
+  map(ALL, "<C-`>", pane "toggle_panel", { expr = true, desc = "Toggle the bottom terminal panel" })
+end
 map(ALL, super "f", pane "zoom", { expr = true, desc = "Zoom pane (toggle)" })
 map(ALL, super "j", pane "flip", { expr = true, desc = "Flip split direction" })
 map(ALL, super "w", call "require('panes').close()", { expr = true, desc = "Close what has focus" })
@@ -68,20 +74,22 @@ if require("util").is_macos then
   map(ALL, "<M-w>", "<Cmd>confirm qa<CR>", { desc = "Quit Neovide (Super+W)" })
 end
 
--- ── Tabs (Chrome) ──────────────────────────────────────────────────────────
+-- ── Tabs (Chrome; tmux's inside tmux) ──────────────────────────────────────
 local function step(n)
   return in_editor(("require('tabs').next(%d)"):format(n))
 end
-map(ALL, "<C-Tab>", step(1), { expr = true, desc = "Next tab" })
-map(ALL, "<C-S-Tab>", step(-1), { expr = true, desc = "Previous tab" })
-map(ALL, "<C-PageDown>", step(1), { expr = true, desc = "Next tab" })
-map(ALL, "<C-PageUp>", step(-1), { expr = true, desc = "Previous tab" })
-map(ALL, super "t", in_editor 'vim.cmd("enew")', { expr = true, desc = "New tab" })
-map(ALL, super "S-t", call "require('panes').reopen()", { expr = true, desc = "Reopen closed tab" })
-for i = 1, 9 do
-  -- 1-8 go to that tab, 9 to the last one (Chrome).
-  local go = in_editor(("require('tabs').go_to(%d)"):format(i == 9 and -1 or i))
-  map(ALL, super(tostring(i)), go, { expr = true, desc = i == 9 and "Last tab" or "Tab " .. i })
+if not in_tmux then
+  map(ALL, "<C-Tab>", step(1), { expr = true, desc = "Next tab" })
+  map(ALL, "<C-S-Tab>", step(-1), { expr = true, desc = "Previous tab" })
+  map(ALL, "<C-PageDown>", step(1), { expr = true, desc = "Next tab" })
+  map(ALL, "<C-PageUp>", step(-1), { expr = true, desc = "Previous tab" })
+  map(ALL, super "t", in_editor 'vim.cmd("enew")', { expr = true, desc = "New tab" })
+  map(ALL, super "S-t", call "require('panes').reopen()", { expr = true, desc = "Reopen closed tab" })
+  for i = 1, 9 do
+    -- 1-8 go to that tab, 9 to the last one (Chrome).
+    local go = in_editor(("require('tabs').go_to(%d)"):format(i == 9 and -1 or i))
+    map(ALL, super(tostring(i)), go, { expr = true, desc = i == 9 and "Last tab" or "Tab " .. i })
+  end
 end
 
 -- ── Find, files, folders (VS Code) ─────────────────────────────────────────

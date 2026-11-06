@@ -55,7 +55,12 @@ local built_count = 0
 ---Copy every group into the dim namespace, words pulled toward the surface.
 function M.build()
   local all = api.nvim_get_hl(0, {})
-  local base = api.nvim_get_hl(0, { name = "Normal" }).bg or 0
+  -- In a terminal Normal has no background (kitty's card shows through):
+  -- the surface colour it stands for is the theme's.
+  local palette = require("theme").palette
+  local base = api.nvim_get_hl(0, { name = "Normal" }).bg
+    or (palette and tonumber(palette.bg:sub(2), 16))
+    or 0
   local STRENGTH = strength()
   local count = 0
   for name in pairs(all) do
