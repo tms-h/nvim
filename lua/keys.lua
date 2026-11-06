@@ -221,9 +221,11 @@ if vim.g.neovide then
       vim.g.neovide_scale_factor = factor and vim.g.neovide_scale_factor * factor or vim.g.default_scale
     end
   end
-  map({ "n", "i", "x", "s", "c", "t" }, super "=", zoom(1.25), { desc = "Zoom in" })
-  map({ "n", "i", "x", "s", "c", "t" }, super "-", zoom(1 / 1.25), { desc = "Zoom out" })
-  map({ "n", "i", "x", "s", "c", "t" }, super "0", zoom(), { desc = "Reset zoom" })
+  -- Zoom works while typing a command too.
+  local modes = { "n", "i", "x", "s", "c", "t" }
+  map(modes, super "=", zoom(1.25), { desc = "Zoom in" })
+  map(modes, super "-", zoom(1 / 1.25), { desc = "Zoom out" })
+  map(modes, super "0", zoom(), { desc = "Reset zoom" })
 end
 
 -- ── Run and git ────────────────────────────────────────────────────────────
