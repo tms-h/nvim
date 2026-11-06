@@ -173,6 +173,56 @@ local function fit_beside_code(diagnostic)
   return message
 end
 
+-- ocamllsp started in a dune project before its first build reports "No
+-- config found" and "Unbound module" (merlin has no build output to read),
+-- and keeps reporting them after `dune build` or `dune test -w` until it
+-- restarts. So when it attaches to a file whose folder has no merlin config
+-- yet, watch for the one dune writes (_build/default/<folder>/.merlin-conf,
+-- in plain and watch builds alike), give the build 3 s more to compile, and
+-- restart it once. One stat each second, stopped after the restart or after
+-- 30 minutes.
+local watching = {} -- root -> true while a watch runs
+
+function M.restart_after_first_build(root, buf)
+  local file = api.nvim_buf_get_name(buf)
+  if not root or watching[root] or not vim.uv.fs_stat(root .. "/dune-project") then
+    return
+  end
+  local rel = vim.fs.relpath(root, vim.fs.dirname(file))
+  if not rel then
+    return
+  end
+  local conf = root .. "/_build/default/" .. (rel == "." and "" or rel .. "/") .. ".merlin-conf"
+  if vim.uv.fs_stat(conf) then
+    return
+  end
+  watching[root] = true
+  local timer = vim.uv.new_timer()
+  local ticks, seen = 0, nil
+  timer:start(1000, 1000, function()
+    ticks = ticks + 1
+    if not seen and vim.uv.fs_stat(conf) then
+      seen = ticks
+    end
+    if (seen and ticks >= seen + 3) or ticks > 1800 then
+      timer:stop()
+      timer:close()
+      vim.schedule(function()
+        watching[root] = nil
+        if ticks > 1800 then
+          return
+        end
+        for _, client in ipairs(vim.lsp.get_clients { name = "ocamllsp" }) do
+          if client.root_dir == root then
+            vim.cmd "silent! lsp restart ocamllsp"
+            return
+          end
+        end
+      end)
+    end
+  end)
+end
+
 function M.setup()
   for name, cmd in pairs(SERVERS) do
     if require("tools").find(cmd) then
@@ -211,6 +261,7 @@ function M.setup()
       vim.bo[args.buf].omnifunc = "v:lua.MiniCompletion.completefunc_lsp"
       local client = vim.lsp.get_client_by_id(args.data.client_id)
       if client and client.name == "ocamllsp" then
+        M.restart_after_first_build(client.root_dir, args.buf)
         vim.keymap.set("n", "K", function()
           ocaml_hover(client, args.buf)
         end, { buffer = args.buf, desc = "Hover (full type)" })
