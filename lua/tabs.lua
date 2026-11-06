@@ -275,7 +275,7 @@ end
 function M.setup()
   -- Inside tmux the tabs are tmux's (Alt+T, Alt+1..9, Ctrl+Tab): no bar here.
   -- Files are switched with the finder (Alt+P, Space f b).
-  if require("util").in_tmux then
+  if require("util").in_mux then
     vim.o.showtabline = 0
     return
   end
