@@ -102,12 +102,16 @@ function M.run(name, arg)
   type_if_terminal()
 end
 
--- Inside tmux, tmux sends Alt keys to Neovim first (~/.config/tmux/tmux.conf,
--- "same key, same job"). What Neovim can't do itself it hands back, so one
--- key works across Neovim splits and tmux panes alike.
-local function tmux(...)
-  if vim.env.TMUX then
-    vim.system { "tmux", ... }
+-- Inside tmux or herdr, the multiplexer sends Alt keys to Neovim first
+-- (~/.config/tmux/tmux.conf, ~/.local/bin/herdr-keys: "same key, same job").
+-- What Neovim can't do itself it hands back, so one key works across Neovim
+-- splits and multiplexer panes alike. `hand_back(tmux_argv, herdr_argv)` runs
+-- the command for the multiplexer Neovim is in.
+local util = require "util"
+local function hand_back(tmux_argv, herdr_argv)
+  local argv = util.in_tmux and tmux_argv or util.in_herdr and herdr_argv
+  if argv then
+    vim.system(argv)
     return true
   end
 end
@@ -116,8 +120,12 @@ function M.focus(dir)
   local before = api.nvim_get_current_win()
   vim.cmd.wincmd(dir)
   if api.nvim_get_current_win() == before then
-    -- At the edge: move to the tmux pane beyond it.
-    tmux("select-pane", ({ h = "-L", j = "-D", k = "-U", l = "-R" })[dir])
+    -- At the edge: move to the multiplexer pane beyond it.
+    local side = ({ h = "left", j = "down", k = "up", l = "right" })[dir]
+    hand_back(
+      { "tmux", "select-pane", ({ h = "-L", j = "-D", k = "-U", l = "-R" })[dir] },
+      { "herdr", "pane", "focus", "--direction", side, "--current" }
+    )
   end
 end
 
@@ -295,8 +303,8 @@ function M.zoom()
   end
   local win = api.nvim_get_current_win()
   if not is_pane(win) or #panes() < 2 then
-    -- Nothing to zoom inside Neovim: zoom (or unzoom) its tmux pane instead.
-    tmux("resize-pane", "-Z")
+    -- Nothing to zoom inside Neovim: zoom (or unzoom) its multiplexer pane.
+    hand_back({ "tmux", "resize-pane", "-Z" }, { "herdr", "pane", "zoom", "--current", "--toggle" })
     return
   end
   vim.cmd "tab split"
@@ -533,9 +541,13 @@ end
 function M.close()
   local win, buf = api.nvim_get_current_win(), api.nvim_get_current_buf()
   -- Nothing left to close (Chrome and VS Code close the window here): hand
-  -- the key back so tmux closes this pane. Neovide keeps its window.
-  if vim.env.TMUX and not vim.g.neovide and M.nothing_open() then
-    return tmux("run-shell", "-b", "~/.local/bin/tmux-tabs close-pane " .. vim.env.TMUX_PANE)
+  -- the key back so tmux or herdr closes this pane. Neovide keeps its window.
+  if util.in_mux and M.nothing_open() then
+    local bin = vim.fn.expand "~/.local/bin/"
+    return hand_back(
+      { "tmux", "run-shell", "-b", bin .. "tmux-tabs close-pane " .. (vim.env.TMUX_PANE or "") },
+      { bin .. "herdr-keys", "close-pane", vim.env.HERDR_PANE_ID or "" }
+    )
   end
   if M.is_float(win) then
     return api.nvim_win_close(win, true)

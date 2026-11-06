@@ -55,11 +55,11 @@ for arrow, dir in pairs { Left = "h", Down = "j", Up = "k", Right = "l" } do
     panes.move_divider(arrow)
   end, { desc = "Move divider " .. arrow:lower() })
 end
--- Inside tmux, terminals and tabs are tmux's (util.in_tmux): Alt+Return
+-- Inside tmux, terminals and tabs are tmux's (util.in_mux): Alt+Return
 -- splits a tmux pane, Alt+T / Alt+Shift+T / Alt+1..9 / Ctrl+Tab act on tmux
 -- tabs (tmux.conf binds them outright), and Neovim maps none of them.
-local in_tmux = require("util").in_tmux
-if not in_tmux then
+local in_mux = require("util").in_mux
+if not in_mux then
   map(ALL, super "CR", pane "new_terminal", { expr = true, desc = "New terminal on the longer side" })
   -- Ctrl+` (Ctrl on the Mac too, as in VS Code): the terminal panel at the bottom.
   map(ALL, "<C-`>", pane "toggle_panel", { expr = true, desc = "Toggle the bottom terminal panel" })
@@ -81,7 +81,7 @@ end
 local function step(n)
   return in_editor(("require('tabs').next(%d)"):format(n))
 end
-if not in_tmux then
+if not in_mux then
   map(ALL, "<C-Tab>", step(1), { expr = true, desc = "Next tab" })
   map(ALL, "<C-S-Tab>", step(-1), { expr = true, desc = "Previous tab" })
   map(ALL, "<C-PageDown>", step(1), { expr = true, desc = "Next tab" })
