@@ -210,7 +210,7 @@ end)
 check("stray keys in an editor: unmapped leader and Alt keys do nothing", function()
   local tick = vim.b.changedtick
   local before = floats()
-  for _, k in ipairs { "<leader>z", "<leader>q", super "y", super "u", super "x", super "d", super "k", super "S-x" } do
+  for _, k in ipairs { "<leader>z", "<leader>q", super "y", super "u", super "x", super "d", super "g", super "S-x" } do
     press(k .. "<Esc>", 150)
   end
   press("i", 50)

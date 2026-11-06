@@ -17,6 +17,8 @@
 --   lsp         language servers, diagnostics, format on save
 --   library     installed code is read-only, without diagnostics
 --   sync        pulls this config from GitHub after startup (clean checkout only)
+--   goose       Alt+K: this insert becomes code (claude -p); Ctrl+Alt+K auto
+--   seconder    Space r: a reviewer that writes CR comments; ]r / [r jump
 --
 -- Loaded on first use: hunks (change keys), run (F5, lazygit), ocaml
 -- (ocp-indent, ocamlformat, dune; from after/ftplugin).
@@ -40,3 +42,5 @@ require("projects").setup()
 require("lsp").setup()
 require("library").setup()
 require("sync").setup()
+require("goose").setup()
+require("seconder").setup()

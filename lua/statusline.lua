@@ -124,6 +124,13 @@ function M.render()
   if reg ~= "" then
     parts[#parts + 1] = "%#DiagnosticWarn#recording @" .. reg .. "%*"
   end
+  -- Goose (goose.lua): GOOSE while auto mode is on; "writing" while any
+  -- conversion is pending.
+  local goose = package.loaded.goose
+  local n = goose and goose.pending_count(0) or 0
+  if vim.b.goose_auto or n > 0 then
+    parts[#parts + 1] = "%#DiagnosticWarn#" .. (vim.b.goose_auto and "GOOSE" or "goose") .. (n > 0 and (" writing " .. n) or "") .. "%*"
+  end
   parts[#parts + 1] = file_part()
   local right = {}
   local progress = vim.lsp.status()
