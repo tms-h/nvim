@@ -503,10 +503,40 @@ function M.remember_closed(buf, cursor)
   end
 end
 
+---True when the editor shows only one blank, unnamed, unchanged buffer:
+---closing it would just open another blank one.
+function M.nothing_open()
+  -- The file tree and floats (ui2's command line, messages) don't count.
+  local others = vim.tbl_filter(function(w)
+    return not M.is_tree(w)
+  end, panes())
+  if #others > 1 or #api.nvim_list_tabpages() > 1 or M.is_float(api.nvim_get_current_win()) then
+    return false
+  end
+  local current = api.nvim_get_current_buf()
+  for _, b in ipairs(api.nvim_list_bufs()) do
+    if vim.bo[b].buflisted or vim.bo[b].modified then
+      local blank = api.nvim_buf_get_name(b) == ""
+        and not vim.bo[b].modified
+        and api.nvim_buf_line_count(b) == 1
+        and api.nvim_buf_get_lines(b, 0, 1, false)[1] == ""
+      if not blank or b ~= current then
+        return false
+      end
+    end
+  end
+  return true
+end
+
 ---Close the tab (file) in an editor; close a terminal, the tree, a float or a
 ---help/list pane outright.
 function M.close()
   local win, buf = api.nvim_get_current_win(), api.nvim_get_current_buf()
+  -- Nothing left to close (Chrome and VS Code close the window here): hand
+  -- the key back so tmux closes this pane. Neovide keeps its window.
+  if vim.env.TMUX and not vim.g.neovide and M.nothing_open() then
+    return tmux("run-shell", "-b", "~/.local/bin/tmux-tabs close-pane " .. vim.env.TMUX_PANE)
+  end
   if M.is_float(win) then
     return api.nvim_win_close(win, true)
   end
