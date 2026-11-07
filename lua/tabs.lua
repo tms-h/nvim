@@ -273,19 +273,36 @@ _G.Tabs_close = function(buf, _, button)
 end
 
 function M.setup()
-  -- Inside tmux the tabs are tmux's (Alt+T, Alt+1..9, Ctrl+Tab): no bar here.
-  -- Files are switched with the finder (Alt+P, Space f b).
-  if require("util").in_mux then
-    vim.o.showtabline = 0
-    return
-  end
-  vim.o.showtabline = 2
   vim.o.tabline = "%!v:lua.require'tabs'.render()"
+  local group = api.nvim_create_augroup("Tabs", { clear = true })
   api.nvim_create_autocmd({ "DiagnosticChanged", "BufModifiedSet" }, {
-    group = api.nvim_create_augroup("Tabs", { clear = true }),
+    group = group,
     callback = function()
       vim.schedule(function()
         vim.cmd.redrawtabline()
+      end)
+    end,
+  })
+  if not require("util").in_mux then
+    vim.o.showtabline = 2
+    return
+  end
+  -- Inside tmux or herdr the multiplexer draws its own tab row, so this bar
+  -- shows only while there is more than one file to see (and Alt+W or
+  -- Ctrl+Tab would otherwise go to files you cannot see).
+  vim.o.showtabline = 0
+  api.nvim_create_autocmd({ "BufAdd", "BufDelete", "BufWipeout", "BufEnter", "OptionSet" }, {
+    group = group,
+    callback = function(ev)
+      if ev.event == "OptionSet" and ev.match ~= "buflisted" then
+        return
+      end
+      -- BufDelete fires while the buffer is still listed: count after it.
+      vim.schedule(function()
+        local show = #M.list() > 1 and 2 or 0
+        if vim.o.showtabline ~= show then
+          vim.o.showtabline = show
+        end
       end)
     end,
   })

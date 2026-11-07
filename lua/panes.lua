@@ -621,6 +621,23 @@ function M.in_editor(fn)
   fn()
 end
 
+---Ctrl+Tab / Ctrl+Shift+Tab (`step` +1 / -1): the next or previous file.
+---Inside tmux or herdr with one file open there is nothing to cycle, so the
+---multiplexer's next or previous tab comes up instead (like Alt+W's hand-back).
+function M.cycle(step)
+  local tabs = require "tabs"
+  if util.in_mux and #tabs.list() < 2 then
+    local dir = step > 0 and "next" or "previous"
+    return hand_back(
+      { "tmux", dir .. "-window" },
+      { vim.fn.expand "~/.local/bin/herdr-keys", "tab", dir, vim.env.HERDR_PANE_ID or "" }
+    )
+  end
+  M.in_editor(function()
+    tabs.next(step)
+  end)
+end
+
 function M.setup()
   local group = api.nvim_create_augroup("Panes", { clear = true })
   -- A terminal is a pane, not a tab: it stays out of the tab bar and Ctrl+Tab,

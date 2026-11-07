@@ -1,9 +1,9 @@
 #!/bin/bash
-# Neovim inside tmux is a plain editor (util.in_tmux): no tab bar, no tab or
-# terminal keys, no sessions, no background of its own. Runs `nvim .` the way
-# tmux-agent does, in a private tmux server, without g:neovide, and reads the
-# state back over its socket. A second run with g:neovide set proves Neovide
-# keeps everything.
+# Neovim inside tmux is a plain editor (util.in_tmux): no tab or terminal keys
+# but Ctrl+Tab, a tab bar only with 2+ files, no sessions, no background of
+# its own. Runs `nvim .` the way tmux-agent does, in a private tmux server,
+# without g:neovide, and reads the state back over its socket. A second run
+# with g:neovide set proves Neovide keeps everything.
 #   tests/tmux.sh
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -36,19 +36,32 @@ run() { # extra --cmd, label
   tmux -L "$SOCK" kill-server 2>/dev/null
   tmux -L "$SOCK" -f /dev/null new-session -d -x 160 -y 40 -c "$PROJ" \
     "$HERE/env.sh nvim --listen $sock --cmd '$1' --cmd 'source $HERE/clipboard.vim' . ; sleep 1"
+  # Ctrl+Tab reaches Neovim as itself only with extended keys (tmux.conf).
+  tmux -L "$SOCK" set -g extended-keys always
   q() { nvim --clean --headless --server "$sock" --remote-expr "$1" 2>/dev/null; }
   for _ in $(seq 120); do [ -S "$sock" ] && [ "$(q 'v:vim_did_enter')" = 1 ] && break; sleep 0.25; done
   sleep 5
   if [ "$2" = tmux ]; then
     check "tmux: in_tmux set" true "$(q 'luaeval("tostring(require(\"util\").in_tmux)")')"
-    check "tmux: no tab bar" 0 "$(q '&showtabline')"
-    for key in '<A-t>' '<A-T>' '<A-1>' '<C-Tab>' '<A-CR>' '<C-`>'; do
+    check "tmux: no tab bar with one file" 0 "$(q '&showtabline')"
+    for key in '<A-t>' '<A-T>' '<A-1>' '<C-PageDown>' '<A-CR>' '<C-`>'; do
       check "tmux: $key not mapped" "" "$(q "get(maparg('$key', 'n', 0, 1), 'desc', '') =~# 'tab\\|terminal' ? 'mapped' : ''")"
     done
     check "tmux: Normal has no background" nil "$(q 'luaeval("tostring(vim.api.nvim_get_hl(0, {name=\"Normal\"}).bg)")')"
     check "tmux: tree opened beside the folder" 1 "$(q "luaeval('#vim.tbl_filter(function(w) return vim.bo[vim.api.nvim_win_get_buf(w)].filetype == \"NvimTree\" end, vim.api.nvim_list_wins())')")"
     pid=$(q 'getpid()')
     check "tmux: not counted as open" no "$( [ -e "$NVNEXT/state/nvim/open-projects/$pid" ] && echo yes || echo no)"
+    # Two files: the bar shows and Ctrl+Tab cycles them; back to one, it hides.
+    printf 'let y = 2\n' >"$PROJ/b.ml"
+    q 'execute("edit a.ml | edit b.ml")' >/dev/null
+    sleep 0.3
+    check "tmux: tab bar with two files" 2 "$(q '&showtabline')"
+    tmux -L "$SOCK" send-keys -t 0 C-Tab
+    sleep 0.5
+    check "tmux: Ctrl+Tab cycles files" a.ml "$(q 'bufname()')"
+    q 'execute("bwipeout b.ml")' >/dev/null
+    sleep 0.3
+    check "tmux: tab bar hides at one file" 0 "$(q '&showtabline')"
     # Alt+W on the last window closes the file, never Neovim.
     q 'execute("edit a.ml")' >/dev/null
     q 'execute("wincmd l")' >/dev/null
@@ -61,7 +74,7 @@ run() { # extra --cmd, label
     sleep 1
     check "tmux: no session saved" 0 "$(ls "$NVNEXT/state/nvim/sessions" 2>/dev/null | wc -l)"
   else
-    check "neovide: in_tmux unset" false "$(q 'luaeval("tostring(require(\"util\").in_tmux)")')"
+    check "neovide: in_mux unset" false "$(q 'luaeval("tostring(require(\"util\").in_mux)")')"
     check "neovide: tab bar shows" 2 "$(q '&showtabline')"
     check "neovide: Alt+T mapped" 1 "$(q "get(maparg('<A-t>', 'n', 0, 1), 'desc', '') ==# 'New tab' ? 1 : 0")"
     check "neovide: Ctrl+backtick mapped" 1 "$(q "get(maparg('<C-\`>', 'n', 0, 1), 'desc', '') =~# 'panel' ? 1 : 0")"

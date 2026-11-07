@@ -58,9 +58,10 @@ for arrow, dir in pairs { Left = "h", Down = "j", Up = "k", Right = "l" } do
     panes.move_divider(arrow)
   end, { desc = "Move divider " .. arrow:lower() })
 end
--- Inside tmux, terminals and tabs are tmux's (util.in_mux): Alt+Return
--- splits a tmux pane, Alt+T / Alt+Shift+T / Alt+1..9 / Ctrl+Tab act on tmux
--- tabs (tmux.conf binds them outright), and Neovim maps none of them.
+-- Inside tmux or herdr, terminals and tabs are the multiplexer's
+-- (util.in_mux): Alt+Return splits its pane, Alt+T / Alt+Shift+T / Alt+1..9
+-- and Ctrl+Shift+Left/Right act on its tabs, and Neovim maps none of them.
+-- Ctrl+Tab stays Neovim's: it cycles the open files (panes.cycle).
 local in_mux = util.in_mux
 if not in_mux then
   map(ALL, super "CR", pane "new_terminal", { expr = true, desc = "New terminal on the longer side" })
@@ -80,13 +81,15 @@ if util.is_macos then
   map(ALL, "<M-w>", "<Cmd>confirm qa<CR>", { desc = "Quit Neovide (Super+W)" })
 end
 
--- ── Tabs (Chrome; tmux's inside tmux) ──────────────────────────────────────
+-- ── Tabs (Chrome; the multiplexer's inside tmux or herdr) ──────────────────
 local function step(n)
-  return in_editor(("require('tabs').next(%d)"):format(n))
+  return call(("require('panes').cycle(%d)"):format(n))
 end
+-- Ctrl+Tab is the innermost tab key: files here, and the multiplexer's tabs
+-- only when there is one file (panes.cycle).
+map(ALL, "<C-Tab>", step(1), { expr = true, desc = "Next tab" })
+map(ALL, "<C-S-Tab>", step(-1), { expr = true, desc = "Previous tab" })
 if not in_mux then
-  map(ALL, "<C-Tab>", step(1), { expr = true, desc = "Next tab" })
-  map(ALL, "<C-S-Tab>", step(-1), { expr = true, desc = "Previous tab" })
   map(ALL, "<C-PageDown>", step(1), { expr = true, desc = "Next tab" })
   map(ALL, "<C-PageUp>", step(-1), { expr = true, desc = "Previous tab" })
   map(ALL, super "t", in_editor 'vim.cmd("enew")', { expr = true, desc = "New tab" })
