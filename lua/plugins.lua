@@ -4,7 +4,7 @@
 --
 --   mini.nvim        finder (mini.pick), completion, key hints (mini.clue),
 --                    TODO words (mini.hipatterns), git signs (mini.diff),
---                    icons, bracket pairs
+--                    icons, bracket pairs, smooth scrolling (mini.animate)
 --   nvim-tree.lua    the file tree
 --   nvim-treesitter  installs the OCaml, Python, Rust... parsers
 --   orgmode          README.org files (loaded on the first .org file)
@@ -103,6 +103,20 @@ require("mini.hipatterns").setup {
     note = todo_word({ "NOTE" }, "TodoTextNote"),
   },
 }
+
+-- Smooth scrolling in terminal Neovim (herdr, tmux, kitty): every scroll
+-- (Ctrl+D/U/F/B, zz, gg/G, search jumps, wheel) glides in 120 ms. Neovide
+-- animates scrolling itself (gui.lua). Only scrolling is animated.
+if not vim.g.neovide then
+  local animate = require "mini.animate"
+  animate.setup {
+    scroll = { timing = animate.gen_timing.linear { duration = 120, unit = "total" } },
+    cursor = { enable = false },
+    resize = { enable = false },
+    open = { enable = false },
+    close = { enable = false },
+  }
+end
 
 -- OCaml type variables ('a) and Rust lifetimes ('a) are not quotes.
 vim.api.nvim_create_autocmd("FileType", {
