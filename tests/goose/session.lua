@@ -188,5 +188,54 @@ vim.cmd.enew()
 vim.cmd("bdelete! " .. buf)
 check("process killed on BufDelete", (vim.wait(2000, function() return not alive(pidB) end, 20)))
 
+-- 8. A new buffer's first send runs on the spare started by the insert, and
+-- the answer goes through the formatter in the same undo step.
+local fmt = dir .. "/fmt.ml"
+vim.fn.writefile({ "let x = 1" }, fmt)
+vim.cmd.edit(fmt)
+local buf2 = vim.api.nvim_get_current_buf()
+vim.bo[buf2].filetype = "ocaml" -- -u NONE: no filetype detection
+local function wait_idle2()
+  vim.wait(100)
+  return vim.wait(5000, function()
+    return g.pending_count(buf2) == 0
+  end, 20)
+end
+vim.api.nvim_win_set_cursor(0, { 1, 0 })
+keys "oUGLY pseudo<Esc>"
+local spare = g.spare()
+check("spare: a process is up before Alt+K", spare and alive(spare.pid))
+keys "<M-k>"
+wait_idle2()
+check("spare: the send runs on it", spare and g.session(buf2) == spare and g.spare() ~= spare)
+local got = vim.api.nvim_buf_get_lines(buf2, 0, -1, false)
+check("format: the answer is formatted", got[2] == "let u = 1 + 2", vim.inspect(got))
+keys "u"
+got = vim.api.nvim_buf_get_lines(buf2, 0, -1, false)
+check("format: one u restores the pseudocode", vim.deep_equal(got, { "let x = 1", "UGLY pseudo" }), vim.inspect(got))
+
+-- 9. While another region is still writing, formatting leaves it alone
+-- (ocamlformat would join "UGLY two" onto "let y = 2" above it), and that
+-- region's answer still lands.
+vim.api.nvim_buf_set_lines(buf2, 0, -1, false, { "let x = 1", "", "let y = 2" })
+local notes2 = {}
+local notify2 = vim.notify
+vim.notify = function(m, ...)
+  notes2[#notes2 + 1] = m
+  return notify2(m, ...)
+end
+vim.api.nvim_win_set_cursor(0, { 1, 0 })
+keys "oUGLY one<Esc>"
+keys "<M-k>"
+keys "GoUGLY two<Esc>"
+keys "<M-k>"
+wait_idle2()
+vim.notify = notify2
+got = vim.api.nvim_buf_get_lines(buf2, 0, -1, false)
+local answers = #vim.tbl_filter(function(l)
+  return l == "let u = 1 + 2"
+end, got)
+check("format: a region still writing is left alone", answers == 2 and #notes2 == 0, vim.inspect(got) .. " " .. vim.inspect(notes2))
+
 io.stdout:write(("goose session: %d pass, %d fail\n"):format(pass, fail))
 vim.cmd(fail == 0 and "qa!" or "cquit 1")

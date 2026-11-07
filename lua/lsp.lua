@@ -77,22 +77,26 @@ local function ocamlformat_disabled(conf)
   return false
 end
 
----Re-indent the whole buffer with ocp-indent: leading spaces only, so a
----project that turns ocamlformat off still gets Jane Street indentation.
-local function indent_ocaml(buf, dir)
-  local result = require("ocaml").ocp_indent(dir, {}, buffer_text(buf))
+---Re-indent with ocp-indent: leading spaces only, so a project that turns
+---ocamlformat off still gets Jane Street indentation. `lines` ("X-Y",
+---1-based) limits it to those lines; nil = the whole buffer.
+local function indent_ocaml(buf, dir, lines)
+  local result = require("ocaml").ocp_indent(dir, lines and { "--lines", lines } or {}, buffer_text(buf))
   if result and result.code == 0 then
     apply_output(buf, result.stdout)
   end
 end
 
-function M.format_ocaml(buf)
+---ocamlformat on the whole buffer, or ocp-indent where it is off. `lines`
+---("X-Y", 1-based): lines a tool just wrote; when the file does not parse
+---(unfinished code elsewhere), those lines are still re-indented.
+function M.format_ocaml(buf, lines)
   local ocamlformat = require("tools").find "ocamlformat"
   local file = api.nvim_buf_get_name(buf)
   local dir = vim.fs.dirname(file)
   local conf = vim.fs.find(".ocamlformat", { path = dir, upward = true })[1]
   if not ocamlformat or ocamlformat_disabled(conf) then
-    indent_ocaml(buf, dir)
+    indent_ocaml(buf, dir, lines)
     return
   end
   local args = { ocamlformat, "--name=" .. file, "--enable-outside-detected-project", "-" }
@@ -103,6 +107,8 @@ function M.format_ocaml(buf)
   -- A syntax error: leave the file as typed; the error is in diagnostics.
   if result.code == 0 then
     apply_output(buf, result.stdout)
+  elseif lines then
+    indent_ocaml(buf, dir, lines)
   end
 end
 
@@ -120,6 +126,11 @@ local function format_markdown(buf)
   if result.code == 0 then
     apply_output(buf, result.stdout)
   end
+end
+
+-- ruff formats Python; pyright does not.
+local function not_pyright(client)
+  return client.name ~= "pyright"
 end
 
 -- Formatted on every save: OCaml (ocamlformat), Rust (rust-analyzer, which
@@ -144,15 +155,45 @@ function M.format(buf)
   end
   local clients = vim.lsp.get_clients { bufnr = buf, method = "textDocument/formatting" }
   if #clients > 0 then
-    vim.lsp.buf.format {
-      bufnr = buf,
-      timeout_ms = 3000,
-      -- ruff formats Python; pyright does not.
-      filter = function(client)
-        return client.name ~= "pyright"
-      end,
-    }
+    vim.lsp.buf.format { bufnr = buf, timeout_ms = 3000, filter = not_pyright }
   end
+end
+
+---Format lines s..e (0-based, inclusive) that a tool just wrote (goose).
+---Where a save formats the file (FORMAT_ON_SAVE), the whole file, as the
+---next save would. Elsewhere, or with `only_lines` (other unfinished text in
+---the file that a whole-file formatter could join onto code), only those
+---lines: ocp-indent for OCaml, else the language server's range formatting
+---where it has one, so the rest of a Lua or Python file is never restyled.
+function M.format_lines(buf, s, e, only_lines)
+  if vim.g.format_on_save == false or require("library").is_library(buf) then
+    return
+  end
+  local ft = vim.bo[buf].filetype
+  if ft == "ocaml" or ft == "ocaml_interface" then
+    local lines = ("%d-%d"):format(s + 1, e + 1)
+    if only_lines then
+      indent_ocaml(buf, vim.fs.dirname(api.nvim_buf_get_name(buf)), lines)
+    else
+      M.format_ocaml(buf, lines)
+    end
+    return
+  end
+  if FORMAT_ON_SAVE[ft] and not only_lines then
+    M.format(buf)
+    return
+  end
+  local clients = vim.lsp.get_clients { bufnr = buf, method = "textDocument/rangeFormatting" }
+  if #vim.tbl_filter(not_pyright, clients) == 0 then
+    return
+  end
+  local last = api.nvim_buf_get_lines(buf, e, e + 1, false)[1] or ""
+  vim.lsp.buf.format {
+    bufnr = buf,
+    timeout_ms = 3000,
+    range = { start = { s + 1, 0 }, ["end"] = { e + 1, #last } },
+    filter = not_pyright,
+  }
 end
 
 -- A diagnostic's first line, cut with "…" where it would pass the window's

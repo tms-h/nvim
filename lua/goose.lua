@@ -4,9 +4,11 @@
 --
 --   Goose ("loosey-goosey mode"): type pseudocode with plain i/a/o and Esc;
 --   nothing fires. The lines typed since the last send are the draft (dotted
---   underline); an insert away from the draft replaces it.
---   Alt+K / Cmd+K (Cursor's inline edit key), :Goose  send the draft to
---     `claude -p`. In a selection, sends the selected lines.
+--   underline), one block per place you typed.
+--   Alt+K / Cmd+K (Cursor's inline edit key), :Goose  send every draft block
+--     to claude. In a selection, sends the selected lines. The answer may
+--     also change lines outside the block when the pseudocode asks for it
+--     ("add a field to type t"); they flash and a message says where.
 --   While it writes: the region greys out with "writing…" and the answer
 --   streams in as grey ghost lines under it; the file itself changes once,
 --   when the answer is complete, and the new lines flash. Edit elsewhere
@@ -15,8 +17,14 @@
 --
 -- Each buffer keeps one long-lived claude process (stream-json). The first
 -- message carries the whole file; later ones carry only a diff since the
--- last message, so a 1000-line file is not resent every Alt+K. If the
--- process dies, that send falls back to a one-shot `claude -p`.
+-- last message, so a 1000-line file is not resent every Alt+K. A spare
+-- process is started when you start typing, so a buffer's first send does
+-- not wait for the CLI to start. If the process dies, that send falls back
+-- to a one-shot `claude -p`.
+--
+-- The answer goes through the file's formatter (lsp.format_lines) in the
+-- same undo step; a compile error in it gets one retry as soon as the
+-- language server reports it.
 --
 -- ask() (one-shot) is shared with seconder.lua.
 local M = {}
@@ -57,20 +65,25 @@ function M.ask(system, prompt, on_done)
 end
 
 -- ── Session: one long-lived claude per buffer ──────────────────────────────
--- Measured 2026-11-06 (Sonnet, lean flags): a fresh `claude -p` costs 3-4 s,
--- of which ~2.9 s is fixed startup; messages 2+ on one stream-json process
--- took 2.1-3.5 s, with the ~7k-token harness prefix read from cache.
-
+-- Measured 2026-11-07 (Sonnet, lean flags, 300-line file): first text
+-- 1.4-1.8 s, whole answer ~2 s on a running process; a process started on
+-- the send adds ~0.65 s, hence the spare. Haiku and `--effort low` were no
+-- faster (Sonnet does not think here; Haiku does).
 M.use_session = true -- false: every send is a one-shot `claude -p`
 M.session_max_tokens = 60000 -- restart (whole file again) past this history
 M.session_max_msgs = 25 -- ...or after this many messages
 M.session_argv = nil -- tests: replace the claude command line
+M.prewarm = true -- keep one idle claude (~190 MB) ready for the next session
 
-local sessions = {} -- sessions[buf] = session table, see start_session()
+local sessions = {} -- sessions[buf] = session table, see spawn()
+local spare -- an idle session no buffer owns yet
 local warned = false
 
 function M.session(buf) -- for tests and measurement
   return sessions[buf]
+end
+function M.spare() -- for tests
+  return spare
 end
 
 local function kill(S)
@@ -86,7 +99,7 @@ function M.kill_session(buf)
   end
 end
 
-local pump
+local pump, warm
 
 -- A send the session cannot finish goes to the one-shot path; notify once.
 local function fall_back(item, why)
@@ -130,7 +143,8 @@ local function on_event(S, ev)
       cur.on_done(ev.result or cur.text)
     end
     if not S.dead and (S.tokens >= M.session_max_tokens or S.msgs >= M.session_max_msgs) then
-      kill(S) -- the next send starts fresh with the whole file
+      kill(S) -- the next send starts fresh with the whole file...
+      warm(S.system) -- ...on a process started now
     end
     if S.dead then
       local q = S.queue
@@ -191,8 +205,8 @@ local function argv(system)
   return c
 end
 
-local function start_session(buf, system)
-  local S = { buf = buf, system = system, queue = {}, msgs = 0, tokens = 0, acc = "", err = "" }
+local function spawn(system)
+  local S = { system = system, queue = {}, msgs = 0, tokens = 0, acc = "", err = "" }
   local ok, job = pcall(vim.system, argv(system), {
     stdin = true,
     stdout = function(_, data)
@@ -216,6 +230,30 @@ local function start_session(buf, system)
     return nil, tostring(job)
   end
   S.job, S.pid = job, job.pid
+  return S
+end
+
+---Have a spare process running for the next session that starts.
+warm = function(system)
+  if M.use_session and M.prewarm and not (spare and not spare.dead) then
+    spare = spawn(system)
+  end
+end
+
+---buf's session: the spare if one is running, else a new process.
+local function start_session(buf, system)
+  local S, err = spare, nil
+  spare = nil
+  if not S or S.dead or S.system ~= system then
+    if S then
+      kill(S)
+    end
+    S, err = spawn(system)
+    if not S then
+      return nil, err
+    end
+  end
+  S.buf = buf
   sessions[buf] = S
   return S
 end
@@ -290,6 +328,36 @@ function M.strip_fences(text)
   return lines
 end
 
+local SEARCH, SPLIT, REPLACE = "^%s*<<<<<<<+%s*SEARCH%s*$", "^%s*=======+%s*$", "^%s*>>>>>>>+%s*REPLACE%s*$"
+
+---Model output -> the region's new lines, and the changes outside it
+---({ search = lines, replace = lines }, from SEARCH/REPLACE blocks).
+function M.split_answer(text)
+  local lines = vim.split(text:gsub("\r", ""), "\n", { plain = true })
+  local cut = #lines + 1
+  for i, l in ipairs(lines) do
+    if l:match(SEARCH) then
+      cut = i
+      break
+    end
+  end
+  local region = M.strip_fences(table.concat(vim.list_slice(lines, 1, cut - 1), "\n"))
+  local edits, cur, side = {}, nil, nil
+  for i = cut, #lines do
+    local l = lines[i]
+    if l:match(SEARCH) then
+      cur, side = { search = {}, replace = {} }, "search"
+    elseif cur and side == "search" and l:match(SPLIT) then
+      side = "replace"
+    elseif cur and side == "replace" and l:match(REPLACE) then
+      edits[#edits + 1], cur = cur, nil
+    elseif cur then
+      table.insert(cur[side], l)
+    end
+  end
+  return region, edits, cut <= #lines
+end
+
 ---The other half of an OCaml pair (foo.ml <-> foo.mli), if it exists.
 function M.sibling(buf)
   local name = vim.api.nvim_buf_get_name(buf)
@@ -313,9 +381,20 @@ Rules:
   function), output the pseudocode lines unchanged with one CR comment above
   saying why.
 - Parts you cannot write: `failwith "TODO: ..."`.
-- Only write the marked region. Never fill `failwith "TODO"` holes elsewhere.
+- Write the marked region. Change lines outside it only when the pseudocode
+  asks for it ("also add a field to type t", "rename x everywhere", "open Core
+  at the top") or the region cannot compile without it (a new record field, a
+  missing `rec`). Never fill `failwith "TODO"` holes elsewhere.
 - Keep the region's indentation. Use the file's language and comment syntax.
-- Output only the replacement lines: no fences, no prose.]]
+- Output the region's replacement lines first: no fences, no prose. If the
+  pseudocode is only an instruction about other lines, output no region lines
+  (the instruction is deleted).
+- Then one block per change outside the region, nothing for no changes:
+<<<<<<< SEARCH
+exact current lines of the file, enough to be unique
+=======
+what they become
+>>>>>>> REPLACE]]
 
 local function prompt_for(buf, s, e, lines, errors)
   local all = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
@@ -345,8 +424,12 @@ This is a running session on one file. The first message gives the whole
 file. Each later message gives only a unified diff of the file since the
 previous message (your earlier answers appear in it only if they were
 applied), then the new region with its line numbers. Keep your picture of
-the file up to date from the diffs. Each answer replaces only the current
-region.]]
+the file up to date from the diffs. Each answer replaces the current region
+(plus its SEARCH/REPLACE blocks).
+
+A message whose last part starts with "QUESTION:" asks about the code; it
+has no region to rewrite. Answer in short Markdown (code blocks allowed). It
+changes nothing in the file.]]
 
 local text_diff = (vim.text and vim.text.diff) or vim.diff
 
@@ -367,6 +450,36 @@ local function session_prompt(S, buf, s, e, lines, errors)
   else
     parts[#parts + 1] = "Rewrite the region's pseudocode as code."
   end
+  return table.concat(parts, "\n\n"), file
+end
+
+M.session_system = SESSION_SYSTEM -- goose_ask.lua sends to the same session
+
+---Question message (Alt+L): the file (whole the first time, then the diff
+---since the last message), the lines it is about, the question. Returns
+---prompt, file. S = nil for the one-shot fallback.
+function M.question_prompt(S, buf, q, s, e)
+  local all = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local file = table.concat(all, "\n") .. "\n"
+  local parts = {}
+  if S and S.sent then
+    local d = text_diff(S.sent, file, { result_type = "unified", ctxlen = 2 })
+    parts[1] = d == "" and "The file is unchanged since the last message." or ("File changes since the last message:\n" .. d)
+  else
+    parts[1] = ("File: %s (filetype %s)"):format(vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":~:."), vim.bo[buf].filetype)
+    local sib, text = M.sibling(buf)
+    if sib then
+      parts[#parts + 1] = ("Matching %s:\n%s"):format(vim.fn.fnamemodify(sib, ":t"), text)
+    end
+    parts[#parts + 1] = "Whole file:\n" .. table.concat(all, "\n")
+  end
+  local here = table.concat(vim.list_slice(all, s + 1, e + 1), "\n")
+  if s == e then
+    parts[#parts + 1] = ("The cursor is on line %d:\n%s"):format(s + 1, here)
+  else
+    parts[#parts + 1] = ("About lines %d-%d (selected):\n%s"):format(s + 1, e + 1, here)
+  end
+  parts[#parts + 1] = "QUESTION: " .. q
   return table.concat(parts, "\n\n"), file
 end
 
@@ -415,11 +528,14 @@ local function show_preview(buf, mark, text)
   if not e then
     return
   end
-  local lines = M.strip_fences(text)
+  local lines, edits, more = M.split_answer(text)
   local tab = (" "):rep(vim.bo[buf].tabstop)
   local virt = {}
   for i = 1, math.min(#lines, M.preview_max) do
     virt[i] = { { (lines[i]:gsub("\t", tab)), "Comment" } }
+  end
+  if more then
+    virt[#virt + 1] = { { ("  + changes elsewhere in the file (%d so far)"):format(#edits), "DiagnosticVirtualTextInfo" } }
   end
   previews[buf] = previews[buf] or {}
   if #virt == 0 then
@@ -455,18 +571,22 @@ local function errors_in(buf, s, e)
   return #out > 0 and table.concat(out, "\n") or nil
 end
 
--- How long to wait for the language server after a replace (ms).
+-- The retry waits for the language server's first report after a replace,
+-- this long at most (ms).
 M.lsp_wait = 2500
+M.format = true -- run the file's formatter on the new lines
 
 -- true: a finished answer waits as ghost lines; Alt+K accepts it, Esc or `u`
 -- drops it. false (default): it replaces the draft as soon as it is complete.
 M.accept_first = false
 local ready = {} -- ready[buf] = { mark, text, new, retry } awaiting Alt+K
 
-local run
+local run, draft_range
 
----The one buffer change: lines s..e become `new`, then flash and maybe retry.
+---The one buffer change: lines s..e become `new`, formatted, then flash and
+---maybe retry.
 local function replace(buf, s, e, new, retry)
+  local watch
   vim.api.nvim_buf_call(buf, function()
     if retry then
       pcall(vim.cmd.undojoin) -- the fix-up joins the first replace: one `u`
@@ -476,25 +596,155 @@ local function replace(buf, s, e, new, retry)
       vim.cmd "let &undolevels = &undolevels"
     end
     vim.api.nvim_buf_set_lines(buf, s, e + 1, false, new)
+    -- Follows the new lines through the formatter's changes.
+    watch = vim.api.nvim_buf_set_extmark(
+      buf,
+      ns,
+      s,
+      0,
+      { end_row = s + #new - 1, end_col = #new[#new], right_gravity = false, end_right_gravity = true }
+    )
+    if M.format then
+      pcall(vim.cmd.undojoin) -- formatting is part of the same `u`
+      -- Another region still writing, or a draft being typed: a whole-file
+      -- formatter could join that text onto code, so only these lines.
+      local only_lines = M.pending_count(buf) > 0 or draft_range(buf) ~= nil
+      local ok, err = pcall(require("lsp").format_lines, buf, s, s + #new - 1, only_lines)
+      if not ok then
+        vim.notify("goose: formatter failed: " .. tostring(err), vim.log.levels.WARN)
+      end
+    end
   end)
-  flash(buf, s, new)
-  M.last = { buf = buf, lines = new, retry = retry } -- for tests
+  local s2, e2 = region_lines(buf, watch)
+  local lines = vim.api.nvim_buf_get_lines(buf, s2, e2 + 1, false)
+  flash(buf, s2, lines)
+  M.last = { buf = buf, lines = lines, retry = retry } -- for tests
   if retry or #vim.lsp.get_clients { bufnr = buf } == 0 then
+    pcall(vim.api.nvim_buf_del_extmark, buf, ns, watch)
     return
   end
-  -- One retry with the compiler's errors, never a loop.
-  local watch = vim.api.nvim_buf_set_extmark(buf, ns, s, 0, { end_row = s + #new - 1, end_col = #new[#new], right_gravity = false, end_right_gravity = true })
-  vim.defer_fn(function()
+  -- One retry with the compiler's errors, never a loop: on the language
+  -- server's first report after the change, or after lsp_wait at most.
+  local checked, au = false, nil
+  local function check()
+    if checked then
+      return
+    end
+    checked = true
+    pcall(vim.api.nvim_del_autocmd, au)
     if not vim.api.nvim_buf_is_valid(buf) then
       return
     end
-    local s2, e2 = region_lines(buf, watch)
+    local s3, e3 = region_lines(buf, watch)
     pcall(vim.api.nvim_buf_del_extmark, buf, ns, watch)
-    local errs = s2 and errors_in(buf, s2, e2)
+    local errs = s3 and errors_in(buf, s3, e3)
     if errs then
-      run(buf, s2, e2, errs)
+      run(buf, s3, e3, errs)
     end
-  end, M.lsp_wait)
+  end
+  au =
+    vim.api.nvim_create_autocmd("DiagnosticChanged", { buffer = buf, once = true, callback = vim.schedule_wrap(check) })
+  vim.defer_fn(check, M.lsp_wait)
+end
+
+-- ── Changes outside the region (SEARCH/REPLACE blocks) ─────────────────────
+local edit_ns = vim.api.nvim_create_namespace "goose_edit"
+
+local function same_rstrip(a, b)
+  return a:gsub("%s+$", "") == b:gsub("%s+$", "")
+end
+local function same_trim(a, b)
+  return vim.trim(a) == vim.trim(b)
+end
+
+---0-based row where `want` matches `all` in a block clear of rows s..e; the
+---match nearest the region wins.
+local function find(all, want, s, e, eq)
+  local n, best, dist = #want, nil, math.huge
+  for i = 0, #all - n do
+    if i + n - 1 < s or i > e then
+      local ok = true
+      for k = 1, n do
+        if not eq(all[i + k], want[k]) then
+          ok = false
+          break
+        end
+      end
+      local d = i > e and i - e or s - (i + n - 1)
+      if ok and d < dist then
+        best, dist = i, d
+      end
+    end
+  end
+  return best
+end
+
+---Lines s..e become `new` (replace(): flash, compile retry), and each edit
+---outside them is made in the same undo step. An edit whose lines are not
+---in the file is skipped with a warning.
+local function apply(buf, s, e, new, edits, retry)
+  local all = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local marks, missed, taken = {}, {}, {}
+  for _, ed in ipairs(edits or {}) do
+    local n = #ed.search
+    local at = n > 0 and (find(all, ed.search, s, e, same_rstrip) or find(all, ed.search, s, e, same_trim)) or nil
+    for _, t in ipairs(taken) do
+      if at and at <= t[2] and at + n - 1 >= t[1] then
+        at = nil -- overlaps an earlier edit
+      end
+    end
+    if at then
+      taken[#taken + 1] = { at, at + n - 1 }
+      local id = vim.api.nvim_buf_set_extmark(buf, edit_ns, at, 0, { end_row = at + n - 1, end_col = #all[at + n], end_right_gravity = true })
+      marks[#marks + 1] = { id = id, replace = ed.replace }
+    else
+      missed[#missed + 1] = vim.trim(ed.search[1] or "(empty SEARCH)")
+    end
+  end
+  if #missed > 0 then
+    vim.notify("goose: could not find the lines to change: " .. table.concat(missed, " | "), vim.log.levels.WARN)
+  end
+  if #new == 0 and #marks == 0 then
+    return vim.notify("goose: empty answer; kept your text", vim.log.levels.WARN)
+  end
+  if #new > 0 then
+    replace(buf, s, e, new, retry)
+  else -- an instruction about other lines: it goes, they change
+    vim.api.nvim_buf_call(buf, function()
+      if retry then
+        pcall(vim.cmd.undojoin)
+      else
+        vim.cmd "let &undolevels = &undolevels"
+      end
+      vim.api.nvim_buf_set_lines(buf, s, e + 1, false, {})
+    end)
+  end
+  local at = {}
+  for _, m in ipairs(marks) do
+    local p = vim.api.nvim_buf_get_extmark_by_id(buf, edit_ns, m.id, { details = true })
+    pcall(vim.api.nvim_buf_del_extmark, buf, edit_ns, m.id)
+    if p[1] then
+      vim.api.nvim_buf_call(buf, function()
+        pcall(vim.cmd.undojoin) -- one `u` undoes the region and these
+        vim.api.nvim_buf_set_lines(buf, p[1], p[3].end_row + 1, false, m.replace)
+      end)
+      if #m.replace > 0 then
+        flash(buf, p[1], m.replace)
+      end
+      at[#at + 1] = vim.api.nvim_buf_set_extmark(buf, edit_ns, math.min(p[1], vim.api.nvim_buf_line_count(buf) - 1), 0, {})
+    end
+  end
+  -- Report where, read after every edit has moved the lines.
+  local rows = {}
+  for _, id in ipairs(at) do
+    rows[#rows + 1] = vim.api.nvim_buf_get_extmark_by_id(buf, edit_ns, id, {})[1] + 1
+    pcall(vim.api.nvim_buf_del_extmark, buf, edit_ns, id)
+  end
+  table.sort(rows)
+  M.last_elsewhere = { rows = rows, missed = missed } -- for tests
+  if #rows > 0 then
+    vim.notify(("goose: also changed line%s %s (one u undoes it all)"):format(#rows > 1 and "s" or "", table.concat(rows, ", ")))
+  end
 end
 
 local function drop_ready(buf)
@@ -521,16 +771,16 @@ local function accept(buf)
   if not s or table.concat(vim.api.nvim_buf_get_lines(buf, s, e + 1, false), "\n") ~= r.text then
     vim.notify("goose: you edited the region; kept your text", vim.log.levels.WARN)
   else
-    replace(buf, s, e, r.new, r.retry)
+    apply(buf, s, e, r.new, r.edits, r.retry)
   end
   return true
 end
 M.accept = accept
 
-local function hold(buf, s, e, text, new, retry)
+local function hold(buf, s, e, text, new, edits, retry)
   drop_ready(buf)
   local last = vim.api.nvim_buf_get_lines(buf, e, e + 1, false)[1] or ""
-  local r = { text = text, new = new, retry = retry }
+  local r = { text = text, new = new, edits = edits, retry = retry }
   r.mark = vim.api.nvim_buf_set_extmark(buf, ns, s, 0, {
     end_row = e,
     end_col = #last,
@@ -544,6 +794,9 @@ local function hold(buf, s, e, text, new, retry)
   local virt = {}
   for i = 1, math.min(#new, M.preview_max) do
     virt[i] = { { new[i], "Comment" } }
+  end
+  if #edits > 0 then
+    virt[#virt + 1] = { { ("  + %d change%s elsewhere in the file"):format(#edits, #edits > 1 and "s" or ""), "DiagnosticVirtualTextInfo" } }
   end
   r.preview = vim.api.nvim_buf_set_extmark(buf, preview_ns, e, 0, { virt_lines = virt })
   ready[buf] = r
@@ -575,17 +828,15 @@ local function finish(buf, mark, out, err, retry)
   if not out then
     return vim.notify("goose: " .. (err or "no answer"), vim.log.levels.ERROR)
   end
-  local new = M.strip_fences(out)
-  if #new == 0 then
+  local new, edits = M.split_answer(out)
+  if #new == 0 and #edits == 0 then
     return vim.notify("goose: empty answer; kept your text", vim.log.levels.WARN)
   end
   if M.accept_first and not retry then
-    return hold(buf, s, e, text, new, retry)
+    return hold(buf, s, e, text, new, edits, retry)
   end
-  replace(buf, s, e, new, retry)
+  apply(buf, s, e, new, edits, retry)
 end
-
-local used = {} -- buffers goose has sent from (their session restarts on BufEnter)
 
 ---Convert lines s..e (0-based, inclusive) of buf. `errors` = a retry.
 run = function(buf, s, e, errors)
@@ -613,7 +864,6 @@ run = function(buf, s, e, errors)
   if not M.use_session then
     return M.ask(SYSTEM, prompt_for(buf, s, e, lines, errors), done)
   end
-  used[buf] = true
   -- The region is read again when the message goes out: an earlier send in
   -- this buffer may still be writing and move it.
   local function now()
@@ -646,47 +896,71 @@ M.convert = run
 
 -- ── Goose (loosey-goosey mode) ─────────────────────────────────────────────
 -- Type anything with plain i/a/o and Esc; nothing fires. The lines you typed
--- since the last send are the draft (dotted underline). Alt+K sends the
--- draft: those lines become code. The draft is one block: an insert away
--- from it starts a new draft and drops the old one, so Alt+K never reaches
--- old or distant text. In a selection, Alt+K sends the selected lines.
+-- since the last send are the draft (dotted underline), in as many blocks as
+-- the places you typed. Alt+K sends every block: each becomes code, one
+-- after another on the same claude. In a selection, Alt+K sends the selected
+-- lines only.
 
 local draft_ns = vim.api.nvim_create_namespace "goose_draft"
-local draft = {} -- draft[buf] = extmark id over the draft lines
+local draft = {} -- draft[buf] = extmark ids, one per block of typed lines
 local start = {} -- start[buf] = { from, before, orig } for the current insert
 M.max_draft = 60 -- more lines than this must be selected explicitly
 
-local function draft_range(buf)
-  local id = draft[buf]
-  if not id then
-    return
+---The draft's blocks, top to bottom: { { s, e, id }, ... }, 0-based rows.
+local function draft_blocks(buf)
+  local out = {}
+  for _, id in ipairs(draft[buf] or {}) do
+    local m = vim.api.nvim_buf_get_extmark_by_id(buf, draft_ns, id, { details = true })
+    if m[1] then
+      out[#out + 1] = { m[1], m[3].end_row, id }
+    end
   end
-  local m = vim.api.nvim_buf_get_extmark_by_id(buf, draft_ns, id, { details = true })
-  if not m[1] then
-    draft[buf] = nil
-    return
+  table.sort(out, function(a, b)
+    return a[1] < b[1]
+  end)
+  draft[buf] = #out > 0 and vim.tbl_map(function(b)
+    return b[3]
+  end, out) or nil
+  return out
+end
+M.draft_blocks = draft_blocks -- for tests
+
+---The first block (nil: no draft).
+draft_range = function(buf)
+  local b = draft_blocks(buf)[1]
+  if b then
+    return b[1], b[2]
   end
-  return m[1], m[3].end_row
 end
 M.draft_range = draft_range -- for tests
 
 local function drop_draft(buf)
-  if draft[buf] then
-    pcall(vim.api.nvim_buf_del_extmark, buf, draft_ns, draft[buf])
+  for _, id in ipairs(draft[buf] or {}) do
+    pcall(vim.api.nvim_buf_del_extmark, buf, draft_ns, id)
   end
   draft[buf] = nil
 end
 
-local function set_draft(buf, s, e)
-  drop_draft(buf)
+---Add lines s..e to the draft; blocks they touch or overlap merge into one.
+local function add_draft(buf, s, e)
+  local keep = {}
+  for _, b in ipairs(draft_blocks(buf)) do
+    if s <= b[2] + 1 and e >= b[1] - 1 then
+      s, e = math.min(s, b[1]), math.max(e, b[2])
+      pcall(vim.api.nvim_buf_del_extmark, buf, draft_ns, b[3])
+    else
+      keep[#keep + 1] = b[3]
+    end
+  end
   local last = vim.api.nvim_buf_get_lines(buf, e, e + 1, false)[1] or ""
-  draft[buf] = vim.api.nvim_buf_set_extmark(buf, draft_ns, s, 0, {
+  keep[#keep + 1] = vim.api.nvim_buf_set_extmark(buf, draft_ns, s, 0, {
     end_row = e,
     end_col = #last,
     hl_group = "GooseDraft",
     right_gravity = false,
     end_right_gravity = true,
   })
+  draft[buf] = keep
 end
 
 local function set_hl()
@@ -701,15 +975,21 @@ function M.send()
   if accept(buf) then
     return
   end
-  local s, e = draft_range(buf)
+  local blocks = draft_blocks(buf)
   drop_draft(buf)
-  if not s then
+  if #blocks == 0 then
     return vim.notify "goose: nothing typed since the last send"
   end
-  if e - s + 1 > M.max_draft then
-    return vim.notify(("goose: %d lines is a lot for one go; select the lines you mean and press Alt+K"):format(e - s + 1), vim.log.levels.WARN)
+  local total = 0
+  for _, b in ipairs(blocks) do
+    total = total + b[2] - b[1] + 1
   end
-  run(buf, s, e)
+  if total > M.max_draft then
+    return vim.notify(("goose: %d lines is a lot for one go; select the lines you mean and press Alt+K"):format(total), vim.log.levels.WARN)
+  end
+  for _, b in ipairs(blocks) do
+    run(buf, b[1], b[2])
+  end
 end
 
 function M.setup()
@@ -720,7 +1000,7 @@ function M.setup()
     group = group,
     callback = function(a)
       M.kill_session(a.buf)
-      used[a.buf], ready[a.buf], previews[a.buf], pending[a.buf] = nil, nil, nil, nil
+      ready[a.buf], previews[a.buf], pending[a.buf] = nil, nil, nil
     end,
   })
   vim.api.nvim_create_autocmd("VimLeavePre", {
@@ -729,20 +1009,18 @@ function M.setup()
       for buf in pairs(sessions) do
         M.kill_session(buf)
       end
-    end,
-  })
-  vim.api.nvim_create_autocmd("BufEnter", {
-    group = group,
-    callback = function(a)
-      -- Back in a buffer goose was used in: have its process ready again.
-      if M.use_session and used[a.buf] and not sessions[a.buf] then
-        start_session(a.buf, SESSION_SYSTEM)
+      if spare then
+        kill(spare)
       end
     end,
   })
   vim.api.nvim_create_autocmd("InsertEnter", {
     group = group,
     callback = function(a)
+      -- Typing may end in Alt+K: have a process ready if this buffer has none.
+      if not sessions[a.buf] then
+        warm(SESSION_SYSTEM)
+      end
       start[a.buf] = {
         from = vim.fn.line "." - 1,
         before = vim.api.nvim_buf_line_count(a.buf),
@@ -768,12 +1046,7 @@ function M.setup()
       if s == e and lines[1] == st.orig then
         return -- nothing typed
       end
-      -- Touching or overlapping the draft grows it; anywhere else replaces it.
-      local ds, de = draft_range(a.buf)
-      if ds and s <= de + 1 and e >= ds - 1 then
-        s, e = math.min(s, ds), math.max(e, de)
-      end
-      set_draft(a.buf, s, e)
+      add_draft(a.buf, s, e)
     end,
   })
   local chord = require("util").chord

@@ -36,7 +36,8 @@ line). Restart to apply a pull.
 | `lua/lsp.lua`, `lsp/*.lua` | language servers, format on save (ocamlformat for OCaml) |
 | `lua/ocaml.lua` | ocp-indent, `.ml`/`.mli` switch, dune |
 | `lua/usage.lua` | usage log, `:FrictionNote`, `:UsageReport` |
-| `lua/goose.lua` | goose: type pseudocode with plain inserts (dotted underline = draft), `Alt+K` sends the draft or a selection to `claude -p`; one `u` undoes |
+| `lua/goose.lua` | goose: type pseudocode with plain inserts (dotted underline = draft, one block per place typed), `Alt+K` sends every block or a selection to claude; the answer may also change other lines when asked; the answer is formatted as a save would format it; one `u` undoes |
+| `lua/goose_ask.lua` | `Alt+L` asks a question about the line or selection; the answer streams into a "goose answers" pane, nothing in the file changes |
 | `lua/seconder.lua`, `rubric/seconder.md` | `Space r` review that writes CR comments; `]r` / `[r` jump between CRs |
 
 ## Tests

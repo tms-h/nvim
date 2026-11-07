@@ -1,5 +1,5 @@
--- Every global key, in one place, except the two Claude helpers' own keys:
--- Alt+K (goose.lua) and Space r, ]r, [r (seconder.lua). Buffer-local keys
+-- Every global key, in one place, except the Claude helpers' own keys: Alt+K
+-- (goose.lua), Alt+L (goose_ask.lua) and Space r, ]r, [r (seconder.lua). Buffer-local keys
 -- live with their feature: OCaml (ocaml.lua, and K in lsp.lua), the tree
 -- (explorer.lua), a terminal's click (panes.lua).
 --

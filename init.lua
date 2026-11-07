@@ -17,7 +17,8 @@
 --   lsp         language servers, diagnostics, format on save
 --   library     installed code is read-only, without diagnostics
 --   sync        pulls this config from GitHub after startup (clean checkout only)
---   goose       type pseudocode, Alt+K: the underlined typed lines become code
+--   goose       type pseudocode, Alt+K: the underlined typed lines become code;
+--               Alt+L asks a question about the code (goose_ask)
 --   seconder    Space r: a reviewer that writes CR comments; ]r / [r jump
 --
 -- Loaded on first use: hunks (change keys), run (F5, lazygit), ocaml
@@ -43,4 +44,5 @@ require("lsp").setup()
 require("library").setup()
 require("sync").setup()
 require("goose").setup()
+require("goose_ask").setup()
 require("seconder").setup()

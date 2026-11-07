@@ -49,27 +49,36 @@ keys "opseudo b<Esc>"
 check("two inserts with Esc between: no call, one draft", #sent == 0 and dr() == "3-4", #sent .. " " .. dr())
 vim.api.nvim_win_set_cursor(0, { 6, 0 })
 keys "A # far<Esc>"
-check("an insert two lines away replaces the draft", dr() == "6-6", dr())
+check(
+  "an insert two lines away adds a second block",
+  #g.draft_blocks(buf) == 2 and dr() == "3-4",
+  vim.inspect(g.draft_blocks(buf))
+)
 keys "<M-k>"
 wait_idle()
-check("Alt+K sends only the draft", L(3, 6) == "pseudo a|pseudo b||CODE1", L(3, 6))
-check("only the draft is in the region", sent[1]:find("<<<REGION\n # far\nREGION>>>", 1, true) ~= nil)
+check("Alt+K sends both blocks", L(3, 5) == "CODE1||CODE2", L(3, 5))
+check(
+  "each block is its own region",
+  #sent == 2
+    and sent[1]:find("<<<REGION\npseudo a\npseudo b\nREGION>>>", 1, true) ~= nil
+    and sent[2]:find("<<<REGION\n # far\nREGION>>>", 1, true) ~= nil
+)
 keys "u"
-check("one u brings the pseudocode back", L(6, 6) == " # far", L(6, 6))
+check("one u brings the last block's pseudocode back", L(5, 5) == " # far", L(5, 5))
 vim.api.nvim_win_set_cursor(0, { 4, 0 })
 keys "A more<M-k>"
 wait_idle()
-check("Alt+K from insert mode", L(4, 4) == "CODE2", L(4, 4))
+check("Alt+K from insert mode", L(4, 4) == "CODE3", L(4, 4))
 keys "<M-k>"
-check("Alt+K with nothing typed sends nothing", #sent == 2, #sent)
+check("Alt+K with nothing typed sends nothing", #sent == 3, #sent)
 keys "Gopseudo last<Esc>"
 keys "<M-k>"
 vim.cmd "silent write"
 check(":w while writing keeps it pending", g.pending_count(buf) == 1)
 wait_idle()
-check("last-line draft lands", L(10, 10) == "CODE3", L(9, 10))
+check("last-line draft lands", L(9, 9) == "CODE4", L(8, 9))
 keys "ggVj<M-k>"
 wait_idle()
-check("a selection sends the selected lines", L(1, 1) == "CODE4", L(1, 3))
+check("a selection sends the selected lines", L(1, 1) == "CODE5", L(1, 3))
 io.stdout:write(("goose one-shot: %d pass, %d fail\n"):format(pass, fail))
 vim.cmd(fail == 0 and "qa!" or "cquit 1")
