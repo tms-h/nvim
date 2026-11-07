@@ -139,10 +139,16 @@ check(
   vim.inspect(edits)
 )
 
--- 7. Alt+L: a chat box over the code; the question goes to the file's claude.
-buf = open { "let a = 1", "let b = 2", "let c = 3" }
+-- 7. Alt+L: a chat box over the code; the question goes to its own claude,
+-- running in the project root with read-only tools.
+local proj = dir .. "/proj"
+vim.fn.mkdir(proj .. "/lib", "p")
+vim.fn.writefile({ "(lang dune 3.0)" }, proj .. "/dune-project")
+vim.fn.writefile({ "let a = 1", "let b = 2", "let c = 3" }, proj .. "/lib/x.ml")
+vim.cmd.edit(proj .. "/lib/x.ml")
+buf = vim.api.nvim_get_current_buf()
 type_at(2, "pseudo q")
-keys "<M-k>" -- starts this file's session
+keys "<M-k>" -- starts this file's Alt+K session
 wait_idle(buf)
 local pid = g.session(buf) and g.session(buf).pid
 before = lines(buf)
@@ -168,7 +174,9 @@ check(
 )
 check("Alt+L: question and answer in the box", chat_text():find("› what is b\n**answer", 1, true) ~= nil, chat_text())
 check("Alt+L: the file is unchanged", vim.deep_equal(lines(buf), before), vim.inspect(lines(buf)))
-check("Alt+L: same claude as Alt+K for this file", g.session(buf) and g.session(buf).pid == pid)
+local ask_S = c and g.session(c.buf)
+check("Alt+L: its own claude, not Alt+K's", ask_S and ask_S.pid ~= pid and g.session(buf).pid == pid)
+check("Alt+L: its claude has read-only tools", ask_S and ask_S.opts and ask_S.opts.tools == "Read,Grep,Glob")
 local E = {}
 for _, l in ipairs(vim.fn.readfile(log)) do
   E[#E + 1] = vim.json.decode(l)
@@ -178,16 +186,24 @@ check(
   E[#E].content:find("cursor is on line 4", 1, true) ~= nil,
   E[#E].content
 )
-keys "iand c?<CR>" -- keys() ends typing after each feed; i types at the › line
+check("Alt+L: claude runs in the project root", E[#E].cwd == proj, E[#E].cwd)
+check("Alt+L: the file is named from the project root", E[#E].content:find("File: lib/x.ml", 1, true) ~= nil)
+keys "iand main?<CR>" -- keys() ends typing after each feed; i types at the › line
 vim.wait(3000, function()
-  return chat_text():find("to: and c?", 1, true) ~= nil
+  return chat_text():find("to: and main?", 1, true) ~= nil
 end, 20)
 local T = chat_text()
 check(
   "follow-up appends below the first answer",
-  T:find("to: what is b", 1, true) and T:find("to: what is b", 1, true) < (T:find("› and c?", 1, true) or 0),
+  T:find("to: what is b", 1, true) and T:find("to: what is b", 1, true) < (T:find("› and main?", 1, true) or 0),
   T
 )
+check(
+  "a file it reads shows above the answer",
+  T:find("› and main?\n_read bin/main.ml_\n**answer", 1, true) ~= nil,
+  T
+)
+check("text before a tool call is dropped", not T:find("Let me look", 1, true), T)
 keys "<Esc><Esc>"
 check(
   "Esc, Esc closes the box, back in the code",
@@ -197,7 +213,7 @@ keys "<M-l>"
 c = ask.chat(buf)
 check(
   "Alt+L brings the conversation back",
-  c.win and vim.api.nvim_win_is_valid(c.win) and chat_text():find("to: and c?", 1, true) ~= nil
+  c.win and vim.api.nvim_win_is_valid(c.win) and chat_text():find("to: and main?", 1, true) ~= nil
 )
 keys "<Esc>"
 vim.api.nvim_set_current_win(code_win)

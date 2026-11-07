@@ -7,8 +7,14 @@
 --     file never changes.
 --   Esc leaves typing (scroll, copy); Esc again, q, Alt+L or Alt+W close the
 --     box, and so does moving to another window. Alt+L brings the same
---     conversation back: one per file, on the same claude as Alt+K for that
---     file, which remembers the earlier questions and already has the file.
+--     conversation back: one per file.
+--
+-- Each file's chat has its own claude, started when the box opens, running
+-- in the project root (the folder with .git, dune-project, Cargo.toml...)
+-- with read-only tools (Read, Grep, Glob): it gets the current file and
+-- reads callers, definitions, .mli and dune files itself. Each file it reads
+-- shows as a grey line above the answer. Alt+K's claude has no tools, so
+-- conversions stay fast.
 local M = {}
 
 local goose = require "goose"
@@ -17,6 +23,36 @@ local ns = api.nvim_create_namespace "goose_ask"
 
 local chats = {} -- chats[source buf] = { buf = chat buf, s, e = lines asked about }
 local PROMPT = "› "
+
+local SYSTEM = [[You answer the programmer's questions about their code. You run
+in the project's root folder and can use Read, Grep and Glob on any file in it.
+Whenever the answer depends on code outside the current file (callers,
+definitions, interfaces, build files, tests), look it up instead of guessing.
+The first message gives the current file; later ones give a diff of it since
+the previous message. Answer in short Markdown; code blocks allowed. You never
+edit files.]]
+local TOOLS = "Read,Grep,Glob"
+local ROOT_MARKERS = { ".git", "dune-project", "Cargo.toml", "package.json", "pyproject.toml", "go.mod" }
+
+local function root_of(src)
+  return vim.fs.root(src, ROOT_MARKERS) or vim.fs.dirname(api.nvim_buf_get_name(src))
+end
+
+---One grey line per tool call: what it read or searched for.
+local function describe(name, input, root)
+  local path = input.file_path or input.path
+  if path then
+    path = vim.fs.relpath(root, path) or vim.fn.fnamemodify(path, ":~")
+  end
+  if name == "Read" then
+    return "read " .. (path or "?")
+  elseif name == "Grep" then
+    return ("searched for `%s`%s"):format(input.pattern or "?", path and (" in " .. path) or "")
+  elseif name == "Glob" then
+    return ("listed `%s`"):format(input.pattern or "?")
+  end
+  return name
+end
 
 function M.chat(src) -- for tests
   return chats[src]
@@ -76,12 +112,15 @@ local function send(c, q)
   if not api.nvim_buf_is_valid(src) then
     return
   end
+  local root = root_of(src)
+  local reads, answer = {}, nil
   -- The new › line is the last line; the answer and a blank go above it.
   local at = api.nvim_buf_line_count(cb) - 1
   local wait = body()[1]
   api.nvim_buf_set_lines(cb, at, at, false, { wait, "" })
   local mark = api.nvim_buf_set_extmark(cb, ns, at, 0, { end_row = at, end_col = #wait, right_gravity = false, end_right_gravity = true })
   local function show(text)
+    answer = text or answer
     if not api.nvim_buf_is_valid(cb) then
       return
     end
@@ -89,7 +128,11 @@ local function send(c, q)
     if not p[1] then
       return
     end
-    local lines = body(text)
+    local lines = {}
+    for _, r in ipairs(reads) do
+      lines[#lines + 1] = "_" .. r .. "_"
+    end
+    vim.list_extend(lines, body(answer))
     api.nvim_buf_set_lines(cb, p[1], p[3].end_row + 1, false, lines)
     api.nvim_buf_set_extmark(cb, ns, p[1], 0, {
       id = mark,
@@ -103,15 +146,21 @@ local function send(c, q)
     end
   end
   fit(c.win or -1)
-  goose.session_send(src, {
-    system = goose.session_system,
+  goose.session_send(cb, {
+    system = SYSTEM,
+    opts = { tools = TOOLS, cwd = root },
     build = function(S)
-      return goose.question_prompt(S, src, q, s, e)
+      return goose.question_prompt(S, src, q, s, e, root)
     end,
     full = function()
-      return (goose.question_prompt(nil, src, q, s, e))
+      return (goose.question_prompt(nil, src, q, s, e, root))
     end,
     on_partial = show,
+    on_tool = function(name, input)
+      reads[#reads + 1] = describe(name, input, root)
+      answer = nil
+      show()
+    end,
     on_done = function(out, err)
       show(out or ("_goose: %s_"):format(err or "no answer"))
       pcall(api.nvim_buf_del_extmark, cb, ns, mark)
@@ -175,6 +224,10 @@ function M.ask(s, e)
   vim.wo[c.win].wrap, vim.wo[c.win].linebreak = true, true
   vim.wo[c.win].number, vim.wo[c.win].relativenumber, vim.wo[c.win].signcolumn, vim.wo[c.win].list = false, false, "no", false
   fit(c.win)
+  -- Its claude starts now, while the question is typed.
+  if goose.use_session and not goose.session(b) then
+    goose.start_session(b, SYSTEM, { tools = TOOLS, cwd = root_of(src) })
+  end
   vim.cmd "startinsert!"
 end
 

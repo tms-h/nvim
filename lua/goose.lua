@@ -36,10 +36,11 @@ local ns = vim.api.nvim_create_namespace "goose"
 -- `claude -p`, and plain leaked CLAUDE.md lines into the code. --bare would be
 -- faster but needs an API key (OAuth logins fail).
 M.model = "claude-sonnet-5-5"
-local function cmd(system)
+-- opts (questions only): tools = "Read,Grep,Glob", cwd = the project root.
+local function cmd(system, opts)
   return {
     "claude", "-p", "--model", M.model,
-    "--setting-sources", "", "--strict-mcp-config", "--tools", "",
+    "--setting-sources", "", "--strict-mcp-config", "--tools", opts and opts.tools or "",
     "--no-session-persistence", "--disable-slash-commands",
     "--system-prompt", system,
   }
@@ -47,8 +48,8 @@ end
 
 ---Run claude on `prompt` (stdin) with `system`; on_done(text|nil, err) on the
 ---main loop.
-function M.ask(system, prompt, on_done)
-  local ok, err = pcall(vim.system, cmd(system), { stdin = prompt, text = true }, function(r)
+function M.ask(system, prompt, on_done, opts)
+  local ok, err = pcall(vim.system, cmd(system, opts), { stdin = prompt, text = true, cwd = opts and opts.cwd }, function(r)
     vim.schedule(function()
       if r.code ~= 0 then
         on_done(nil, (r.stderr ~= "" and r.stderr or r.stdout):gsub("%s+$", ""))
@@ -111,7 +112,7 @@ local function fall_back(item, why)
   if not full then
     return item.on_done(nil, "region gone")
   end
-  M.ask(item.system, full, item.on_done)
+  M.ask(item.system, full, item.on_done, item.opts)
 end
 
 local function on_event(S, ev)
@@ -122,6 +123,17 @@ local function on_event(S, ev)
       cur.text = cur.text .. d.text
       if cur.on_partial then
         cur.on_partial(cur.text)
+      end
+    end
+  elseif ev.type == "assistant" and cur then
+    -- A tool call (questions read the project): the text so far was a
+    -- preamble; the answer starts after it.
+    for _, c in ipairs(vim.tbl_get(ev, "message", "content") or {}) do
+      if type(c) == "table" and c.type == "tool_use" then
+        cur.text = ""
+        if cur.on_tool then
+          cur.on_tool(c.name, c.input or {})
+        end
       end
     end
   elseif ev.type == "result" and cur then
@@ -196,18 +208,19 @@ local function on_exit(S, r)
   end
 end
 
-local function argv(system)
+local function argv(system, opts)
   if M.session_argv then
     return M.session_argv
   end
-  local c = cmd(system)
+  local c = cmd(system, opts)
   vim.list_extend(c, { "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages" })
   return c
 end
 
-local function spawn(system)
-  local S = { system = system, queue = {}, msgs = 0, tokens = 0, acc = "", err = "" }
-  local ok, job = pcall(vim.system, argv(system), {
+local function spawn(system, opts)
+  local S = { system = system, opts = opts, queue = {}, msgs = 0, tokens = 0, acc = "", err = "" }
+  local ok, job = pcall(vim.system, argv(system, opts), {
+    cwd = opts and opts.cwd,
     stdin = true,
     stdout = function(_, data)
       if data then
@@ -240,15 +253,15 @@ warm = function(system)
   end
 end
 
----buf's session: the spare if one is running, else a new process.
-local function start_session(buf, system)
-  local S, err = spare, nil
-  spare = nil
-  if not S or S.dead or S.system ~= system then
-    if S then
-      kill(S)
-    end
-    S, err = spawn(system)
+---buf's session: the spare if one is running (goose's own sessions only),
+---else a new process.
+local function start_session(buf, system, opts)
+  local S, err = nil, nil
+  if not opts and spare and not spare.dead and spare.system == system then
+    S, spare = spare, nil
+  end
+  if not S then
+    S, err = spawn(system, opts)
     if not S then
       return nil, err
     end
@@ -286,8 +299,9 @@ pump = function(S)
 end
 
 ---Queue `item` on buf's session, starting one if needed. item = {
----  system, build(S) -> prompt, file text (nil prompt = region gone),
----  full() -> one-shot prompt, on_partial(text), on_done(text|nil, err) }.
+---  system, opts (cmd()), build(S) -> prompt, file text (nil prompt = region
+---  gone), full() -> one-shot prompt, on_partial(text), on_tool(name, input),
+---  on_done(text|nil, err) }.
 function M.session_send(buf, item)
   if not vim.api.nvim_buf_is_valid(buf) then
     return item.on_done(nil, "buffer closed")
@@ -299,7 +313,7 @@ function M.session_send(buf, item)
   end
   if not S then
     local err
-    S, err = start_session(buf, item.system)
+    S, err = start_session(buf, item.system, item.opts)
     if not S then
       return fall_back(item, err)
     end
@@ -425,11 +439,7 @@ file. Each later message gives only a unified diff of the file since the
 previous message (your earlier answers appear in it only if they were
 applied), then the new region with its line numbers. Keep your picture of
 the file up to date from the diffs. Each answer replaces the current region
-(plus its SEARCH/REPLACE blocks).
-
-A message whose last part starts with "QUESTION:" asks about the code; it
-has no region to rewrite. Answer in short Markdown (code blocks allowed). It
-changes nothing in the file.]]
+(plus its SEARCH/REPLACE blocks).]]
 
 local text_diff = (vim.text and vim.text.diff) or vim.diff
 
@@ -453,12 +463,11 @@ local function session_prompt(S, buf, s, e, lines, errors)
   return table.concat(parts, "\n\n"), file
 end
 
-M.session_system = SESSION_SYSTEM -- goose_ask.lua sends to the same session
-
 ---Question message (Alt+L): the file (whole the first time, then the diff
 ---since the last message), the lines it is about, the question. Returns
----prompt, file. S = nil for the one-shot fallback.
-function M.question_prompt(S, buf, q, s, e)
+---prompt, file. S = nil for the one-shot fallback; paths are relative to
+---`root`, the folder claude runs in.
+function M.question_prompt(S, buf, q, s, e, root)
   local all = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   local file = table.concat(all, "\n") .. "\n"
   local parts = {}
@@ -466,7 +475,8 @@ function M.question_prompt(S, buf, q, s, e)
     local d = text_diff(S.sent, file, { result_type = "unified", ctxlen = 2 })
     parts[1] = d == "" and "The file is unchanged since the last message." or ("File changes since the last message:\n" .. d)
   else
-    parts[1] = ("File: %s (filetype %s)"):format(vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":~:."), vim.bo[buf].filetype)
+    local name = vim.api.nvim_buf_get_name(buf)
+    parts[1] = ("File: %s (filetype %s)"):format(root and vim.fs.relpath(root, name) or vim.fn.fnamemodify(name, ":~:."), vim.bo[buf].filetype)
     local sib, text = M.sibling(buf)
     if sib then
       parts[#parts + 1] = ("Matching %s:\n%s"):format(vim.fn.fnamemodify(sib, ":t"), text)
@@ -479,7 +489,7 @@ function M.question_prompt(S, buf, q, s, e)
   else
     parts[#parts + 1] = ("About lines %d-%d (selected):\n%s"):format(s + 1, e + 1, here)
   end
-  parts[#parts + 1] = "QUESTION: " .. q
+  parts[#parts + 1] = "Question: " .. q
   return table.concat(parts, "\n\n"), file
 end
 
