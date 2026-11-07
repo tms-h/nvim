@@ -770,6 +770,21 @@ check("Alt+F zooms a pane and brings the layout back", function()
   expect(vim.deep_equal(vim.fn.winlayout(), layout), "layout changed after unzoom")
 end)
 
+check("Alt+F beside the tree with one editor hides nothing: the zoom goes to tmux/herdr", function()
+  vim.cmd "only"
+  vim.cmd "edit! a.ml"
+  press(super "b", 400)
+  if not tree_win() then
+    press(super "b", 400)
+  end
+  expect(tree_win(), "no tree")
+  press("<C-l>", 200)
+  press(super "f", 200)
+  expect(#api.nvim_list_tabpages() == 1, "Neovim zoomed the editor and hid the tree")
+  expect(tree_win(), "the tree is gone")
+  press(super "b", 300)
+end)
+
 check("Alt+J flips the split direction", function()
   vim.cmd "vsplit b.ml"
   expect(vim.fn.winlayout()[1] == "row", "setup")

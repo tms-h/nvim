@@ -302,8 +302,9 @@ function M.zoom()
     return
   end
   local win = api.nvim_get_current_win()
-  if not is_pane(win) or #panes() < 2 then
-    -- Nothing to zoom inside Neovim: zoom (or unzoom) its multiplexer pane.
+  if not is_pane(win) or #vim.tbl_filter(is_pane, panes()) < 2 then
+    -- Nothing to zoom inside Neovim (one pane, maybe beside the tree): zoom
+    -- (or unzoom) its multiplexer pane. Hiding the tree is Alt+B's job.
     hand_back({ "tmux", "resize-pane", "-Z" }, { "herdr", "pane", "zoom", "--current", "--toggle" })
     return
   end
