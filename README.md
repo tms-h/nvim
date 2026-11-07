@@ -1,6 +1,6 @@
 # Neovim + Neovide config
 
-A Neovim + Neovide config for Neovim 0.12: built-ins first, six plugins,
+A Neovim + Neovide config for Neovim 0.12: built-ins first, eight plugins,
 one surface, the VS Code / Chrome keys on Alt (Linux, Windows) or Cmd (macOS).
 It replaced the old lazy.nvim config on 2026-10-25; the old one is the git tag
 `old-config-2026-10-25`.

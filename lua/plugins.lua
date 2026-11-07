@@ -10,6 +10,8 @@
 --   orgmode          README.org files (loaded on the first .org file)
 --   mason.nvim       installs language servers (loaded by :Mason)
 --   vim-wakatime     time tracking, when ~/.wakatime.cfg exists
+--   hardtime.nvim    blocks hjkl/arrow spam, hints better motions (nui.nvim
+--                    draws its :Hardtime report)
 local gh = function(repo)
   return "https://github.com/" .. repo
 end
@@ -22,6 +24,8 @@ vim.pack.add({
   gh "nvim-mini/mini.nvim",
   gh "nvim-tree/nvim-tree.lua",
   { src = gh "nvim-treesitter/nvim-treesitter", version = "main" },
+  gh "MunifTanjim/nui.nvim",
+  gh "m4xshen/hardtime.nvim",
   later(gh "nvim-orgmode/orgmode"),
   later(gh "mason-org/mason.nvim"),
   later(gh "wakatime/vim-wakatime"),
@@ -129,12 +133,30 @@ require("mini.clue").setup {
         return vim.bo.filetype:find "^ocaml" and "+OCaml" or "+Org"
       end,
     },
+    { mode = "n", keys = "<Leader>h", desc = "+Hardtime" },
   },
   window = { delay = 400, config = { width = "auto", border = "rounded" } },
 }
 
 -- The finder: set up on first use (finder.lua).
 require("finder").setup()
+
+-- ── hardtime.nvim ──────────────────────────────────────────────────────────
+-- Habit trainer with some restrictions: a 5th h/j/k/l/+/gj/gk within a second
+-- is blocked (a count like 5j or an edit resets it); arrows do nothing in
+-- Normal and Visual but still move in Insert; the mouse stays. Hints for
+-- better motions show either way. Space h t toggles, Space h r reports.
+require("hardtime").setup {
+  restriction_mode = "block",
+  max_count = 4,
+  disable_mouse = false,
+  disabled_keys = {
+    ["<Up>"] = { "n", "x" },
+    ["<Down>"] = { "n", "x" },
+    ["<Left>"] = { "n", "x" },
+    ["<Right>"] = { "n", "x" },
+  },
+}
 
 -- ── Tree-sitter ────────────────────────────────────────────────────────────
 -- Parsers this config needs beyond the ones Neovim ships (lua, markdown,

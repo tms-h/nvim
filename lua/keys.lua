@@ -138,6 +138,8 @@ map("x", super "S-k", ":move '<-2<CR>gv=gv", { silent = true, desc = "Move lines
 map("n", "<leader>d", function()
   vim.diagnostic.open_float { scope = "line" }
 end, { desc = "Line diagnostics" })
+map("n", "<leader>ht", "<Cmd>Hardtime toggle<CR>", { desc = "Hardtime toggle" })
+map("n", "<leader>hr", "<Cmd>Hardtime report<CR>", { desc = "Hardtime report" })
 map("n", "gd", vim.lsp.buf.definition, { desc = "Go to definition" })
 
 -- Double-click selects the word and marks its other occurrences (words.lua).
