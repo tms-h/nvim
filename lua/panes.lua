@@ -130,11 +130,23 @@ function M.focus(dir)
 end
 
 ---Swap this pane's content with its neighbour in `dir`; sizes stay, focus
----follows the content.
+---follows the content. At Neovim's edge (the tree counts: it never swaps)
+---the whole Neovim pane swaps with the multiplexer pane beyond it.
 function M.swap(dir)
   local cur = api.nvim_get_current_win()
+  if M.is_float(cur) then
+    return
+  end
   local target = vim.fn.win_getid(vim.fn.winnr(dir))
-  if target == cur or not is_pane(cur) or not is_pane(target) then
+  if target == cur or M.is_tree(target) then
+    local side = ({ h = "left", j = "down", k = "up", l = "right" })[dir]
+    hand_back(
+      { "tmux", "swap-pane", "-d", "-t", "{" .. side .. "-of}" },
+      { "herdr", "pane", "swap", "--direction", side, "--current" }
+    )
+    return
+  end
+  if not is_pane(cur) then
     return
   end
   local buf_cur, buf_target = api.nvim_win_get_buf(cur), api.nvim_win_get_buf(target)

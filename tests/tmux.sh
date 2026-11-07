@@ -70,6 +70,13 @@ run() { # extra --cmd, label
     sleep 1
     check "tmux: Alt+W on the last window keeps Neovim" 1 "$( [ -S "$sock" ] && q '1')"
     check "tmux: Alt+W closed the file" "" "$(q 'bufname()')"
+    # Alt+Shift+Left at Neovim's edge (the tree counts) swaps the whole tmux pane.
+    nv=$(tmux -L "$SOCK" display -p -t :0.0 '#{pane_id}')
+    tmux -L "$SOCK" split-window -h -b -d -t "$nv"
+    q 'execute("wincmd l")' >/dev/null
+    tmux -L "$SOCK" send-keys -t "$nv" M-S-Left
+    sleep 0.5
+    check "tmux: Alt+Shift+Left at the edge swaps the tmux pane, focus follows" 0,1 "$(tmux -L "$SOCK" display -p -t "$nv" '#{pane_left},#{pane_active}')"
     q 'execute("qa!")' >/dev/null
     sleep 1
     check "tmux: no session saved" 0 "$(ls "$NVNEXT/state/nvim/sessions" 2>/dev/null | wc -l)"
