@@ -287,6 +287,27 @@ function M.toggle_panel()
   show_panel(panel.height or math.max(8, math.floor(vim.o.lines * 0.3)), panel_alive() and panel.buf or nil)
 end
 
+---Is the tmux or herdr pane Neovim runs in zoomed? (No multiplexer: false.)
+function M.mux_zoomed()
+  if vim.g.neovide then
+    return false
+  end
+  local function run(argv, stdin)
+    local ok, job = pcall(vim.system, argv, { stdin = stdin, text = true })
+    return ok and job:wait(500).stdout or ""
+  end
+  if util.in_tmux and vim.env.TMUX_PANE then
+    return vim.trim(run { "tmux", "display", "-p", "-t", vim.env.TMUX_PANE, "#{window_zoomed_flag}" }) == "1"
+  end
+  local sock, pane = vim.env.HERDR_SOCKET_PATH, vim.env.HERDR_PANE_ID
+  if util.in_herdr and sock and pane then
+    local req = vim.json.encode { id = "nvim", method = "layout.export", params = { pane_id = pane } }
+    local ok, v = pcall(vim.json.decode, run({ "socat", "-", "UNIX-CONNECT:" .. sock }, req .. "\n"))
+    return ok and type(v) == "table" and vim.tbl_get(v, "result", "layout", "zoomed") == true
+  end
+  return false
+end
+
 ---Zoom: the pane alone fills the window; the same key brings the layout
 ---back exactly. The zoom is a throwaway tab page, so nothing is resized.
 function M.zoom()
@@ -313,10 +334,16 @@ function M.zoom()
     end
     return
   end
+  -- The tmux/herdr pane Neovim is in is zoomed: unzoom it, even with splits
+  -- open, or Alt+F would zoom a split and the pane could never come back.
+  if M.mux_zoomed() then
+    hand_back({ "tmux", "resize-pane", "-Z" }, { "herdr", "pane", "zoom", "--current", "--toggle" })
+    return
+  end
   local win = api.nvim_get_current_win()
   if not is_pane(win) or #vim.tbl_filter(is_pane, panes()) < 2 then
     -- Nothing to zoom inside Neovim (one pane, maybe beside the tree): zoom
-    -- (or unzoom) its multiplexer pane. Hiding the tree is Alt+B's job.
+    -- its multiplexer pane. Hiding the tree is Alt+B's job.
     hand_back({ "tmux", "resize-pane", "-Z" }, { "herdr", "pane", "zoom", "--current", "--toggle" })
     return
   end
