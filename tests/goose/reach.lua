@@ -63,7 +63,11 @@ local buf = open { "let a = 1", "let b = 2", "let c = 3", "let d = 4", "let e = 
 type_at(2, "pseudo top")
 type_at(7, "pseudo bottom")
 local blocks = g.draft_blocks(buf)
-check("two places typed make two draft blocks", #blocks == 2 and blocks[1][1] == 1 and blocks[2][1] == 6, vim.inspect(blocks))
+check(
+  "two places typed make two draft blocks",
+  #blocks == 2 and blocks[1][1] == 1 and blocks[2][1] == 6,
+  vim.inspect(blocks)
+)
 keys "<M-k>"
 wait_idle(buf)
 local L = lines(buf)
@@ -89,9 +93,17 @@ L = lines(buf)
 check("outside edit: line 1 changed", L[1] == "let target = 2", vim.inspect(L))
 check("outside edit: region replaced", L[4]:match "^let z%d+ = 0$" ~= nil, vim.inspect(L))
 check("outside edit: no markers in the file", not table.concat(L, "\n"):find("SEARCH", 1, true), vim.inspect(L))
-check("outside edit: message names the line", vim.tbl_contains(g.last_elsewhere and g.last_elsewhere.rows or {}, 1), vim.inspect(g.last_elsewhere))
+check(
+  "outside edit: message names the line",
+  vim.tbl_contains(g.last_elsewhere and g.last_elsewhere.rows or {}, 1),
+  vim.inspect(g.last_elsewhere)
+)
 keys "u"
-check("outside edit: one u restores the region and line 1", lines(buf)[1] == "let target = 1" and lines(buf)[4] == "ELSEWHERE bump target", vim.inspect(lines(buf)))
+check(
+  "outside edit: one u restores the region and line 1",
+  lines(buf)[1] == "let target = 1" and lines(buf)[4] == "ELSEWHERE bump target",
+  vim.inspect(lines(buf))
+)
 keys "u"
 check("outside edit: the next u undoes the typing", vim.deep_equal(lines(buf), before), vim.inspect(lines(buf)))
 
@@ -100,7 +112,11 @@ buf = open { "let target = 1", "let x = 1" }
 type_at(2, "ONLYELSEWHERE make target 2")
 keys "<M-k>"
 wait_idle(buf)
-check("instruction only: target changed, instruction removed", vim.deep_equal(lines(buf), { "let target = 2", "let x = 1" }), vim.inspect(lines(buf)))
+check(
+  "instruction only: target changed, instruction removed",
+  vim.deep_equal(lines(buf), { "let target = 2", "let x = 1" }),
+  vim.inspect(lines(buf))
+)
 
 -- 5. SEARCH lines not in the file: skipped with a warning, region still lands.
 buf = open { "let x = 1", "let y = 2" }
@@ -114,50 +130,79 @@ check("missing SEARCH: warned", #vim.tbl_filter(function(m)
 end, notes) == 1, vim.inspect(notes))
 
 -- 6. split_answer: fenced region, then a block; the fence never lands.
-local region, edits = g.split_answer "```ocaml\nlet a = 1\n```\n<<<<<<< SEARCH\nlet b = 1\n=======\nlet b = 2\n>>>>>>> REPLACE\n"
+local region, edits =
+  g.split_answer "```ocaml\nlet a = 1\n```\n<<<<<<< SEARCH\nlet b = 1\n=======\nlet b = 2\n>>>>>>> REPLACE\n"
 check("split_answer: region without fences", vim.deep_equal(region, { "let a = 1" }), vim.inspect(region))
-check("split_answer: one edit", #edits == 1 and edits[1].search[1] == "let b = 1" and edits[1].replace[1] == "let b = 2", vim.inspect(edits))
+check(
+  "split_answer: one edit",
+  #edits == 1 and edits[1].search[1] == "let b = 1" and edits[1].replace[1] == "let b = 2",
+  vim.inspect(edits)
+)
 
--- 7. Alt+L: a question goes to the file's claude; the answer fills a pane.
+-- 7. Alt+L: a chat box over the code; the question goes to the file's claude.
 buf = open { "let a = 1", "let b = 2", "let c = 3" }
-before = lines(buf)
 type_at(2, "pseudo q")
 keys "<M-k>" -- starts this file's session
 wait_idle(buf)
 local pid = g.session(buf) and g.session(buf).pid
 before = lines(buf)
-local answers = { "what is b", "and c?" }
-vim.ui.input = function(_, cb)
-  cb(table.remove(answers, 1))
-end
 local code_win = vim.api.nvim_get_current_win()
+local function chat_text()
+  local c = ask.chat(buf)
+  return c and c.buf and table.concat(vim.api.nvim_buf_get_lines(c.buf, 0, -1, false), "\n") or ""
+end
 vim.api.nvim_win_set_cursor(0, { 4, 0 })
-keys "<M-l>"
-local pb
+keys "<M-l>what is b<CR>"
 vim.wait(3000, function()
-  pb = ask.pane_buf()
-  return pb and table.concat(vim.api.nvim_buf_get_lines(pb, 0, -1, false), "\n"):find("second line", 1, true) ~= nil
+  return chat_text():find("second line", 1, true) ~= nil
 end, 20)
-local P = pb and vim.api.nvim_buf_get_lines(pb, 0, -1, false) or {}
-check("Alt+L: question heads the pane", P[1] == "## what is b", vim.inspect(P))
-check("Alt+L: answer streamed into the pane", table.concat(P, "\n"):find("to: what is b", 1, true) ~= nil, vim.inspect(P))
-check("Alt+L: pane shown, focus stays in the code", pb and vim.fn.bufwinid(pb) ~= -1 and vim.api.nvim_get_current_win() == code_win)
+local c = ask.chat(buf)
+local cwin = c and c.win
+check(
+  "Alt+L: a focused popup, not a pane",
+  cwin and vim.api.nvim_get_current_win() == cwin and vim.api.nvim_win_get_config(cwin).relative == "editor"
+)
+check(
+  "Alt+L: title names the file and line",
+  cwin and vim.inspect(vim.api.nvim_win_get_config(cwin).title):find("line 4", 1, true) ~= nil
+)
+check("Alt+L: question and answer in the box", chat_text():find("› what is b\n**answer", 1, true) ~= nil, chat_text())
 check("Alt+L: the file is unchanged", vim.deep_equal(lines(buf), before), vim.inspect(lines(buf)))
 check("Alt+L: same claude as Alt+K for this file", g.session(buf) and g.session(buf).pid == pid)
 local E = {}
 for _, l in ipairs(vim.fn.readfile(log)) do
   E[#E + 1] = vim.json.decode(l)
 end
-check("Alt+L: message names the cursor's line", E[#E].content:find("cursor is on line 4", 1, true) ~= nil, E[#E].content)
--- A follow-up from inside the pane is about the same file, appended below.
-vim.api.nvim_set_current_win(vim.fn.bufwinid(pb))
-keys "<M-l>"
+check(
+  "Alt+L: message names the cursor's line",
+  E[#E].content:find("cursor is on line 4", 1, true) ~= nil,
+  E[#E].content
+)
+keys "iand c?<CR>" -- keys() ends typing after each feed; i types at the › line
 vim.wait(3000, function()
-  return table.concat(vim.api.nvim_buf_get_lines(pb, 0, -1, false), "\n"):find("to: and c?", 1, true) ~= nil
+  return chat_text():find("to: and c?", 1, true) ~= nil
 end, 20)
-P = vim.api.nvim_buf_get_lines(pb, 0, -1, false)
-check("follow-up from the pane appends below the first answer", P[1] == "## what is b" and vim.tbl_contains(P, "## and c?"), vim.inspect(P))
-check("pane is read-only", not vim.bo[pb].modifiable)
+local T = chat_text()
+check(
+  "follow-up appends below the first answer",
+  T:find("to: what is b", 1, true) and T:find("to: what is b", 1, true) < (T:find("› and c?", 1, true) or 0),
+  T
+)
+keys "<Esc><Esc>"
+check(
+  "Esc, Esc closes the box, back in the code",
+  not vim.api.nvim_win_is_valid(cwin) and vim.api.nvim_get_current_win() == code_win
+)
+keys "<M-l>"
+c = ask.chat(buf)
+check(
+  "Alt+L brings the conversation back",
+  c.win and vim.api.nvim_win_is_valid(c.win) and chat_text():find("to: and c?", 1, true) ~= nil
+)
+keys "<Esc>"
+vim.api.nvim_set_current_win(code_win)
+vim.wait(200)
+check("leaving the box closes it", not (c.win and vim.api.nvim_win_is_valid(c.win)))
 
 vim.notify = notify
 io.stdout:write(("goose reach: %d pass, %d fail\n"):format(pass, fail))
