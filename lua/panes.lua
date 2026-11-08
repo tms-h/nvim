@@ -435,6 +435,43 @@ function M.move_divider(arrow)
   end
 end
 
+---Alt+= / Alt+- (Cmd on the Mac) make the focused pane wider / narrower,
+---Alt+Shift+= / Alt+Shift+- taller / shorter, as Omarchy's Super+= / Super+-
+---resize a window: by a twentieth of the screen. With no other pane beside
+---it that way (the tree doesn't count), the tmux or herdr pane Neovim runs
+---in resizes instead.
+function M.resize(how)
+  local win = api.nvim_get_current_win()
+  if M.is_float(win) then
+    return
+  end
+  local wide = how == "wider" or how == "narrower"
+  local grow = how == "wider" or how == "taller"
+  local function beside(dir)
+    local n = vim.fn.winnr(dir)
+    return n ~= vim.fn.winnr() and is_pane(vim.fn.win_getid(n))
+  end
+  if beside(wide and "h" or "k") or beside(wide and "l" or "j") then
+    local step = math.max(1, math.floor((wide and vim.o.columns or vim.o.lines) / 20 + 0.5)) * (grow and 1 or -1)
+    local w, h = api.nvim_win_get_width(win), api.nvim_win_get_height(win)
+    M.restore { [win] = wide and { w + step, h } or { w, h + step } }
+    return
+  end
+  -- tmux moves the pane's far edge (right, bottom), or its near one when it
+  -- has none; about a twentieth of a 200 x 60 window.
+  local t = vim.env.TMUX_PANE or ""
+  local at_far = wide and "#{pane_at_right}" or "#{pane_at_bottom}"
+  local near, far = wide and "-L" or "-U", wide and "-R" or "-D"
+  local cells = wide and 10 or 3
+  local function tmux_resize(flag)
+    return ("resize-pane -t %s %s %d"):format(t, flag, cells)
+  end
+  hand_back(
+    { "tmux", "if", "-F", "-t", t, at_far, tmux_resize(grow and near or far), tmux_resize(grow and far or near) },
+    { vim.fn.expand "~/.local/bin/herdr-keys", "resize", how, vim.env.HERDR_PANE_ID or "" }
+  )
+end
+
 -- ── Sizes stay put ─────────────────────────────────────────────────────────
 
 ---Every pane's size, by window id.
@@ -503,6 +540,47 @@ local function rescale()
     end
   end
   M.restore(sizes)
+end
+
+-- A resize also scrolls: a narrower pane wraps long lines, and Neovim keeps
+-- the cursor at the same height, so the first line on screen moves and never
+-- comes back. After a zoom or a herdr/tmux pane resize and back, the view had
+-- jumped ("my view resets", 2026-11-08). Each pane's first line as you left
+-- it is kept and put back after every resize; Neovim then scrolls only as far
+-- as the cursor needs. Scrolls caused by a resize don't count: those that
+-- change the pane's size, and any for a moment after (mini.animate glides
+-- 120 ms after a scroll).
+local tops = {} -- win -> first line on screen
+local quiet_until = 0
+
+local function note_view()
+  if vim.uv.now() < quiet_until then
+    return
+  end
+  for k, change in pairs(vim.v.event) do
+    local win = tonumber(k)
+    if win and api.nvim_win_is_valid(win) and change.width == 0 and change.height == 0 then
+      tops[win] = vim.fn.line("w0", win)
+    end
+  end
+end
+
+local function keep_view()
+  vim.uv.update_time()
+  quiet_until = vim.uv.now() + 300
+  for win, top in pairs(tops) do
+    if not api.nvim_win_is_valid(win) then
+      tops[win] = nil
+    elseif
+      api.nvim_win_get_tabpage(win) == api.nvim_get_current_tabpage()
+      and vim.bo[api.nvim_win_get_buf(win)].buftype ~= "terminal"
+      and vim.fn.line("w0", win) ~= top
+    then
+      api.nvim_win_call(win, function()
+        vim.fn.winrestview { topline = top }
+      end)
+    end
+  end
 end
 
 -- ── Close (Alt/Cmd+W): whatever has focus ─────────────────────────────────
@@ -717,10 +795,18 @@ function M.setup()
     callback = function()
       resizing = true
       rescale()
+      keep_view()
     end,
   })
+  api.nvim_create_autocmd("WinScrolled", { group = group, callback = note_view })
   -- Other tabs were squeezed too; each is scaled when you go back to it.
-  api.nvim_create_autocmd("TabEnter", { group = group, callback = rescale })
+  api.nvim_create_autocmd("TabEnter", {
+    group = group,
+    callback = function()
+      rescale()
+      keep_view()
+    end,
+  })
   api.nvim_create_autocmd("WinLeave", {
     group = group,
     callback = function()

@@ -22,7 +22,8 @@
 -- VS Code keys not taken, with what they would have stolen: Ctrl+T (symbol
 -- in workspace: Vim's tag-back) and Alt+T (new tab) -> Space f s; Ctrl+K
 -- Ctrl+Alt+S / Ctrl+K Ctrl+R (stage / revert change: Ctrl+K is focus up) ->
--- Space g s / Space g r.
+-- Space g s / Space g r. Cmd+= / Cmd+- / Cmd+0 (Mac zoom) -> Ctrl, as on
+-- Linux: Alt/Cmd+= / - resize panes, Omarchy's Super+= / Super+-.
 local map = vim.keymap.set
 local util = require "util"
 local super = util.chord
@@ -57,6 +58,22 @@ for arrow, dir in pairs { Left = "h", Down = "j", Up = "k", Right = "l" } do
   map(ALL, "<C-" .. arrow .. ">", function()
     panes.move_divider(arrow)
   end, { desc = "Move divider " .. arrow:lower() })
+end
+-- Alt+= / Alt+- (Cmd on the Mac) widen / narrow the pane, Alt+Shift+= /
+-- Alt+Shift+- make it taller / shorter: Omarchy's Super+= / Super+- for
+-- windows. Without leaving the mode. Through herdr Alt+Shift+= arrives as
+-- <M-S-=>; Neovide sends <M-+>.
+for how, keys in pairs {
+  wider = { "=" },
+  narrower = { "-" },
+  taller = { "S-=", "+" },
+  shorter = { "S--", "_" },
+} do
+  for _, k in ipairs(keys) do
+    map(ALL, super(k), function()
+      panes.resize(how)
+    end, { desc = "Pane " .. how })
+  end
 end
 -- Inside tmux or herdr, terminals and tabs are the multiplexer's
 -- (util.in_mux): Alt+Return splits its pane, Alt+T / Alt+Shift+T / Alt+1..9
@@ -228,11 +245,13 @@ if vim.g.neovide then
       vim.g.neovide_scale_factor = factor and vim.g.neovide_scale_factor * factor or vim.g.default_scale
     end
   end
+  -- Ctrl+= / Ctrl+- / Ctrl+0, on the Mac too: Chrome's and VS Code's zoom on
+  -- Linux, and kitty's text size here. Alt/Cmd+= / - resize panes (above).
   -- Zoom works while typing a command too.
   local modes = { "n", "i", "x", "s", "c", "t" }
-  map(modes, super "=", zoom(1.25), { desc = "Zoom in" })
-  map(modes, super "-", zoom(1 / 1.25), { desc = "Zoom out" })
-  map(modes, super "0", zoom(), { desc = "Reset zoom" })
+  map(modes, "<C-=>", zoom(1.25), { desc = "Zoom in" })
+  map(modes, "<C-->", zoom(1 / 1.25), { desc = "Zoom out" })
+  map(modes, "<C-0>", zoom(), { desc = "Reset zoom" })
 end
 
 -- ── Run and git ────────────────────────────────────────────────────────────

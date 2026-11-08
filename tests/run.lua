@@ -770,6 +770,32 @@ check("Alt+F zooms a pane and brings the layout back", function()
   expect(vim.deep_equal(vim.fn.winlayout(), layout), "layout changed after unzoom")
 end)
 
+check("Alt+= / Alt+- widen / narrow a split, Alt+Shift+= / Alt+Shift+- make it taller / shorter", function()
+  vim.cmd "only | vsplit b.ml"
+  local win, w = api.nvim_get_current_win(), api.nvim_win_get_width(0)
+  press(super "=")
+  expect(api.nvim_win_get_width(win) > w, "Alt+= left it " .. api.nvim_win_get_width(win) .. " wide, was " .. w)
+  press(super "-")
+  press(super "-")
+  expect(api.nvim_win_get_width(win) < w, "Alt+- left it " .. api.nvim_win_get_width(win) .. " wide, was " .. w)
+  vim.cmd "only | split b.ml"
+  local h = api.nvim_win_get_height(0)
+  -- Through herdr Alt+Shift+= arrives as <M-S-=>; Neovide sends <M-+>.
+  press(super "S-=")
+  expect(api.nvim_win_get_height(0) > h, "Alt+Shift+= (S-=) left it " .. api.nvim_win_get_height(0) .. " tall, was " .. h)
+  press(super "_")
+  press(super "S--")
+  press(super "_")
+  expect(api.nvim_win_get_height(0) < h, "Alt+Shift+- left it " .. api.nvim_win_get_height(0) .. " tall, was " .. h)
+  press(super "+")
+  press(super "+")
+  press(super "+")
+  expect(api.nvim_win_get_height(0) > h, "Alt+Shift+= (+) left it " .. api.nvim_win_get_height(0) .. " tall, was " .. h)
+  local cmdheight = vim.o.cmdheight
+  vim.cmd "only"
+  expect(vim.o.cmdheight == cmdheight, "cmdheight changed")
+end)
+
 check("Alt+F beside the tree with one editor hides nothing: the zoom goes to tmux/herdr", function()
   vim.cmd "only"
   vim.cmd "edit! a.ml"
@@ -898,15 +924,15 @@ check("Alt+S saves; :W is :w", function()
   expect(not vim.bo.modified, ":W did not save")
 end)
 
-check("Zoom keys change the font scale; paste key pastes", function()
+check("Zoom keys (Ctrl+= / Ctrl+- / Ctrl+0) change the font scale; paste key pastes", function()
   local s = vim.g.neovide_scale_factor
-  press(super "=")
-  expect(vim.g.neovide_scale_factor > s, "Alt+= did not zoom in")
-  press(super "-")
-  press(super "-")
-  expect(vim.g.neovide_scale_factor < s, "Alt+- did not zoom out")
-  press(super "0")
-  expect(math.abs(vim.g.neovide_scale_factor - vim.g.default_scale) < 1e-9, "Alt+0 did not reset")
+  press "<C-=>"
+  expect(vim.g.neovide_scale_factor > s, "Ctrl+= did not zoom in")
+  press "<C-->"
+  press "<C-->"
+  expect(vim.g.neovide_scale_factor < s, "Ctrl+- did not zoom out")
+  press "<C-0>"
+  expect(math.abs(vim.g.neovide_scale_factor - vim.g.default_scale) < 1e-9, "Ctrl+0 did not reset")
   vim.cmd "enew"
   vim.fn.setreg("+", "pasted-text")
   press "i"
@@ -2283,6 +2309,36 @@ check("A window resize scales every pane; the terminal is never squeezed to a st
     expect(text:find "line 6: the quick brown fox", "the terminal text is mangled:\n" .. text)
   end)
   screen(200)
+  expect(ok, err)
+end)
+
+check("A resize and back keeps each pane's view (zoom, herdr split; 2026-11-08)", function()
+  expect(vim.env.TMUX, "SKIP not inside tmux")
+  local function screen(cols)
+    vim.fn.system { "tmux", "resize-window", "-x", tostring(cols), "-y", "50" }
+    wait(500)
+  end
+  vim.cmd "only | enew"
+  local buf = api.nvim_get_current_buf()
+  local lines = {}
+  for i = 1, 300 do
+    lines[i] = ("let long_name_%d = %q"):format(i, i .. " the quick brown fox jumps over the lazy dog and keeps running far")
+  end
+  api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.wo.wrap = true
+  vim.fn.winrestview { topline = 139, lnum = 150 }
+  wait(500)
+  local top = vim.fn.line "w0"
+  local ok, err = pcall(function()
+    -- 30 columns wrap each line four times: Neovim scrolls the pane (139 ->
+    -- 144) and, without the fix, back at 200 stops short (142).
+    screen(30)
+    screen(200)
+    expect(vim.fn.line "w0" == top, ("back at 200 columns the first line is %d, was %d"):format(vim.fn.line "w0", top))
+    expect(vim.fn.line "." == 150, "the cursor moved to " .. vim.fn.line ".")
+  end)
+  screen(200)
+  vim.cmd("bwipe! " .. buf)
   expect(ok, err)
 end)
 
