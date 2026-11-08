@@ -5,6 +5,10 @@
 --     The question is about the selected lines, else the cursor's line. The
 --     answer streams in above the › line; ask follow-ups the same way.
 --     Asking never changes the file.
+--   The look copies omp's: your turn (the › line, and each question asked)
+--     sits on a tinted block with a row of the tint above and below it;
+--     goose's answer is plain text on the box's surface after a blank row,
+--     and the files it reads and its "thinking…" are grey.
 --   Alt+K / Cmd+K in the box  write what the chat settled on into the file:
 --     the box closes and the asked-about lines go through Alt+K's conversion
 --     (grey "writing…", ghost lines, one change, one `u` undoes it), which
@@ -28,9 +32,14 @@ local M = {}
 local goose = require "goose"
 local api = vim.api
 local ns = api.nvim_create_namespace "goose_ask"
+local turns = api.nvim_create_namespace "goose_ask_turns"
+local notes = api.nvim_create_namespace "goose_ask_notes"
 
 local chats = {} -- chats[source buf] = { buf = chat buf, s, e = lines asked about }
 local PROMPT = "› "
+-- One row of the question block's tint. Virtual lines never wrap, so a long
+-- run of spaces is cut at the box's edge and fills the row.
+local FILL = { { (" "):rep(500), "GooseAskQuestion" } }
 
 -- Alt+K in the box: the instruction that replaces "turn the pseudocode into
 -- code". Without the "unchanged" line, an answer that only edits other lines
@@ -94,10 +103,32 @@ local function box(height)
   }
 end
 
+---Your turn as a block (theme.lua's GooseAskQuestion, like omp's user
+---message): the line on the tint, with a tinted row above and below. A sent
+---question also gets a blank row before its answer. All padding is virtual,
+---so the chat's text stays what was typed. `ids` moves an existing block.
+local function block(b, row, sent, ids)
+  ids = ids or {}
+  ids[1] = api.nvim_buf_set_extmark(b, turns, row, 0, { id = ids[1], virt_lines = { FILL }, virt_lines_above = true })
+  ids[2] = api.nvim_buf_set_extmark(b, turns, row, 0, {
+    id = ids[2],
+    line_hl_group = "GooseAskQuestion",
+    virt_lines = sent and { FILL, {} } or { FILL },
+  })
+  return ids
+end
+
 ---Grow the box with the conversation, up to its maximum.
 local function fit(win)
   if api.nvim_win_is_valid(win) then
     api.nvim_win_set_config(win, box(api.nvim_win_text_height(win, {}).all))
+    -- The tinted row above the first question is a virtual line above line
+    -- 1, which Neovim draws only when the view asks for it (topfill).
+    api.nvim_win_call(win, function()
+      if vim.fn.line "w0" == 1 then
+        vim.fn.winrestview { topfill = 1 }
+      end
+    end)
   end
 end
 
@@ -125,21 +156,32 @@ end
 ---Enter on the › line: stream the answer in above the next › line.
 local function send(c, q)
   q = vim.trim(q or "")
+  local cb, src, s, e = c.buf, c.src, c.s, c.e
+  -- The new › line is the last line; the answer and a blank go above it.
+  local at = api.nvim_buf_line_count(cb) - 1
+  block(cb, at, false, c.live) -- the › line's block moves down with it
   if q == "" then
     return
   end
-  local cb, src, s, e = c.buf, c.src, c.s, c.e
+  block(cb, at - 1, true)
   if not api.nvim_buf_is_valid(src) then
     return
   end
   local root = root_of(src)
   local reads, answer = {}, nil
   c.busy = true
-  -- The new › line is the last line; the answer and a blank go above it.
-  local at = api.nvim_buf_line_count(cb) - 1
   local wait = body()[1]
   api.nvim_buf_set_lines(cb, at, at, false, { wait, "" })
   local mark = api.nvim_buf_set_extmark(cb, ns, at, 0, { end_row = at, end_col = #wait, right_gravity = false, end_right_gravity = true })
+  ---Grey the first `n` of the answer's `lines` from row `row`: the files read
+  ---and the placeholder, not the answer.
+  local function grey(row, lines, n)
+    api.nvim_buf_clear_namespace(cb, notes, row, row + #lines)
+    for i = 1, n do
+      api.nvim_buf_set_extmark(cb, notes, row + i - 1, 0, { end_col = #lines[i], hl_group = "GooseAskNote" })
+    end
+  end
+  grey(at, { wait }, 1)
   local function show(text)
     answer = text or answer
     if not api.nvim_buf_is_valid(cb) then
@@ -162,6 +204,7 @@ local function send(c, q)
       right_gravity = false,
       end_right_gravity = true,
     })
+    grey(p[1], lines, #reads + ((answer or ""):match "%S" and 0 or 1))
     if c.win then
       fit(c.win)
     end
@@ -200,6 +243,7 @@ local function chat_buf(c)
   vim.bo[b].bufhidden = "hide"
   vim.bo[b].filetype = "markdown"
   vim.fn.prompt_setprompt(b, PROMPT)
+  c.live = block(b, 0) -- the › line being typed: your turn's block
   vim.fn.prompt_setcallback(b, function(q)
     send(c, q)
   end)
@@ -286,6 +330,8 @@ function M.ask(s, e)
   c.win = api.nvim_open_win(b, true, cfg)
   vim.wo[c.win].wrap, vim.wo[c.win].linebreak = true, true
   vim.wo[c.win].number, vim.wo[c.win].relativenumber, vim.wo[c.win].signcolumn, vim.wo[c.win].list = false, false, "no", false
+  -- The block's tint marks your turn; a cursor-line band would blur it.
+  vim.wo[c.win].cursorline = false
   fit(c.win)
   -- Its claude starts now, while the question is typed.
   if goose.use_session and not goose.session(b) then

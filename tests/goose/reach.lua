@@ -174,6 +174,12 @@ check(
 )
 check("Alt+L: question and answer in the box", chat_text():find("› what is b\n**answer", 1, true) ~= nil, chat_text())
 check("Alt+L: the file is unchanged", vim.deep_equal(lines(buf), before), vim.inspect(lines(buf)))
+check(
+  "the box fits the tinted rows",
+  vim.api.nvim_win_get_config(cwin).height == vim.api.nvim_win_text_height(cwin, {}).all,
+  ("height %d, text %d"):format(vim.api.nvim_win_get_config(cwin).height, vim.api.nvim_win_text_height(cwin, {}).all)
+)
+check("the tinted row above the first question shows", vim.api.nvim_win_call(cwin, vim.fn.winsaveview).topfill == 1)
 local ask_S = c and g.session(c.buf)
 check("Alt+L: its own claude, not Alt+K's", ask_S and ask_S.pid ~= pid and g.session(buf).pid == pid)
 check("Alt+L: its claude has read-only tools", ask_S and ask_S.opts and ask_S.opts.tools == "Read,Grep,Glob")
@@ -208,6 +214,36 @@ local underlined = vim.tbl_filter(function(m)
   return m[4].hl_group == "GooseDraft"
 end, vim.api.nvim_buf_get_extmarks(c.buf, -1, 0, -1, { details = true }))
 check("typing in the box underlines nothing (no draft)", #underlined == 0, vim.inspect(underlined))
+-- The look copies omp's: each question and the › line sit on a tinted block
+-- with a tinted row above and below, answers stay plain, the files read are
+-- grey, and the box grows to fit the virtual rows.
+local function marks_on(row)
+  return vim.api.nvim_buf_get_extmarks(c.buf, -1, { row, 0 }, { row, -1 }, { details = true })
+end
+local function has(row, key, group)
+  for _, m in ipairs(marks_on(row)) do
+    if m[4][key] == group then
+      return true
+    end
+  end
+  return false
+end
+local wrong = {}
+for i, l in ipairs(vim.api.nvim_buf_get_lines(c.buf, 0, -1, false)) do
+  local question = vim.startswith(l, "› ")
+  local pads = 0
+  for _, m in ipairs(marks_on(i - 1)) do
+    for _, v in ipairs(m[4].virt_lines or {}) do
+      pads = pads + ((v[1] and v[1][2] == "GooseAskQuestion") and 1 or 0)
+    end
+  end
+  if has(i - 1, "line_hl_group", "GooseAskQuestion") ~= question or pads ~= (question and 2 or 0) then
+    wrong[#wrong + 1] = ("%d %q pads %d"):format(i, l, pads)
+  end
+end
+check("questions and the › line are tinted blocks, answers are not", #wrong == 0, table.concat(wrong, "; "))
+local read_row = vim.fn.index(vim.api.nvim_buf_get_lines(c.buf, 0, -1, false), "_read bin/main.ml_")
+check("a file it reads is grey", read_row >= 0 and has(read_row, "hl_group", "GooseAskNote"), read_row)
 keys "<Esc><Esc>"
 check(
   "Esc, Esc closes the box, back in the code",
