@@ -210,7 +210,7 @@ end
 -- 30 minutes.
 local watching = {} -- root -> true while a watch runs
 
-function M.restart_after_first_build(root, buf)
+local function restart_after_first_build(root, buf)
   local file = api.nvim_buf_get_name(buf)
   if not root or watching[root] or not vim.uv.fs_stat(root .. "/dune-project") then
     return
@@ -288,7 +288,7 @@ function M.setup()
       vim.bo[args.buf].omnifunc = "v:lua.MiniCompletion.completefunc_lsp"
       local client = vim.lsp.get_client_by_id(args.data.client_id)
       if client and client.name == "ocamllsp" then
-        M.restart_after_first_build(client.root_dir, args.buf)
+        restart_after_first_build(client.root_dir, args.buf)
         vim.keymap.set("n", "K", function()
           ocaml_hover(client, args.buf)
         end, { buffer = args.buf, desc = "Hover (full type)" })
