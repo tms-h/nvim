@@ -2510,6 +2510,100 @@ check("OCaml gt wraps a motion, a selection or a line in (fun () -> ...)", funct
   vim.cmd "edit! c.ml"
 end)
 
+-- ── Seconder (Space r) status, 2026-11-08 ────────────────────────────────
+-- "if i space r to add seconder, but i do stuff with the cursor, the prompt
+-- goes away ... if the code has no issues ... it doesnt change a thing and its
+-- kinda weird". goose.ask is stubbed: the answer comes 1.5 s after Space r.
+
+-- The text drawn on the screen row of the cursor's line.
+local function cursor_row_text()
+  vim.cmd "redraw"
+  local row = vim.fn.screenpos(0, vim.fn.line ".", 1).row
+  local cells = {}
+  for col = 1, vim.o.columns do
+    cells[#cells + 1] = vim.fn.screenstring(row, col)
+  end
+  return table.concat(cells)
+end
+
+local function with_review(answer, fn)
+  local g, sec = require "goose", require "seconder"
+  local saved = { g.ask, sec.result_ms }
+  local file = proj .. "/review_me.ml"
+  local lines = {}
+  for i = 1, 120 do
+    lines[i] = ("let x_%d = %d"):format(i, i)
+  end
+  vim.fn.writefile(lines, file)
+  vim.cmd("edit! " .. file)
+  local answered = false
+  g.ask = function(_, _, cb)
+    vim.defer_fn(function()
+      answered = true
+      cb(answer)
+    end, 1500)
+  end
+  local ok, err = pcall(fn, function()
+    for _ = 1, 40 do
+      if answered then
+        break
+      end
+      wait(100)
+    end
+    wait(150)
+  end)
+  g.ask, sec.result_ms = saved[1], saved[2]
+  vim.cmd "stopinsert"
+  vim.cmd "silent! edit! a.ml"
+  vim.fn.delete(file)
+  if not ok then
+    error(err, 0)
+  end
+end
+
+check("Space r: the reviewing note stays on the cursor's line while you move and type", function()
+  with_review('{"verdict":"seconded","reason":"fine","add":[],"delete":[],"reopen":[]}', function(done)
+    press(" r", 300)
+    -- The note before this fix read "seconder reading…" on line 1.
+    expect(cursor_row_text():find "seconder re", "no note after Space r: " .. cursor_row_text())
+    press("80G", 200)
+    expect(cursor_row_text():find "seconder re", "note gone after 80G: " .. cursor_row_text())
+    press("otyped while reviewing", 200)
+    local typed = vim.fn.getline "."
+    expect(cursor_row_text():find "seconder reviewing", "note gone while typing: " .. cursor_row_text())
+    expect(typed == "typed while reviewing", "typing was blocked: " .. typed)
+    expect(floats() == 0, floats() .. " popups opened")
+    press("<Esc>", 100)
+    done()
+  end)
+end)
+
+check("Space r: the review ends with a note that stays: no issues, or N comments and ]r", function()
+  with_review('{"verdict":"seconded","reason":"fine","add":[],"delete":[],"reopen":[]}', function(done)
+    press(" r", 300)
+    press("40G", 100)
+    done()
+    press("j", 200)
+    expect(cursor_row_text():find "seconder: no issues", "no 'no issues' after a key: " .. cursor_row_text())
+    expect(floats() == 0, floats() .. " popups opened")
+  end)
+  with_review(
+    '{"verdict":"crs","reason":"bad","add":[{"line":3,"kind":"CR","text":"x_3 is wrong"},{"line":9,"kind":"CR-soon","text":"x_9 too"}],"delete":[],"reopen":[]}',
+    function(done)
+      require("seconder").result_ms = 300
+      press(" r", 300)
+      press("60G", 100)
+      done()
+      press("k", 200)
+      local text = cursor_row_text()
+      expect(text:find "seconder: 2 comments, ]r jumps to them", "no count and ]r hint: " .. text)
+      wait(300)
+      press("k", 200)
+      expect(not cursor_row_text():find "seconder", "the result stayed after its time and a key: " .. cursor_row_text())
+    end
+  )
+end)
+
 -- ── The test tools themselves ────────────────────────────────────────────
 
 local tests_dir = vim.fn.stdpath "config" .. "/tests"

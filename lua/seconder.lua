@@ -1,7 +1,9 @@
 -- Seconder: a Jane Street-style reviewer that only writes CR comments.
 --
 --   Space r   review this file: adds CR / CR-soon comments, deletes ones it is
---             satisfied with, reopens XCRs it is not. Never edits code.
+--             satisfied with, reopens XCRs it is not. Never edits code. A
+--             note on the cursor's line says "reviewing…", then "no issues"
+--             or how many comments there are.
 --   ]r / [r   next / previous CR, CR-soon or XCR line (the list also goes to
 --             the location list after a review).
 --
@@ -207,6 +209,99 @@ end
 
 local busy = {}
 
+-- The review's status: one note at the end of the cursor's line in the file
+-- under review, moved along with the cursor (goose's "writing…" look), so it
+-- stays in view wherever you go and never takes a key. It reads "reviewing…"
+-- while claude reads, then turns into the result, which stays until the first
+-- key pressed in that file once M.result_ms has passed, so it is still there
+-- after looking away. (A bottom-line message alone went at the next cursor
+-- move, and a note on line 1 scrolled out of view.)
+M.result_ms = 4000
+local status = {} -- buf -> { mark, row, text, hl, done (ms), group }
+local key_ns = vim.api.nvim_create_namespace "seconder.key"
+
+local function place(buf)
+  local st = status[buf]
+  if not st or not vim.api.nvim_buf_is_valid(buf) then
+    return
+  end
+  local win = vim.api.nvim_get_current_buf() == buf and vim.api.nvim_get_current_win() or vim.fn.bufwinid(buf)
+  if win ~= -1 then
+    st.row = vim.api.nvim_win_get_cursor(win)[1] - 1
+  end
+  st.row = math.min(st.row or 0, vim.api.nvim_buf_line_count(buf) - 1)
+  st.mark = vim.api.nvim_buf_set_extmark(buf, ns, st.row, 0, {
+    id = st.mark,
+    virt_text = { { "  " .. st.text, st.hl } },
+    virt_text_pos = "eol",
+  })
+end
+
+local function clear(buf)
+  local st = status[buf]
+  if not st then
+    return
+  end
+  status[buf] = nil
+  pcall(vim.api.nvim_del_augroup_by_id, st.group)
+  if st.mark then
+    pcall(vim.api.nvim_buf_del_extmark, buf, ns, st.mark)
+  end
+end
+
+-- A result goes at the first key in its file after M.result_ms.
+local function on_key()
+  local buf = vim.api.nvim_get_current_buf()
+  local st = status[buf]
+  if st and st.done and vim.uv.now() - st.done >= M.result_ms then
+    vim.schedule(function()
+      if status[buf] == st then
+        clear(buf)
+      end
+      if not next(status) then
+        vim.on_key(nil, key_ns)
+      end
+    end)
+  end
+end
+
+local function show(buf, text, hl)
+  clear(buf)
+  local group = vim.api.nvim_create_augroup("seconder.status." .. buf, { clear = true })
+  status[buf] = { text = text, hl = hl, group = group }
+  vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "BufWinEnter" }, {
+    group = group,
+    buffer = buf,
+    callback = function()
+      place(buf)
+    end,
+  })
+  vim.api.nvim_create_autocmd({ "BufWipeout", "BufUnload" }, {
+    group = group,
+    buffer = buf,
+    callback = function()
+      status[buf] = nil
+      pcall(vim.api.nvim_del_augroup_by_id, group)
+    end,
+  })
+  place(buf)
+end
+
+local function finish(buf, text, hl)
+  if not vim.api.nvim_buf_is_valid(buf) then
+    return
+  end
+  show(buf, text, hl)
+  status[buf].done = vim.uv.now()
+  vim.on_key(on_key, key_ns)
+end
+
+---The status note's text in buf ("" when none shows), for tests.
+function M.status(buf)
+  local st = status[buf or vim.api.nvim_get_current_buf()]
+  return st and st.text or ""
+end
+
 function M.review(buf)
   buf = buf or vim.api.nvim_get_current_buf()
   if busy[buf] then
@@ -214,16 +309,15 @@ function M.review(buf)
   end
   busy[buf] = true
   local prompt, snapshot = prompt_for(buf)
-  local mark = vim.api.nvim_buf_set_extmark(buf, ns, 0, 0, {
-    virt_text = { { "  seconder reading…", "DiagnosticVirtualTextInfo" } },
-    virt_text_pos = "right_align",
-  })
-  vim.notify "seconder: reading the file…"
+  show(buf, "seconder reviewing…", "DiagnosticVirtualTextInfo")
   goose.ask(SYSTEM, prompt, function(out, err)
     busy[buf] = nil
-    pcall(vim.api.nvim_buf_del_extmark, buf, ns, mark)
+    if not vim.api.nvim_buf_is_valid(buf) then
+      return
+    end
     local ans = out and decode(out)
     if not ans then
+      finish(buf, "seconder: review failed", "DiagnosticVirtualTextError")
       return vim.notify("seconder: " .. (err or ("no JSON in answer: " .. (out or ""):sub(1, 200))), vim.log.levels.ERROR)
     end
     local added, deleted, reopened = apply(buf, ans, snapshot)
@@ -231,9 +325,23 @@ function M.review(buf)
     local items = M.list(buf)
     vim.fn.setloclist(0, items, "r")
     vim.fn.setloclist(0, {}, "a", { title = "seconder" })
-    local verdict = (#items == 0 and ans.verdict == "seconded") and "seconded" or ("%d open"):format(#items)
     M.last = { verdict = ans.verdict, reason = ans.reason, added = added, deleted = deleted, reopened = reopened }
-    vim.notify(("seconder: %s (+%d, -%d, reopened %d). %s"):format(verdict, added, deleted, reopened, ans.reason or ""))
+    local text, hl
+    if #items == 0 then
+      text, hl = "seconder: no issues", "DiagnosticVirtualTextOk"
+    else
+      text = ("seconder: %d comment%s, ]r jumps to them"):format(#items, #items == 1 and "" or "s")
+      hl = "DiagnosticVirtualTextWarn"
+    end
+    finish(buf, text, hl)
+    local changes = {}
+    for _, c in ipairs { { added, "new" }, { deleted, "closed" }, { reopened, "reopened" } } do
+      if c[1] > 0 then
+        changes[#changes + 1] = c[1] .. " " .. c[2]
+      end
+    end
+    local extra = #changes > 0 and (" (" .. table.concat(changes, ", ") .. ")") or ""
+    vim.notify(("%s%s. %s"):format(text, extra, ans.reason or ""))
   end)
 end
 
