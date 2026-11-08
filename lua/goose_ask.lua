@@ -99,82 +99,21 @@ corrects you; then answer as usual. Never save one-off details of the current
 question, guesses, or what the memory already says. `forget` drops a note he
 says is wrong or outdated.]]
 local TOOLS = "Read,Grep,Glob,WebSearch,WebFetch"
-M.wiki = vim.fn.expand "~/Work/js-wiki/tools/wiki.py" -- the jswiki MCP server, where present
-local MEMORY_SERVER = vim.fs.joinpath(
-  vim.fs.dirname(vim.fs.dirname(debug.getinfo(1, "S").source:sub(2))),
-  "tools/goose/memory.py"
-)
-local ROOT_MARKERS = { ".git", "dune-project", "Cargo.toml", "package.json", "pyproject.toml", "go.mod" }
-
-local function python()
-  local p = vim.fn.exepath "python3"
-  return p ~= "" and p or "python"
-end
-
-local function has_wiki()
-  return vim.uv.fs_stat(M.wiki) ~= nil
-end
 
 ---The chat's system prompt: the rules, the wiki's if present, memory's, and
 ---the memory file itself.
 function M.system()
-  return goose.with_memory(SYSTEM .. (has_wiki() and WIKI or WEB) .. MEMORY)
+  return goose.with_memory(SYSTEM .. (goose.has_wiki() and WIKI or WEB) .. MEMORY)
 end
 
 ---claude options for a chat in `root`: read-only built-in tools, the web,
 ---the wiki and the memory server (--mcp-config; no other MCP server), all
 ---permitted up front, since -p denies any tool not allowed.
 function M.opts(root)
-  local servers = {
-    memory = { type = "stdio", command = python(), args = { MEMORY_SERVER, goose.memory_file(), tostring(goose.memory_max) } },
-  }
-  local allow = { "mcp__memory", "WebSearch", "WebFetch" }
-  if has_wiki() then
-    servers.jswiki = { type = "stdio", command = python(), args = { M.wiki, "mcp" } }
-    allow[#allow + 1] = "mcp__jswiki"
-  end
-  return { tools = TOOLS, cwd = root, mcp = vim.json.encode { mcpServers = servers }, allow = table.concat(allow, ",") }
+  return goose.claude_opts(root, { tools = TOOLS, allow = { "WebSearch", "WebFetch" }, memory = true })
 end
 
-local function root_of(src)
-  return vim.fs.root(src, ROOT_MARKERS) or vim.fs.dirname(api.nvim_buf_get_name(src))
-end
-
----One grey line per tool call: what it read, searched for or remembered.
-local function describe(name, input, root)
-  local function one(s) -- tool input on one line
-    return (tostring(s or "?"):gsub("%s+", " "))
-  end
-  local path = input.file_path or input.path
-  if path then
-    path = vim.fs.relpath(root, path) or vim.fn.fnamemodify(path, ":~")
-  end
-  if name == "Read" then
-    return "read " .. (path or "?")
-  elseif name == "Grep" then
-    return ("searched for `%s`%s"):format(input.pattern or "?", path and (" in " .. path) or "")
-  elseif name == "Glob" then
-    return ("listed `%s`"):format(input.pattern or "?")
-  elseif name == "mcp__jswiki__find" then
-    local scope = input.scope and input.scope ~= "wiki" and (" (" .. input.scope .. ")") or ""
-    return ('wiki: searched "%s"%s'):format(one(input.query), scope)
-  elseif name == "mcp__jswiki__read" then
-    local section = input.section and input.section ~= "" and (" › " .. one(input.section)) or ""
-    return "wiki: read " .. one(input.page) .. section
-  elseif name == "mcp__jswiki__quote" then
-    return ("wiki: quoted %s at %s"):format(one(input.source), one(input.at))
-  elseif name == "WebSearch" then
-    return ('web: searched "%s"'):format(one(input.query))
-  elseif name == "WebFetch" then
-    return "web: read " .. one(input.url)
-  elseif name == "mcp__memory__remember" then
-    return "remembered: " .. one(input.note)
-  elseif name == "mcp__memory__forget" then
-    return ('forgot notes with "%s"'):format(one(input.text))
-  end
-  local server, tool = name:match "^mcp__(.-)__(.+)$"
-  return server and (server .. ": " .. tool) or name
-end
+local root_of, describe = goose.root, goose.describe
 
 function M.chat(src) -- for tests
   return chats[src]

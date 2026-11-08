@@ -38,10 +38,10 @@ local ns = vim.api.nvim_create_namespace "goose"
 -- `claude -p`, and plain leaked CLAUDE.md lines into the code. --bare would be
 -- faster but needs an API key (OAuth logins fail).
 M.model = "claude-sonnet-5-5"
--- opts (questions only): tools = built-in tools ("Read,Grep,..."), mcp = an
--- --mcp-config JSON, allow = tools permitted without asking (-p denies the
--- rest), cwd = the project root. --strict-mcp-config keeps every other MCP
--- server out.
+-- opts (questions and reviews only): tools = built-in tools
+-- ("Read,Grep,..."), mcp = an --mcp-config JSON, allow = tools permitted
+-- without asking (-p denies the rest), cwd = the project root; see
+-- claude_opts. --strict-mcp-config keeps every other MCP server out.
 local function cmd(system, opts)
   opts = opts or {}
   local c = {
@@ -86,15 +86,122 @@ function M.with_memory(system)
     .. text
 end
 
+-- ── Project context: shared by the Alt+L chat and seconder ────────────────
+local ROOT_MARKERS = { "REVIEW.md", ".git", "dune-project", "Cargo.toml", "package.json", "pyproject.toml", "go.mod" }
+
+---The project root of buf (the nearest folder with .git, dune-project,
+---REVIEW.md...), else the file's folder: where claude runs and reads.
+function M.root(buf)
+  return vim.fs.root(buf, ROOT_MARKERS) or vim.fs.dirname(vim.api.nvim_buf_get_name(buf))
+end
+
+M.wiki = vim.fn.expand "~/Work/js-wiki/tools/wiki.py" -- the jswiki MCP server, where present
+function M.has_wiki()
+  return vim.uv.fs_stat(M.wiki) ~= nil
+end
+local MEMORY_SERVER = vim.fs.joinpath(vim.fs.dirname(vim.fs.dirname(debug.getinfo(1, "S").source:sub(2))), "tools/goose/memory.py")
+
+local function python()
+  local p = vim.fn.exepath "python3"
+  return p ~= "" and p or "python"
+end
+
+---cmd() options for a claude that reads the project in `root`: o.tools
+---(built-in tools), the jswiki server where present, the memory server when
+---o.memory (it can save notes), and o.allow (tools -p must not deny; MCP
+---tools are added here).
+function M.claude_opts(root, o)
+  local servers, allow = {}, vim.list_extend({}, o.allow or {})
+  if M.has_wiki() then
+    servers.jswiki = { type = "stdio", command = python(), args = { M.wiki, "mcp" } }
+    allow[#allow + 1] = "mcp__jswiki"
+  end
+  if o.memory then
+    servers.memory = { type = "stdio", command = python(), args = { MEMORY_SERVER, M.memory_file(), tostring(M.memory_max) } }
+    allow[#allow + 1] = "mcp__memory"
+  end
+  return {
+    tools = o.tools,
+    cwd = root,
+    mcp = next(servers) and vim.json.encode { mcpServers = servers } or nil,
+    allow = #allow > 0 and table.concat(allow, ",") or nil,
+  }
+end
+
+---One short line for a tool call: what it read, searched for or remembered.
+---Paths are shown from `root`.
+function M.describe(name, input, root)
+  local function one(s) -- tool input on one line
+    return (tostring(s or "?"):gsub("%s+", " "))
+  end
+  local path = input.file_path or input.path
+  if path then
+    path = vim.fs.relpath(root, path) or vim.fn.fnamemodify(path, ":~")
+  end
+  if name == "Read" then
+    return "read " .. (path or "?")
+  elseif name == "Grep" then
+    return ("searched for `%s`%s"):format(input.pattern or "?", path and (" in " .. path) or "")
+  elseif name == "Glob" then
+    return ("listed `%s`"):format(input.pattern or "?")
+  elseif name == "mcp__jswiki__find" then
+    local scope = input.scope and input.scope ~= "wiki" and (" (" .. input.scope .. ")") or ""
+    return ('wiki: searched "%s"%s'):format(one(input.query), scope)
+  elseif name == "mcp__jswiki__read" then
+    local section = input.section and input.section ~= "" and (" › " .. one(input.section)) or ""
+    return "wiki: read " .. one(input.page) .. section
+  elseif name == "mcp__jswiki__quote" then
+    return ("wiki: quoted %s at %s"):format(one(input.source), one(input.at))
+  elseif name == "WebSearch" then
+    return ('web: searched "%s"'):format(one(input.query))
+  elseif name == "WebFetch" then
+    return "web: read " .. one(input.url)
+  elseif name == "mcp__memory__remember" then
+    return "remembered: " .. one(input.note)
+  elseif name == "mcp__memory__forget" then
+    return ('forgot notes with "%s"'):format(one(input.text))
+  end
+  local server, tool = name:match "^mcp__(.-)__(.+)$"
+  return server and (server .. ": " .. tool) or name
+end
+
 ---Run claude on `prompt` (stdin) with `system`; on_done(text|nil, err) on the
----main loop.
+---main loop. opts: see cmd(); with opts.on_tool(name, input) the answer
+---streams (stream-json) so each tool call is reported as it starts.
 function M.ask(system, prompt, on_done, opts)
-  local ok, err = pcall(vim.system, cmd(system, opts), { stdin = prompt, text = true, cwd = opts and opts.cwd }, function(r)
+  local argv, stdout, result = cmd(system, opts), nil, nil
+  if opts and opts.on_tool then
+    vim.list_extend(argv, { "--output-format", "stream-json", "--verbose" })
+    local acc = ""
+    stdout = function(_, data)
+      acc = acc .. (data or "")
+      for line in acc:gmatch "([^\n]*)\n" do
+        local ok, ev = pcall(vim.json.decode, line)
+        if ok and type(ev) == "table" and ev.type == "assistant" then
+          for _, c in ipairs(vim.tbl_get(ev, "message", "content") or {}) do
+            if type(c) == "table" and c.type == "tool_use" then
+              vim.schedule(function()
+                opts.on_tool(c.name, c.input or {})
+              end)
+            end
+          end
+        elseif ok and type(ev) == "table" and ev.type == "result" then
+          result = ev
+        end
+      end
+      acc = acc:match "[^\n]*$"
+    end
+  end
+  local ok, err = pcall(vim.system, argv, { stdin = prompt, text = true, cwd = opts and opts.cwd, stdout = stdout }, function(r)
     vim.schedule(function()
       if r.code ~= 0 then
-        on_done(nil, (r.stderr ~= "" and r.stderr or r.stdout):gsub("%s+$", ""))
-      else
+        on_done(nil, (r.stderr ~= "" and r.stderr or r.stdout or ""):gsub("%s+$", ""))
+      elseif not stdout then
         on_done(r.stdout)
+      elseif result and not result.is_error and type(result.result) == "string" then
+        on_done(result.result)
+      else
+        on_done(nil, tostring(result and (result.result or result.subtype) or "no result"))
       end
     end)
   end)

@@ -2,7 +2,8 @@
 --
 --   Space r   review this file: adds CR / CR-soon comments, deletes ones it is
 --             satisfied with, reopens XCRs it is not. Never edits code. A
---             note on the cursor's line says "reviewing…", then "no issues"
+--             note on the cursor's line says "reviewing…" (and what it is
+--             reading: "reviewing: read lib/book.mli…"), then "no issues"
 --             or how many comments there are.
 --   ]r / [r   next / previous CR, CR-soon or XCR line (the list also goes to
 --             the location list after a review).
@@ -23,6 +24,14 @@
 -- ("review brain"), and appends what happened to each CR (add, fixed,
 -- pushback with the XCR reply, reopen, fix-accepted) to log.jsonl there, which
 -- the wiki's /seconder page counts to flag rules Thomas keeps rejecting.
+--
+-- Each review is a fresh one-shot claude (never goose's session) running in
+-- the project root (goose.root) with read-only Read, Grep and Glob, so it
+-- checks callers, the .mli, definitions, dune files and tests before
+-- objecting, and does not flag what the codebase shows is intended. Where
+-- ~/Work/js-wiki exists it also has the jswiki MCP tools for style and
+-- idiom objections the rules above do not settle, and goose's memory file
+-- (Thomas's saved preferences, goose.with_memory) ends its system prompt.
 local M = {}
 
 local goose = require "goose"
@@ -54,9 +63,7 @@ local function state_file(buf)
   return vim.fs.joinpath(state_dir(), vim.fn.sha256(vim.api.nvim_buf_get_name(buf)):sub(1, 16) .. ".txt")
 end
 
-local function project_root(buf)
-  return vim.fs.root(buf, { "REVIEW.md", ".git", "dune-project" })
-end
+local project_root = goose.root -- shared with the Alt+L chat
 
 -- The file's path from its project root (the log and the prompt use it).
 local function rel_path(buf)
@@ -196,6 +203,32 @@ XCR reply gave a real reason.
 "fix": optional, only on a CR-soon, never on a CR: the exact replacement for
 lines from..to (at most 6 lines, same indentation), only when it is small and
 obviously right. The author reviews it before it lands. Leave it out otherwise.]]
+-- Codebase context: the review runs in the project root with read-only tools.
+local CONTEXT = [[
+
+
+You run in the project's root folder and can use Read, Grep and Glob on any
+file in it. Before raising a CR that rests on code outside this file (how a
+function is called, what its .mli promises, a type's definition, dune flags,
+tests), look it up instead of guessing. Never flag something as wrong when
+the rest of the codebase shows it is intended: an invariant the callers or
+the interface guarantee, a convention the project follows everywhere. Read
+only what a possible CR needs. Code that is not in the project (a vendored
+or outside library) you judge from what this file and its comments say, as
+you would without tools.]]
+local WIKI = [[
+
+
+For a Jane Street style or idiom objection the wiki rules do not settle,
+check Thomas's wiki (jswiki find, then read) and raise it only if a page
+backs it; end its text with "(wiki: <page>)" as for a rule, "rule" null.]]
+M.tools = "Read,Grep,Glob"
+
+---The review's system prompt (the memory file included) and claude options.
+function M.claude(buf)
+  local system = goose.with_memory(SYSTEM .. CONTEXT .. (goose.has_wiki() and WIKI or ""))
+  return system, goose.claude_opts(project_root(buf), { tools = M.tools })
+end
 
 local function numbered(lines)
   local out = {}
@@ -723,8 +756,15 @@ function M.review(buf)
   busy[buf] = true
   prune(buf)
   local prompt, snapshot, rules = M.prompt_for(buf)
+  local system, opts = M.claude(buf)
+  -- Each file it reads or page it looks up shows in the note as it starts.
+  opts.on_tool = function(name, input)
+    if busy[buf] and vim.api.nvim_buf_is_valid(buf) then
+      show(buf, ("seconder reviewing: %s…"):format(goose.describe(name, input, opts.cwd)), "DiagnosticVirtualTextInfo")
+    end
+  end
   show(buf, "seconder reviewing…", "DiagnosticVirtualTextInfo")
-  goose.ask(SYSTEM, prompt, function(out, err)
+  goose.ask(system, prompt, function(out, err)
     busy[buf] = nil
     if not vim.api.nvim_buf_is_valid(buf) then
       return
@@ -756,7 +796,7 @@ function M.review(buf)
     end
     local extra = #changes > 0 and (" (" .. table.concat(changes, ", ") .. ")") or ""
     vim.notify(("%s%s. %s"):format(text, extra, ans.reason or ""))
-  end)
+  end, opts)
 end
 
 ---Jump to the next (dir 1) or previous (dir -1) CR line.

@@ -38,11 +38,11 @@ local function pump()
       raw[job.case] = { out = out, err = err, prompt_chars = #job.prompt }
       job.cb(out, err)
       pump()
-    end)
+    end, job.opts)
   end
 end
-g.ask = function(system, prompt, cb)
-  queue[#queue + 1] = { case = current, system = system, prompt = prompt, cb = cb }
+g.ask = function(system, prompt, cb, opts)
+  queue[#queue + 1] = { case = current, system = system, prompt = prompt, cb = cb, opts = opts }
   pump()
 end
 
