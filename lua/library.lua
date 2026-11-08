@@ -14,7 +14,7 @@ local function normalize(path)
 end
 
 local function home(sub)
-  return normalize(vim.fn.expand("~/" .. sub))
+  return vim.fn.expand("~/" .. sub)
 end
 
 -- Folders whose whole tree is installed code, not his projects.

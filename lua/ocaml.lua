@@ -42,10 +42,10 @@ function M.indent(lnum)
   local input = table.concat(api.nvim_buf_get_lines(0, 0, -1, false), "\n") .. "\n"
   local dir = vim.fs.dirname(api.nvim_buf_get_name(0))
   local result = M.ocp_indent(dir, { "--numeric", "--indent-empty", "--lines", lnum .. "-" .. lnum }, input)
-  if not result then
+  if not result or result.code ~= 0 then
     return -1
   end
-  return result.code == 0 and (tonumber(vim.trim(result.stdout or "")) or -1) or -1
+  return tonumber(vim.trim(result.stdout or "")) or -1
 end
 
 local function use_ocp_indent(buf)
@@ -57,25 +57,37 @@ local function use_ocp_indent(buf)
   end
 end
 
+---The .ocamlformat that applies to files in `dir`, read: nil without one,
+---else `disable` (the project turns ocamlformat off) and its `margin` and
+---`profile`, if set. Read here for the ruler and by lsp.lua for formatting.
+---@return { disable: boolean, margin: string?, profile: string? }?
+function M.ocamlformat_conf(dir)
+  local path = vim.fs.find(".ocamlformat", { path = dir, upward = true })[1]
+  if not path then
+    return nil
+  end
+  local conf = { disable = false }
+  for line in io.lines(path) do
+    conf.disable = conf.disable or line:match "^%s*disable%s*=%s*true%s*$" ~= nil
+    conf.margin = line:match "^%s*margin%s*=%s*(%d+)" or conf.margin
+    conf.profile = line:match "^%s*profile%s*=%s*(%w+)" or conf.profile
+  end
+  return conf
+end
+
 ---The column ocamlformat wraps at for this file: the project's `margin`, else
 ---its profile's width (Jane Street 90, every other profile 80). 90 without an
 ---.ocamlformat, where a save uses the Jane Street profile (lsp.lua). nil where
 ---the project turns ocamlformat off: nothing wraps there.
 local function wrap_column(buf)
-  local dir = vim.fs.dirname(api.nvim_buf_get_name(buf))
-  local conf = vim.fs.find(".ocamlformat", { path = dir, upward = true })[1]
+  local conf = M.ocamlformat_conf(vim.fs.dirname(api.nvim_buf_get_name(buf)))
   if not conf then
     return "90"
   end
-  local margin, profile
-  for line in io.lines(conf) do
-    if line:match "^%s*disable%s*=%s*true%s*$" then
-      return nil
-    end
-    margin = line:match "^%s*margin%s*=%s*(%d+)" or margin
-    profile = line:match "^%s*profile%s*=%s*(%w+)" or profile
+  if conf.disable then
+    return nil
   end
-  return margin or (profile == "janestreet" and "90" or "80")
+  return conf.margin or (conf.profile == "janestreet" and "90" or "80")
 end
 
 local function root(buf)

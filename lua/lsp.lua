@@ -63,20 +63,6 @@ local function apply_output(buf, stdout)
   end
 end
 
----The project's .ocamlformat (path `conf`, may be nil) turns ocamlformat off
----(`disable = true`).
-local function ocamlformat_disabled(conf)
-  if not conf then
-    return false
-  end
-  for line in io.lines(conf) do
-    if line:match "^%s*disable%s*=%s*true%s*$" then
-      return true
-    end
-  end
-  return false
-end
-
 ---Re-indent with ocp-indent: leading spaces only, so a project that turns
 ---ocamlformat off still gets Jane Street indentation. `lines` ("X-Y",
 ---1-based) limits it to those lines; nil = the whole buffer.
@@ -94,8 +80,8 @@ function M.format_ocaml(buf, lines)
   local ocamlformat = require("tools").find "ocamlformat"
   local file = api.nvim_buf_get_name(buf)
   local dir = vim.fs.dirname(file)
-  local conf = vim.fs.find(".ocamlformat", { path = dir, upward = true })[1]
-  if not ocamlformat or ocamlformat_disabled(conf) then
+  local conf = require("ocaml").ocamlformat_conf(dir)
+  if not ocamlformat or (conf and conf.disable) then
     indent_ocaml(buf, dir, lines)
     return
   end
@@ -224,7 +210,7 @@ end
 -- 30 minutes.
 local watching = {} -- root -> true while a watch runs
 
-function M.restart_after_first_build(root, buf)
+local function restart_after_first_build(root, buf)
   local file = api.nvim_buf_get_name(buf)
   if not root or watching[root] or not vim.uv.fs_stat(root .. "/dune-project") then
     return
@@ -302,7 +288,7 @@ function M.setup()
       vim.bo[args.buf].omnifunc = "v:lua.MiniCompletion.completefunc_lsp"
       local client = vim.lsp.get_client_by_id(args.data.client_id)
       if client and client.name == "ocamllsp" then
-        M.restart_after_first_build(client.root_dir, args.buf)
+        restart_after_first_build(client.root_dir, args.buf)
         vim.keymap.set("n", "K", function()
           ocaml_hover(client, args.buf)
         end, { buffer = args.buf, desc = "Hover (full type)" })
