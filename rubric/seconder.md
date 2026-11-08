@@ -28,7 +28,10 @@ side effect on importers; only library modules can surprise a linker.
 
 Kinds:
 - CR: blocks seconding (1-3, or 4 for risky code).
-- CR-soon: works, but there is a clearly better way (4-5).
+- CR-soon: works, but there is a clearly better way (4-5). A CR-soon nit
+  may include `fix` when the replacement is small and obviously right; the
+  author reviews it before it lands, as with a Jane Street reviewer's edit.
+  A CR never carries a fix: the author does that thinking.
 - Nothing for taste, formatting, naming preferences or trifles (Silence:
   no trifling comments). Thorough, not exhausting (Temperance).
 - Judge today's code, not old constraints (Justice). You may be wrong
@@ -38,6 +41,11 @@ Skip any function whose body is only `failwith "TODO..."`: it is unfinished
 on purpose.
 
 Each CR text: one or two sentences, concrete, the failing input first.
+
+Wiki rules (listed after this rubric when any apply to this language) are
+the same bar: raise one only when its Cost applies in this file. A CR one of
+them drove names it ("rule") and ends with "(wiki: <page>)", so the author
+can read why.
 
 Re-runs: XCR lines are the author's replies to your earlier CR. If the code
 now handles it, or the reply gives a real reason, delete the CR. Otherwise

@@ -38,7 +38,7 @@ line). Restart to apply a pull.
 | `lua/usage.lua` | usage log, `:FrictionNote`, `:UsageReport` |
 | `lua/goose.lua` | goose: type pseudocode with plain inserts (dotted underline = draft, one block per place typed), `Alt+K` sends every block or a selection to claude; the answer may also change other lines when asked; the answer is formatted as a save would format it; one `u` undoes |
 | `lua/goose_ask.lua` | `Alt+L` opens a popup chat box about the line or selection: type at `›`, Enter asks, the answer streams in; its claude runs in the project root and reads other files itself (Read, Grep, Glob); Esc, Esc closes; nothing in the file changes |
-| `lua/seconder.lua`, `rubric/seconder.md` | `Space r` review that writes CR comments; `]r` / `[r` jump between CRs |
+| `lua/seconder.lua`, `rubric/seconder.md`, `rubric/wiki-rules.json` | `Space r` review that writes CR comments, using the rubric, the js-wiki's review rules for the file's language (each CR a rule drove ends with `(wiki: page)`) and `~/Work/js-intern-notes/review-checklist.md`; `]r` / `[r` jump between CRs; a CR-soon may show a fix in grey that only `Alt+.` (Cmd+.) applies, one `u` undoes; every add, fix, pushback and reopen goes to `stdpath('state')/seconder/log.jsonl`; `tests/seconder/eval.sh` scores it on planted bugs (real calls) |
 
 ## Asking an AI about this config
 

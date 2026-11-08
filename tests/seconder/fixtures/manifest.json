@@ -1,0 +1,184 @@
+[
+ {
+  "case": "poly_compare",
+  "file": "fills.ml",
+  "rule": "poly-compare",
+  "plant": "polymorphic = on a record with an abstract Price.t field",
+  "lines": [
+   11,
+   12
+  ],
+  "keywords": [
+   "polymorphic",
+   "equal",
+   "compare"
+  ]
+ },
+ {
+  "case": "exn_suffix",
+  "file": "settings.ml",
+  "rule": "exn-suffix",
+  "plant": "get_int raises (failwithf, Int.of_string) without _exn",
+  "lines": [
+   4,
+   7
+  ],
+  "keywords": [
+   "_exn",
+   "raise",
+   "exception",
+   "option",
+   "or_error",
+   "result"
+  ]
+ },
+ {
+  "case": "string_errors",
+  "file": "endpoint.ml",
+  "rule": "structured-errors",
+  "plant": "errors are plain strings",
+  "lines": [
+   3,
+   15
+  ],
+  "keywords": [
+   "string",
+   "error.t",
+   "or_error",
+   "structured",
+   "variant"
+  ]
+ },
+ {
+  "case": "abstract_type",
+  "file": "order_book.mli",
+  "rule": "abstract-by-default",
+  "alt_rules": [
+   "illegal-states"
+  ],
+  "plant": "concrete t with an invariant exposed in the .mli",
+  "lines": [
+   8,
+   12
+  ],
+  "keywords": [
+   "abstract",
+   "private",
+   "invariant",
+   "construct"
+  ]
+ },
+ {
+  "case": "illegal_states",
+  "file": "conn.ml",
+  "rule": "illegal-states",
+  "plant": "connected bool and socket option can disagree",
+  "lines": [
+   3,
+   5
+  ],
+  "keywords": [
+   "connected",
+   "variant",
+   "state",
+   "disagree",
+   "unrepresentable",
+   "redundant"
+  ]
+ },
+ {
+  "case": "dead_code",
+  "file": "report.ml",
+  "rule": "delete-dead-code",
+  "plant": "format_row_csv is never called",
+  "lines": [
+   5,
+   6
+  ],
+  "keywords": [
+   "unused",
+   "dead",
+   "never",
+   "delete",
+   "remove"
+  ]
+ },
+ {
+  "case": "unused_config",
+  "file": "quoter.ml",
+  "rule": "hardcode-first",
+  "plant": "use_fast_path is never read",
+  "lines": [
+   6,
+   6
+  ],
+  "keywords": [
+   "use_fast_path",
+   "unused",
+   "never read",
+   "never used"
+  ]
+ },
+ {
+  "case": "bug_fix_no_test",
+  "file": "ring.ml",
+  "previous": "ring.prev.ml",
+  "rule": "pin-bug-with-test",
+  "alt_rules": [
+   "test-shows-behaviour",
+   "counterfactual-expect"
+  ],
+  "plant": "off-by-one wrap fixed in risky code with no test",
+  "lines": [
+   12,
+   14
+  ],
+  "keywords": [
+   "test"
+  ]
+ },
+ {
+  "case": "hot_alloc",
+  "file": "mid.ml",
+  "rule": "no-hot-alloc",
+  "plant": "sprintf in a [@zero_alloc] function on the packet path",
+  "lines": [
+   11,
+   11
+  ],
+  "keywords": [
+   "alloc",
+   "sprintf",
+   "zero_alloc"
+  ]
+ },
+ {
+  "case": "workaround",
+  "file": "symbols.ml",
+  "rule": "fix-not-workaround",
+  "plant": "works around a vendored Reader bug instead of fixing it",
+  "lines": [
+   4,
+   9
+  ],
+  "keywords": [
+   "upstream",
+   "workaround",
+   "vendored",
+   "fix",
+   "file_lines"
+  ]
+ },
+ {
+  "case": "clean_window",
+  "file": "window.ml",
+  "rule": null,
+  "plant": "none (clean)"
+ },
+ {
+  "case": "clean_side",
+  "file": "side.ml",
+  "rule": null,
+  "plant": "none (clean)"
+ }
+]

@@ -2655,6 +2655,262 @@ check("Space r: the review ends with a note that stays: no issues, or N comments
   )
 end)
 
+-- ── Seconder: wiki rules, checklist, log, fix previews (2026-11-08) ───────
+-- The wiki's review rules and Thomas's checklist go in the prompt, each CR a
+-- rule drove ends with (wiki: page), every add/fixed/pushback/reopen/fix
+-- goes to log.jsonl, and a CR-soon may carry a fix shown in grey that only
+-- Alt+. applies. goose.ask is stubbed; the answer comes 50 ms after the ask.
+
+local sec_log = vim.fn.stdpath "state" .. "/seconder/log.jsonl"
+local SEC_RULES = vim.json.encode {
+  generated = "2026-11-08",
+  rules = {
+    { id = "poly-compare", kind = "CR", langs = { "ocaml" }, rule = "Don't compare records with polymorphic =.",
+      cost = "Raises on functional values.", when = "always in OCaml.", page = "avoid-polymorphic-compare",
+      url = "http://wiki.localhost/avoid-polymorphic-compare",
+      sources = { { slug = "hn-16410738-ext", who = "Will Yager", date = "2018-09-07" } } },
+    { id = "delete-dead-code", kind = "CR-soon", langs = { "any" }, rule = "Delete code nothing calls.",
+      cost = "Every reader keeps it in their head.", when = vim.NIL, page = "migrating-legacy-systems",
+      url = "http://wiki.localhost/migrating-legacy-systems", sources = {} },
+    { id = "py-only", kind = "CR", langs = { "python" }, rule = "A Python-only rule.", cost = "Python cost.",
+      when = vim.NIL, page = "python-page", url = "http://wiki.localhost/python-page", sources = {} },
+  },
+}
+
+local function sec_lines(n)
+  local lines = {}
+  for i = 1, n do
+    lines[i] = ("let x_%d = %d"):format(i, i)
+  end
+  return lines
+end
+
+-- Run fn(sec) with the sample rules, no checklist and an empty log; files
+-- named in `made` are removed afterwards.
+local function with_sec(fn)
+  local sec = require "seconder"
+  local saved = { sec.rules_path, sec.checklist_path }
+  local made = { proj .. "/wiki-rules.json" }
+  sec.rules_path, sec.checklist_path = made[1], proj .. "/no-checklist.md"
+  vim.fn.writefile({ SEC_RULES }, made[1])
+  vim.fn.delete(sec_log)
+  local ok, err = pcall(fn, sec, made)
+  sec.rules_path, sec.checklist_path = saved[1], saved[2]
+  vim.cmd "stopinsert"
+  vim.cmd "silent! edit! a.ml"
+  for _, f in ipairs(made) do
+    vim.fn.delete(f)
+  end
+  if not ok then
+    error(err, 0)
+  end
+end
+
+-- One review of `name` (opened with `lines` unless nil) answered with
+-- `answer`; returns { system, prompt }.
+local function sec_review(made, name, lines, answer)
+  local g = require "goose"
+  if lines then
+    made[#made + 1] = proj .. "/" .. name
+    vim.fn.writefile(lines, proj .. "/" .. name)
+    vim.cmd("edit! " .. proj .. "/" .. name)
+  end
+  local saved, got = g.ask, {}
+  g.ask = function(system, prompt, cb)
+    got.system, got.prompt = system, prompt
+    vim.defer_fn(function()
+      got.done = true
+      cb(answer)
+    end, 50)
+  end
+  local ok, err = pcall(function()
+    require("seconder").review()
+    for _ = 1, 30 do
+      if got.done then
+        break
+      end
+      wait(100)
+    end
+    wait(100)
+  end)
+  g.ask = saved
+  if not ok then
+    error(err, 0)
+  end
+  expect(got.done, "the stubbed review never answered")
+  return got
+end
+
+local NO_CRS = '{"verdict":"seconded","reason":"fine","add":[],"delete":[],"reopen":[]}'
+
+local function sec_events()
+  local out = {}
+  for _, l in ipairs(vim.fn.filereadable(sec_log) == 1 and vim.fn.readfile(sec_log) or {}) do
+    out[#out + 1] = vim.json.decode(l)
+  end
+  return out
+end
+
+check("Seconder wiki: rules for the file's language go in the prompt with source and page", function()
+  with_sec(function(sec, made)
+    local p = sec_review(made, "rev.ml", sec_lines(5), NO_CRS).prompt
+    expect(p:find("Rules from the wiki (each names its source)", 1, true), "no wiki rules section:\n" .. p:sub(1, 600))
+    local want = "[poly-compare] (CR) Don't compare records with polymorphic =. Cost: Raises on functional values. "
+      .. "When: always in OCaml. — source: Will Yager, 2018-09-07; wiki: avoid-polymorphic-compare"
+    expect(p:find(want, 1, true), "poly-compare not sent as\n" .. want)
+    expect(p:find("[delete-dead-code] (CR-soon) Delete code nothing calls.", 1, true), "an `any` rule was left out")
+    expect(not p:find("py-only", 1, true), "a Python rule went to an OCaml file")
+    p = sec_review(made, "rev.py", { "x = 1" }, NO_CRS).prompt
+    expect(p:find("[py-only]", 1, true) and p:find("[delete-dead-code]", 1, true), "the .py review lacks its rules")
+    expect(not p:find("poly-compare", 1, true), "an OCaml rule went to a Python file")
+    sec.rules_path = proj .. "/missing.json"
+    p = sec_review(made, "rev.ml", nil, NO_CRS).prompt
+    expect(not p:find("Rules from the wiki", 1, true), "a missing rules file still sent a rules section")
+  end)
+end)
+
+check("Seconder wiki: Thomas's checklist is sent when the file exists", function()
+  with_sec(function(sec, made)
+    local p = sec_review(made, "rev.ml", sec_lines(5), NO_CRS).prompt
+    expect(not p:find("Your own checklist", 1, true), "a checklist section without a checklist file")
+    sec.checklist_path = proj .. "/checklist.md"
+    made[#made + 1] = sec.checklist_path
+    vim.fn.writefile({ "- Did you test the empty list?" }, sec.checklist_path)
+    p = sec_review(made, "rev.ml", nil, NO_CRS).prompt
+    expect(
+      p:find("Your own checklist (from real review feedback):\n- Did you test the empty list?", 1, true),
+      "checklist not in the prompt"
+    )
+  end)
+end)
+
+check("Seconder wiki: a CR a rule drove ends with (wiki: page), once", function()
+  with_sec(function(_, made)
+    local ans = vim.json.encode {
+      verdict = "crs", reason = "r", delete = {}, reopen = {},
+      add = {
+        { line = 2, kind = "CR", text = "x_2 = y compares records polymorphically.", rule = "poly-compare" },
+        { line = 4, kind = "CR-soon", text = "x_4 is never used. (wiki: migrating-legacy-systems)", rule = "delete-dead-code" },
+        { line = 5, kind = "CR", text = "x_5 overflows on max_int.", rule = vim.NIL },
+      },
+    }
+    sec_review(made, "rev.ml", sec_lines(5), ans)
+    local text = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+    expect(text:find("CR claude: x_2 = y compares records polymorphically. (wiki: avoid-polymorphic-compare) *)", 1, true),
+      "no wiki suffix added:\n" .. text)
+    expect(text:find("x_4 is never used. (wiki: migrating-legacy-systems) *)", 1, true), "the model's suffix was lost:\n" .. text)
+    expect(not text:find("(wiki: migrating-legacy-systems) (wiki:", 1, true), "suffix doubled:\n" .. text)
+    expect(text:find("x_5 overflows on max_int. *)", 1, true), "a CR with no rule got a suffix:\n" .. text)
+  end)
+end)
+
+check("Seconder wiki: the log gets add, fixed, pushback (with the reply) and reopen", function()
+  with_sec(function(_, made)
+    local ans = vim.json.encode {
+      verdict = "crs", reason = "r", delete = {}, reopen = {},
+      add = {
+        { line = 3, kind = "CR", text = "x_3 = y on records.", rule = "poly-compare" },
+        { line = 6, kind = "CR-soon", text = "x_6 is dead.", rule = vim.NIL },
+        { line = 9, kind = "CR", text = "x_9 overflows.", rule = vim.NIL },
+      },
+    }
+    sec_review(made, "rev.ml", sec_lines(10), ans)
+    -- Thomas answers the first and third with an XCR, as at Jane Street.
+    local buf = vim.api.nvim_get_current_buf()
+    for i, l in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+      if l:find("x_3 = y on records", 1, true) then
+        vim.api.nvim_buf_set_lines(buf, i - 1, i, false, { (l:gsub("%(%* CR", "(* XCR"):gsub(" %*%)$", " thomas: they're ints here *)")) })
+      elseif l:find("x_9 overflows", 1, true) then
+        vim.api.nvim_buf_set_lines(buf, i - 1, i, false, { (l:gsub("%(%* CR", "(* XCR"):gsub(" %*%)$", " thomas: can't happen *)")) })
+      end
+    end
+    sec_review(made, "rev.ml", nil, vim.json.encode {
+      verdict = "crs", reason = "r", add = {},
+      delete = { { id = 1, why = "pushback" }, { id = 2, why = "fixed" } },
+      reopen = { { id = 3, text = "x_9 = max_int + 1 still wraps." } },
+    })
+    local ev = sec_events()
+    local kinds = vim.tbl_map(function(e)
+      return e.event
+    end, ev)
+    expect(table.concat(kinds, ",") == "add,add,add,pushback,fixed,reopen", "events: " .. table.concat(kinds, ","))
+    for _, e in ipairs(ev) do
+      expect(e.file == "rev.ml", "file is " .. tostring(e.file))
+      expect(tostring(e.ts):match "^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%d$", "ts is " .. tostring(e.ts))
+    end
+    expect(ev[1].rule == "poly-compare" and ev[1].kind == "CR", "add: " .. vim.inspect(ev[1]))
+    expect(ev[1].text == "x_3 = y on records. (wiki: avoid-polymorphic-compare)", "add text: " .. ev[1].text)
+    expect(ev[2].rule == vim.NIL, "a rule-less add logged rule " .. tostring(ev[2].rule))
+    expect(ev[4].rule == "poly-compare" and ev[4].text == ev[1].text, "pushback lost its CR: " .. vim.inspect(ev[4]))
+    expect(ev[4].reply == "thomas: they're ints here", "pushback reply: " .. tostring(ev[4].reply))
+    expect(ev[5].kind == "CR-soon" and ev[5].text == "x_6 is dead.", "fixed: " .. vim.inspect(ev[5]))
+    expect(ev[6].text == "x_9 = max_int + 1 still wraps." and tostring(ev[6].reply):find "can't happen", "reopen: " .. vim.inspect(ev[6]))
+  end)
+end)
+
+check("Seconder wiki: plain-id deletes still remove the CR and log fixed", function()
+  with_sec(function(_, made)
+    local lines = sec_lines(4)
+    table.insert(lines, 2, "(* CR claude: x_2 is wrong. *)")
+    sec_review(made, "rev.ml", lines, '{"verdict":"seconded","reason":"ok","add":[],"delete":[1],"reopen":[]}')
+    local text = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+    expect(not text:find "CR claude", "a plain-id delete left the CR:\n" .. text)
+    local ev = sec_events()
+    expect(#ev == 1 and ev[1].event == "fixed" and ev[1].text == "x_2 is wrong.", "log: " .. vim.inspect(ev))
+  end)
+end)
+
+check("Seconder wiki: a CR-soon fix shows in grey, Alt+. applies it, one u undoes, never by itself", function()
+  with_sec(function(_, made)
+    local orig = sec_lines(10)
+    sec_review(made, "rev.ml", orig, vim.json.encode {
+      verdict = "crs", reason = "r", delete = {}, reopen = {},
+      add = {
+        { line = 5, kind = "CR-soon", text = "x_5 reads better as 50.", rule = vim.NIL,
+          fix = { from = 5, to = 5, lines = { "let x_5 = 50" } } },
+        -- A CR's fix is ignored: correctness stays the author's to think through.
+        { line = 8, kind = "CR", text = "x_8 is wrong.", rule = vim.NIL,
+          fix = { from = 8, to = 8, lines = { "let x_8 = 80" } } },
+      },
+    })
+    local buf = vim.api.nvim_get_current_buf()
+    local function code()
+      return vim.tbl_filter(function(l)
+        return not l:find "CR claude" and not l:find "CR%-soon claude"
+      end, vim.api.nvim_buf_get_lines(buf, 0, -1, false))
+    end
+    local reviewed = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    expect(vim.deep_equal(code(), orig), "the review changed code:\n" .. table.concat(reviewed, "\n"))
+    local fns = vim.api.nvim_get_namespaces()["seconder.fix"]
+    local ghosts = {}
+    for _, m in ipairs(fns and vim.api.nvim_buf_get_extmarks(buf, fns, 0, -1, { details = true }) or {}) do
+      for _, vl in ipairs(m[4].virt_lines or {}) do
+        ghosts[#ghosts + 1] = { row = m[2], text = vl[1][1] }
+      end
+    end
+    expect(#ghosts == 1 and ghosts[1].text == "let x_5 = 50", "ghost lines: " .. vim.inspect(ghosts))
+    expect(reviewed[ghosts[1].row + 1]:find "CR%-soon claude: x_5", "the ghost is not under the CR-soon")
+    wait(500)
+    expect(vim.api.nvim_buf_get_lines(buf, 5, 6, false)[1] == "let x_5 = 5", "the fix applied itself")
+    -- Alt+. away from the CR does nothing.
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    press(super ".", 200)
+    expect(vim.deep_equal(vim.api.nvim_buf_get_lines(buf, 0, -1, false), reviewed), "Alt+. on line 1 changed the file")
+    vim.api.nvim_win_set_cursor(0, { ghosts[1].row + 1, 0 })
+    press(super ".", 200)
+    local after = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    local want = vim.deepcopy(orig)
+    want[5] = "let x_5 = 50"
+    table.insert(want, 8, reviewed[9]) -- the x_8 CR stays
+    expect(vim.deep_equal(after, want), "after Alt+.:\n" .. table.concat(after, "\n"))
+    local ev = sec_events()
+    expect(ev[#ev].event == "fix-accepted" and ev[#ev].text == "x_5 reads better as 50.", "log: " .. vim.inspect(ev[#ev]))
+    press("u", 200)
+    local undone = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    expect(vim.deep_equal(undone, reviewed), "one u left:\n" .. table.concat(undone, "\n"))
+  end)
+end)
+
 -- ── The test tools themselves ────────────────────────────────────────────
 
 local tests_dir = vim.fn.stdpath "config" .. "/tests"

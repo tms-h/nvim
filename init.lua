@@ -19,7 +19,8 @@
 --   sync        pulls this config from GitHub after startup (clean checkout only)
 --   goose       type pseudocode, Alt+K: the underlined typed lines become code;
 --               Alt+L asks a question about the code (goose_ask)
---   seconder    Space r: a reviewer that writes CR comments; ]r / [r jump
+--   seconder    Space r: a reviewer that writes CR comments; ]r / [r jump;
+--               Alt+. applies the fix a CR-soon shows
 --
 -- Loaded on first use: hunks (change keys), run (F5, lazygit), ocaml
 -- (ocp-indent, ocamlformat, dune; from after/ftplugin).

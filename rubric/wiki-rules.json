@@ -1,0 +1,365 @@
+{
+ "generated": "2026-11-09",
+ "rules": [
+  {
+   "id": "poly-compare",
+   "kind": "CR",
+   "langs": [
+    "ocaml"
+   ],
+   "rule": "Don't compare non-int values with polymorphic `=`, `<>` or `compare`; use the type's own `equal`/`compare` (e.g. `String.equal`, `[%equal: t]`).",
+   "cost": "gives wrong answers on abstract types whose layout isn't canonical (two equal `Set.t`s compare unequal), and raises at runtime once a value holds a function or object.",
+   "when": "",
+   "page": "avoid-polymorphic-compare",
+   "url": "http://wiki.localhost/avoid-polymorphic-compare",
+   "sources": [
+    {
+     "slug": "the-perils-of-polymorphic-compare",
+     "who": "Yaron Minsky",
+     "date": "2008-08-18"
+    },
+    {
+     "slug": "hn-16410738-ext",
+     "who": "Will Yager",
+     "date": "2018-02-19"
+    },
+    {
+     "slug": "doc-base",
+     "who": "Jane Street",
+     "date": ""
+    }
+   ]
+  },
+  {
+   "id": "hard-to-read",
+   "kind": "CR",
+   "langs": [
+    "any"
+   ],
+   "rule": "Restructure code a careful reader can't follow until it reads plainly; the CR says which part and what would make it clear.",
+   "cost": "code a reviewer can't follow can't be checked, so its bugs ship, and it stays harder to change and less likely to do what its author meant.",
+   "when": "you can point at the lines; not for style, naming taste or formatting.",
+   "page": "code-review",
+   "url": "http://wiki.localhost/code-review",
+   "sources": [
+    {
+     "slug": "future-of-programming",
+     "who": "Richard Eisenberg",
+     "date": "2023-05-17"
+    },
+    {
+     "slug": "talk-automated-trading-and-ocaml-se-daily",
+     "who": "Yaron Minsky",
+     "date": "2018-02-03"
+    }
+   ]
+  },
+  {
+   "id": "abstract-by-default",
+   "kind": "CR",
+   "langs": [
+    "ocaml"
+   ],
+   "rule": "Keep a type abstract in the `.mli` when its values must satisfy an invariant, and expose only constructors that check it (e.g. `create : … -> t Or_error.t`).",
+   "cost": "with the definition exposed, any client can build or mutate a value that breaks the invariant, and the module's functions, which assume it, then give wrong answers.",
+   "when": "the invariant isn't already enforced by the type itself (sorted, non-empty, in range, validated).",
+   "page": "interface-files",
+   "url": "http://wiki.localhost/interface-files",
+   "sources": [
+    {
+     "slug": "doc-rwo-files-modules-and-programs",
+     "who": "Yaron Minsky and Anil Madhavapeddy",
+     "date": ""
+    },
+    {
+     "slug": "amin-mli-hero-or-menace-ext",
+     "who": "Yawar Amin",
+     "date": "2020-02-02"
+    }
+   ]
+  },
+  {
+   "id": "illegal-states",
+   "kind": "CR",
+   "langs": [
+    "ocaml"
+   ],
+   "rule": "Turn a type that can hold a value the code must never see (an `option` that's never `None` in some state, two bools that can't both be true, an `int` that's really an id) into a variant or a distinct type, and name the bad state.",
+   "cost": "nothing checks that the code avoids the bad state, so a later change can create it, and every reader must remember which fields are valid when.",
+   "when": "",
+   "page": "make-illegal-states-unrepresentable",
+   "url": "http://wiki.localhost/make-illegal-states-unrepresentable",
+   "sources": [
+    {
+     "slug": "effective-ml-revisited",
+     "who": "Yaron Minsky",
+     "date": "2011-03-09"
+    },
+    {
+     "slug": "language-design",
+     "who": "Leo White",
+     "date": "2020-10-21"
+    }
+   ]
+  },
+  {
+   "id": "pin-bug-with-test",
+   "kind": "CR",
+   "langs": [
+    "any"
+   ],
+   "rule": "Ship a bug fix with a test that fails without it, ideally an expect test added first so the fix shows up as its diff.",
+   "cost": "nobody, reviewer included, can see the fix works, and a later change can bring the bug back unnoticed.",
+   "when": "the fix is in code where a break is costly (money, production data, order paths). CR, not CR-soon, because \"it's fixed\" is the claim under review and the test is its evidence.",
+   "page": "testing-philosophy",
+   "url": "http://wiki.localhost/testing-philosophy",
+   "sources": [
+    {
+     "slug": "ironing-out-your-development-style",
+     "who": "Yaron Minsky",
+     "date": "2017-08-24"
+    },
+    {
+     "slug": "henry-putting-judge-to-test-ext",
+     "who": "Ian Henry",
+     "date": "2021-10-16"
+    },
+    {
+     "slug": "yang-things-fall-apart-ext",
+     "who": "Nicholas Yang",
+     "date": "2023-09-23"
+    }
+   ]
+  },
+  {
+   "id": "exn-suffix",
+   "kind": "CR",
+   "langs": [
+    "ocaml"
+   ],
+   "rule": "Name a function that can raise with an `_exn` suffix, and make the plain name return an `option` or `Or_error.t`.",
+   "cost": "a caller reading `foo x` assumes it can't throw, so the missing case crashes at run time instead of failing to type-check, and grepping for `_exn` no longer finds every place that can fail.",
+   "when": "the function raises on ordinary inputs (a missing key, bad data), not only on a broken invariant.",
+   "page": "the-exn-suffix",
+   "url": "http://wiki.localhost/the-exn-suffix",
+   "sources": [
+    {
+     "slug": "core-principles-uniformity-of-interface",
+     "who": "Yaron Minsky",
+     "date": "2008-05-11"
+    },
+    {
+     "slug": "hn-5769845-ext",
+     "who": "samdk",
+     "date": "2013-05-26"
+    }
+   ]
+  },
+  {
+   "id": "no-hot-alloc",
+   "kind": "CR",
+   "langs": [
+    "ocaml"
+   ],
+   "rule": "Don't allocate on the hot path after startup (no `String.sub`, closures, lists or boxed floats per event); reuse preallocated buffers or the local, non-allocating versions.",
+   "cost": "every allocation feeds the GC, and a collection or compaction landing on the hot path is a latency spike.",
+   "when": "only in files with `[@zero_alloc]` attributes or a REVIEW.md that marks the code latency-sensitive, and only in code that runs per event, not at startup.",
+   "page": "zero-alloc-ocaml",
+   "url": "http://wiki.localhost/zero-alloc-ocaml",
+   "sources": [
+    {
+     "slug": "hn-44269790-ext",
+     "who": "Raul Jara",
+     "date": "2025-06-13"
+    },
+    {
+     "slug": "performance-engineering-on-hard-mode",
+     "who": "Andrew Hunter",
+     "date": "2023-11-28"
+    },
+    {
+     "slug": "allsopp-oxcaml-toes-ext",
+     "who": "David Allsopp",
+     "date": "2025-05-07"
+    }
+   ]
+  },
+  {
+   "id": "structured-errors",
+   "kind": "CR-soon",
+   "langs": [
+    "ocaml"
+   ],
+   "rule": "Build errors from the values involved (`Error.create`, `Or_error.error_s [%message …]`), not from a `sprintf`-ed string.",
+   "cost": "a string error drops the request, input or key that failed, and any code that logs, renders or branches on it must parse text meant for humans, which breaks when the wording changes.",
+   "when": "",
+   "page": "choosing-an-error-type",
+   "url": "http://wiki.localhost/choosing-an-error-type",
+   "sources": [
+    {
+     "slug": "jelvis-structure-your-errors-ext",
+     "who": "Tikhon Jelvis",
+     "date": "2020-12-13"
+    },
+    {
+     "slug": "how-to-fail-introducing-or-error-dot-t",
+     "who": "David House",
+     "date": "2014-04-23"
+    }
+   ]
+  },
+  {
+   "id": "hardcode-first",
+   "kind": "CR-soon",
+   "langs": [
+    "any"
+   ],
+   "rule": "Hardcode the one value or implementation in use; don't add options, config fields, flags or parameters nobody sets yet, and make it an argument when a second case appears.",
+   "cost": "an option nobody sets is a code path nobody runs, so it rots untested, and a config string can name something that doesn't exist, caught only at run time.",
+   "when": "",
+   "page": "configuration-as-code",
+   "url": "http://wiki.localhost/configuration-as-code",
+   "sources": [
+    {
+     "slug": "baugh-code-not-config-ext",
+     "who": "Spencer Baugh",
+     "date": "2021-02-22"
+    },
+    {
+     "slug": "yang-code-crush-ext",
+     "who": "Nicholas Yang",
+     "date": "2023-08-22"
+    }
+   ]
+  },
+  {
+   "id": "test-shows-behaviour",
+   "kind": "CR-soon",
+   "langs": [
+    "ocaml"
+   ],
+   "rule": "Add or update an expect test that prints what a new or changed non-trivial function does, including on the edge case you found.",
+   "cost": "the reviewer can't see the behaviour change, and a later change that breaks it fails no test.",
+   "when": "no existing test's output diff already shows the change; skip pure refactors and trivial wrappers.",
+   "page": "expect-tests",
+   "url": "http://wiki.localhost/expect-tests",
+   "sources": [
+    {
+     "slug": "ironing-out-your-development-style",
+     "who": "Yaron Minsky",
+     "date": "2017-08-24"
+    },
+    {
+     "slug": "the-joy-of-expect-tests",
+     "who": "James Somers",
+     "date": "2023-01-09"
+    }
+   ]
+  },
+  {
+   "id": "counterfactual-expect",
+   "kind": "CR-soon",
+   "langs": [
+    "ocaml"
+   ],
+   "rule": "Make an expect test show its output depends on the input it's about: print the output for input A and for A with that one value changed, or their diff.",
+   "cost": "a test showing only \"X with Y=Z fails\" may fail for another reason (another field, a new check), so it doesn't prove what its name says.",
+   "when": "the test claims a specific input causes a specific outcome (a validation rule, a branch).",
+   "page": "expect-tests",
+   "url": "http://wiki.localhost/expect-tests",
+   "sources": [
+    {
+     "slug": "hn-36660051-ext",
+     "who": "Ian Henry",
+     "date": "2023-07-09"
+    }
+   ]
+  },
+  {
+   "id": "delete-dead-code",
+   "kind": "CR-soon",
+   "langs": [
+    "any"
+   ],
+   "rule": "Delete code paths nothing calls any more (dead functions, branches behind a flag nobody sets, commented-out blocks) instead of keeping them around.",
+   "cost": "unrun code rots as requirements and libraries move, and the day a later change wires it back in, it brings outdated assumptions and bugs with it.",
+   "when": "the path is unreachable in the tree today; new code already running side by side with the old is not dead.",
+   "page": "migrating-legacy-systems",
+   "url": "http://wiki.localhost/migrating-legacy-systems",
+   "sources": [
+    {
+     "slug": "yang-code-crush-ext",
+     "who": "Nicholas Yang",
+     "date": "2023-08-22"
+    }
+   ]
+  },
+  {
+   "id": "lift-helpers",
+   "kind": "CR-soon",
+   "langs": [
+    "ocaml"
+   ],
+   "rule": "Lift a helper nested deep inside another function to the top level, passing what it used from the enclosing scope as arguments, and leave it out of the `.mli`.",
+   "cost": "a reader can't see what a nested helper depends on without scanning its free variables, and the enclosing function gets longer.",
+   "when": "a named helper two or more levels deep that captures nothing or a value or two; short lambdas stay.",
+   "page": "optimize-for-reading",
+   "url": "http://wiki.localhost/optimize-for-reading",
+   "sources": [
+    {
+     "slug": "amin-lift-functions-ext",
+     "who": "Yawar Amin",
+     "date": "2019-09-02"
+    }
+   ]
+  },
+  {
+   "id": "split-refactor",
+   "kind": "CR-soon",
+   "langs": [
+    "any"
+   ],
+   "rule": "Split a change that mixes a refactor (renames, moved code, a new type) with a behaviour change into two features: the refactor first, then the behaviour change.",
+   "cost": "the reviewer has to check every mechanical line for a hidden semantic change, and the expect-test diff mixes the real change with refactor noise.",
+   "when": "judged on the diff since the last review, and only when the refactor part is big enough to hide the behaviour change.",
+   "page": "small-features",
+   "url": "http://wiki.localhost/small-features",
+   "sources": [
+    {
+     "slug": "ironing-out-your-development-style",
+     "who": "Yaron Minsky",
+     "date": "2017-08-24"
+    },
+    {
+     "slug": "hn-42720565-ext",
+     "who": "Aaron Dufour",
+     "date": "2025-01-16"
+    }
+   ]
+  },
+  {
+   "id": "fix-not-workaround",
+   "kind": "CR-soon",
+   "langs": [
+    "any"
+   ],
+   "rule": "Fix a quirk in an in-house library in the library itself instead of wrapping or working around it in your code.",
+   "cost": "the workaround is more code to carry on top of the problem, and the \"proper fix later\" never gets budgeted.",
+   "when": "the library is in the same repo and can be changed; a tool you don't own (the compiler, outside open source) on a deadline is the exception.",
+   "page": "working-with-upstream",
+   "url": "http://wiki.localhost/working-with-upstream",
+   "sources": [
+    {
+     "slug": "baugh-change-the-code-ext",
+     "who": "Spencer Baugh",
+     "date": "2022-01-26"
+    },
+    {
+     "slug": "hn-7728067-ext",
+     "who": "Tikhon Jelvis",
+     "date": "2014-05-11"
+    }
+   ]
+  }
+ ]
+}
