@@ -3,11 +3,12 @@
 local M = {}
 
 local api = vim.api
+local tools = require "tools"
 
 local function command_for(file, ft)
   local quoted = vim.fn.shellescape(file)
   if ft == "python" then
-    local python = require("tools").find "python3" or require("tools").find "python" or "python3"
+    local python = tools.find "python3" or tools.find "python" or "python3"
     return python .. " " .. quoted
   elseif ft == "ocaml" then
     -- In a dune project, dune's own errors; else the toplevel.
