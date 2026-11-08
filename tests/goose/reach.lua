@@ -220,6 +220,60 @@ vim.api.nvim_set_current_win(code_win)
 vim.wait(200)
 check("leaving the box closes it", not (c.win and vim.api.nvim_win_is_valid(c.win)))
 
+-- 8. Scrolling while typing: a prompt buffer pins the cursor to the › line in
+-- Insert mode, so Ctrl+U must leave typing and scroll the conversation.
+vim.api.nvim_set_current_win(code_win)
+keys "<M-l>"
+c = ask.chat(buf)
+local long = {}
+for i = 1, 150 do
+  long[i] = "old line " .. i
+end
+vim.api.nvim_buf_set_lines(c.buf, 0, 0, false, long)
+vim.api.nvim_win_set_config(c.win, { height = 20 })
+vim.api.nvim_win_set_cursor(c.win, { vim.api.nvim_buf_line_count(c.buf), 0 })
+local top = vim.fn.getwininfo(c.win)[1].topline
+keys "A<C-u>"
+check(
+  "Ctrl+U while typing scrolls the box up",
+  vim.fn.getwininfo(c.win)[1].topline < top,
+  ("topline %d -> %d"):format(top, vim.fn.getwininfo(c.win)[1].topline)
+)
+keys "<Esc>"
+
+-- 9. Alt+K in the box: the asked-about line becomes code from the chat, the
+-- box closes, and one u undoes it.
+vim.fn.writefile({ "let a = 1", "let b = 2", "let c = 3" }, proj .. "/lib/y.ml")
+vim.cmd.edit(proj .. "/lib/y.ml")
+buf = vim.api.nvim_get_current_buf()
+before = lines(buf)
+vim.api.nvim_win_set_cursor(0, { 2, 0 })
+keys "<M-l>rename b to bee<CR>"
+vim.wait(3000, function()
+  return chat_text():find("second line", 1, true) ~= nil and not ask.chat(buf).busy
+end, 20)
+cwin = ask.chat(buf).win
+keys "<M-k>"
+wait_idle(buf)
+L = lines(buf)
+check("Alt+K in the box closes it", not vim.api.nvim_win_is_valid(cwin))
+check(
+  "Alt+K in the box rewrites the asked-about line",
+  L[1] == "let a = 1" and L[2]:match "^let a%d" and L[3]:match "^let b%d" and L[4] == "let c = 3",
+  vim.inspect(L)
+)
+E = {}
+for _, l in ipairs(vim.fn.readfile(log)) do
+  E[#E + 1] = vim.json.decode(l)
+end
+check(
+  "Alt+K in the box sends the chat as the instruction",
+  E[#E].content:find("› rename b to bee", 1, true) and E[#E].content:find("the way this chat", 1, true),
+  E[#E].content
+)
+keys "u"
+check("Alt+K in the box: one u undoes it", vim.deep_equal(lines(buf), before), vim.inspect(lines(buf)))
+
 vim.notify = notify
 io.stdout:write(("goose reach: %d pass, %d fail\n"):format(pass, fail))
 vim.cmd(fail == 0 and "qa!" or "cquit 1")

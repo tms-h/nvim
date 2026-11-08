@@ -410,7 +410,16 @@ exact current lines of the file, enough to be unique
 what they become
 >>>>>>> REPLACE]]
 
-local function prompt_for(buf, s, e, lines, errors)
+---The last part of a conversion message: fix errors, follow an instruction
+---(Alt+K in the Alt+L chat box), or convert the pseudocode.
+local function task(errors, instruction)
+  if errors then
+    return "Your last answer for the region (shown above) gave these compiler errors; fix them:\n" .. errors
+  end
+  return instruction or "Rewrite the region's pseudocode as code."
+end
+
+local function prompt_for(buf, s, e, lines, errors, instruction)
   local all = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   local before = table.concat(vim.list_slice(all, 1, s), "\n")
   local after = table.concat(vim.list_slice(all, e + 2), "\n")
@@ -422,11 +431,7 @@ local function prompt_for(buf, s, e, lines, errors)
     parts[#parts + 1] = ("Matching %s:\n%s"):format(vim.fn.fnamemodify(sib, ":t"), text)
   end
   parts[#parts + 1] = "Whole file, region marked:\n" .. before .. "\n<<<REGION\n" .. table.concat(lines, "\n") .. "\nREGION>>>\n" .. after
-  if errors then
-    parts[#parts + 1] = "Your last answer for the region (shown above) gave these compiler errors; fix them:\n" .. errors
-  else
-    parts[#parts + 1] = "Rewrite the region's pseudocode as code."
-  end
+  parts[#parts + 1] = task(errors, instruction)
   return table.concat(parts, "\n\n")
 end
 
@@ -445,21 +450,17 @@ local text_diff = (vim.text and vim.text.diff) or vim.diff
 
 ---Session message for the region: the whole file the first time, after
 ---that a diff since the last message plus the region. Returns prompt, file.
-local function session_prompt(S, buf, s, e, lines, errors)
+local function session_prompt(S, buf, s, e, lines, errors, instruction)
   local file = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n") .. "\n"
   if not S.sent then
-    return prompt_for(buf, s, e, lines, errors), file
+    return prompt_for(buf, s, e, lines, errors, instruction), file
   end
   local d = text_diff(S.sent, file, { result_type = "unified", ctxlen = 2 })
   local parts = {
     d == "" and "The file is unchanged since the last message." or ("File changes since the last message:\n" .. d),
     ("Region (lines %d-%d):\n<<<REGION\n%s\nREGION>>>"):format(s + 1, e + 1, table.concat(lines, "\n")),
   }
-  if errors then
-    parts[#parts + 1] = "Your last answer for the region (shown above) gave these compiler errors; fix them:\n" .. errors
-  else
-    parts[#parts + 1] = "Rewrite the region's pseudocode as code."
-  end
+  parts[#parts + 1] = task(errors, instruction)
   return table.concat(parts, "\n\n"), file
 end
 
@@ -848,10 +849,12 @@ local function finish(buf, mark, out, err, retry)
   apply(buf, s, e, new, edits, retry)
 end
 
----Convert lines s..e (0-based, inclusive) of buf. `errors` = a retry.
-run = function(buf, s, e, errors)
+---Convert lines s..e (0-based, inclusive) of buf. `errors` = a retry;
+---`instruction` replaces "turn the pseudocode into code" (the region may then
+---be code, or blank).
+run = function(buf, s, e, errors, instruction)
   local lines = vim.api.nvim_buf_get_lines(buf, s, e + 1, false)
-  if #lines == 0 or not table.concat(lines, ""):match "%S" then
+  if #lines == 0 or not (instruction or table.concat(lines, ""):match "%S") then
     return
   end
   e = s + #lines - 1 -- a region past the buffer's end is cut to what exists
@@ -872,7 +875,7 @@ run = function(buf, s, e, errors)
     finish(buf, mark, out, err, errors ~= nil)
   end
   if not M.use_session then
-    return M.ask(SYSTEM, prompt_for(buf, s, e, lines, errors), done)
+    return M.ask(SYSTEM, prompt_for(buf, s, e, lines, errors, instruction), done)
   end
   -- The region is read again when the message goes out: an earlier send in
   -- this buffer may still be writing and move it.
@@ -890,11 +893,11 @@ run = function(buf, s, e, errors)
       if not s2 then
         return
       end
-      return session_prompt(S, buf, s2, e2, l2, errors)
+      return session_prompt(S, buf, s2, e2, l2, errors, instruction)
     end,
     full = function()
       local s2, e2, l2 = now()
-      return s2 and prompt_for(buf, s2, e2, l2, errors)
+      return s2 and prompt_for(buf, s2, e2, l2, errors, instruction)
     end,
     on_partial = function(text)
       show_preview(buf, mark, text)

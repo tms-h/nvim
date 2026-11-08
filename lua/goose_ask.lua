@@ -3,8 +3,15 @@
 --   Alt+L / Cmd+L, :GooseAsk  open the chat box over the code, in the
 --     Command box's spot, and type the question at the › line; Enter sends.
 --     The question is about the selected lines, else the cursor's line. The
---     answer streams in above the › line; ask follow-ups the same way. The
---     file never changes.
+--     answer streams in above the › line; ask follow-ups the same way.
+--     Asking never changes the file.
+--   Alt+K / Cmd+K in the box  write what the chat settled on into the file:
+--     the box closes and the asked-about lines go through Alt+K's conversion
+--     (grey "writing…", ghost lines, one change, one `u` undoes it), which
+--     may also change other lines of this file. Other files are out of reach.
+--   Wheel, Ctrl+U / Ctrl+D scroll the box, also while typing: a prompt buffer
+--     keeps the cursor on the › line in Insert mode, so they leave typing
+--     first; i (or a, A) types at the › line again.
 --   Esc leaves typing (scroll, copy); Esc again, q, Alt+L or Alt+W close the
 --     box, and so does moving to another window. Alt+L brings the same
 --     conversation back: one per file.
@@ -23,6 +30,18 @@ local ns = api.nvim_create_namespace "goose_ask"
 
 local chats = {} -- chats[source buf] = { buf = chat buf, s, e = lines asked about }
 local PROMPT = "› "
+
+-- Alt+K in the box: the instruction that replaces "turn the pseudocode into
+-- code". Without the "unchanged" line, an answer that only edits other lines
+-- would delete the region, as it does for pseudocode.
+local WRITE = [[Change the region the way this chat about it settled on. The region is
+code, not pseudocode: keep everything the chat does not change, and if the
+region itself does not change, output its lines unchanged. Change other
+lines of this file only as the chat requires. Changes the chat asks for in
+other files are out of reach: leave them.
+
+The chat (lines starting with › are the programmer's questions):
+%s]]
 
 local SYSTEM = [[You answer the programmer's questions about their code. You run
 in the project's root folder and can use Read, Grep and Glob on any file in it.
@@ -114,6 +133,7 @@ local function send(c, q)
   end
   local root = root_of(src)
   local reads, answer = {}, nil
+  c.busy = true
   -- The new › line is the last line; the answer and a blank go above it.
   local at = api.nvim_buf_line_count(cb) - 1
   local wait = body()[1]
@@ -162,6 +182,7 @@ local function send(c, q)
       show()
     end,
     on_done = function(out, err)
+      c.busy = false
       show(out or ("_goose: %s_"):format(err or "no answer"))
       pcall(api.nvim_buf_del_extmark, cb, ns, mark)
     end,
@@ -191,6 +212,14 @@ local function chat_buf(c)
   map("n", "<Esc>", shut, "Goose: close the chat box")
   map("n", "q", shut, "Goose: close the chat box")
   map({ "n", "i" }, require("util").chord "l", shut, "Goose: close the chat box")
+  map({ "n", "i" }, require("util").chord "k", function()
+    M.write(c)
+  end, "Goose: write what the chat settled on into the file")
+  -- Typing pins the cursor to the › line, so these leave typing first, then
+  -- do their usual scroll (the wheel scrolls the window under the mouse).
+  for _, key in ipairs { "<ScrollWheelUp>", "<ScrollWheelDown>", "<C-u>", "<C-d>" } do
+    vim.keymap.set("i", key, "<Esc>" .. key, { buffer = b, desc = "Goose: scroll the chat box" })
+  end
   api.nvim_create_autocmd("WinLeave", {
     buffer = b,
     callback = function()
@@ -201,6 +230,22 @@ local function chat_buf(c)
   })
   c.buf = b
   return b
+end
+
+---Alt+K in the box: close it and convert the asked-about lines of the file
+---with the chat as the instruction.
+function M.write(c)
+  if c.busy then
+    return vim.notify "goose: wait for the answer to finish"
+  end
+  local talk = api.nvim_buf_get_lines(c.buf, 0, -1, false)
+  table.remove(talk) -- the › line being typed
+  if not table.concat(talk, ""):match "%S" then
+    return vim.notify "goose: ask something first; then Alt+K writes it into the file"
+  end
+  vim.cmd.stopinsert()
+  close(c)
+  goose.convert(c.src, c.s, c.e, nil, WRITE:format(table.concat(talk, "\n")))
 end
 
 ---Alt+L: open the chat box about lines s..e of the current file (default:
@@ -220,6 +265,8 @@ function M.ask(s, e)
   cfg.border = vim.o.winborder ~= "" and vim.o.winborder or "rounded"
   cfg.title = (" Goose · %s "):format(where(c))
   cfg.title_pos = "center"
+  cfg.footer = " Alt+K writes it into the file "
+  cfg.footer_pos = "center"
   c.win = api.nvim_open_win(b, true, cfg)
   vim.wo[c.win].wrap, vim.wo[c.win].linebreak = true, true
   vim.wo[c.win].number, vim.wo[c.win].relativenumber, vim.wo[c.win].signcolumn, vim.wo[c.win].list = false, false, "no", false
