@@ -2510,6 +2510,57 @@ check("OCaml gt wraps a motion, a selection or a line in (fun () -> ...)", funct
   vim.cmd "edit! c.ml"
 end)
 
+check("Alt+L box: the wheel scrolls at once while an answer streams, and the stream never pulls the view back", function()
+  -- Terminal Neovim's smooth scroll (plugins.lua), which this Neovide-mode
+  -- run otherwise skips: its glide dropped wheel steps and dragged the view
+  -- back down to the newest line.
+  local animate = require "mini.animate"
+  animate.setup {
+    scroll = { timing = animate.gen_timing.linear { duration = 120, unit = "total" } },
+    cursor = { enable = false },
+    resize = { enable = false },
+    open = { enable = false },
+    close = { enable = false },
+  }
+  local g = require "goose"
+  local saved = { g.session_argv, g.prewarm, vim.env.GOOSE_STUB_DELAY }
+  g.session_argv = { "python3", "-I", vim.fn.stdpath "config" .. "/tests/goose/stub-claude.py" }
+  g.prewarm = false
+  vim.env.GOOSE_STUB_DELAY = "0.01"
+  vim.cmd "edit! a.ml"
+  local src = api.nvim_get_current_buf()
+  press(super "l", 300)
+  press("LONG please<CR>", 1500)
+  local c = require("goose_ask").chat(src)
+  local win = c and c.win
+  local function top()
+    return vim.fn.getwininfo(win)[1].topline
+  end
+  local before, moved, final = 0, 0, 0
+  if win then
+    before = top()
+    local pos = api.nvim_win_get_position(win)
+    for _ = 1, 5 do
+      api.nvim_input_mouse("wheel", "up", "", 0, pos[1] + 3, pos[2] + 10)
+    end
+    wait(500)
+    moved = top()
+    for _ = 1, 40 do
+      if not c.busy then
+        break
+      end
+      wait(250)
+    end
+    final = top()
+    g.kill_session(c.buf)
+  end
+  vim.g.minianimate_disable = true -- off again for the checks after this one
+  g.session_argv, g.prewarm, vim.env.GOOSE_STUB_DELAY = saved[1], saved[2], saved[3]
+  expect(win, "Alt+L opened no box")
+  expect(moved <= before - 15, ("5 wheel steps up moved the top line %d -> %d"):format(before, moved))
+  expect(final == moved, ("the stream moved the view %d -> %d"):format(moved, final))
+end)
+
 -- ── Seconder (Space r) status, 2026-11-08 ────────────────────────────────
 -- "if i space r to add seconder, but i do stuff with the cursor, the prompt
 -- goes away ... if the code has no issues ... it doesnt change a thing and its

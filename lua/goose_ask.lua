@@ -15,7 +15,10 @@
 --     may also change other lines of this file. Other files are out of reach.
 --   Wheel, Ctrl+U / Ctrl+D scroll the box, also while typing: a prompt buffer
 --     keeps the cursor on the › line in Insert mode, so they leave typing
---     first; i (or a, A) types at the › line again.
+--     first; i (or a, A) types at the › line again. A streaming answer is
+--     followed only while the end is in view: scrolled up, the view stays
+--     put until you scroll back down or type again. No scroll glide here
+--     (mini.animate), so every wheel step lands at once.
 --   Ctrl+Backspace deletes the word before the cursor, never the › prompt.
 --   Esc leaves typing (scroll, copy); Esc again, q, Alt+L or Alt+W close the
 --     box, and so does moving to another window. Alt+L brings the same
@@ -37,6 +40,7 @@ local notes = api.nvim_create_namespace "goose_ask_notes"
 
 local chats = {} -- chats[source buf] = { buf = chat buf, s, e = lines asked about }
 local PROMPT = "› "
+M.frame_ms = 40 -- a streaming answer updates the box at most this often
 -- One row of the question block's tint. Virtual lines never wrap, so a long
 -- run of spaces is cut at the box's edge and fills the row.
 local FILL = { { (" "):rep(500), "GooseAskQuestion" } }
@@ -182,8 +186,10 @@ local function send(c, q)
     end
   end
   grey(at, { wait }, 1)
-  local function show(text)
-    answer = text or answer
+  -- One buffer update per frame at most, not one per streamed token: each
+  -- update rewrites lines, re-greys, refits the box and redraws.
+  local timer
+  local function render()
     if not api.nvim_buf_is_valid(cb) then
       return
     end
@@ -196,7 +202,24 @@ local function send(c, q)
       lines[#lines + 1] = "_" .. r .. "_"
     end
     vim.list_extend(lines, body(answer))
-    api.nvim_buf_set_lines(cb, p[1], p[3].end_row + 1, false, lines)
+    -- Follow the answer only while the view shows the end (the › line's text
+    -- is on screen, its tinted rows may be cut off); scrolled up to read, the
+    -- view stays where it is.
+    local win = c.win and api.nvim_win_is_valid(c.win) and c.win
+    local follow, view
+    if win then
+      follow = vim.fn.screenpos(win, api.nvim_buf_line_count(cb), 1).row > 0
+      view = api.nvim_win_call(win, vim.fn.winsaveview)
+    end
+    -- Only the lines that changed (the tail, while streaming).
+    local old = api.nvim_buf_get_lines(cb, p[1], p[3].end_row + 1, false)
+    local k = 1
+    while k <= #old and k <= #lines and old[k] == lines[k] do
+      k = k + 1
+    end
+    if k <= #old or k <= #lines then
+      api.nvim_buf_set_lines(cb, p[1] + k - 1, p[3].end_row + 1, false, vim.list_slice(lines, k))
+    end
     api.nvim_buf_set_extmark(cb, ns, p[1], 0, {
       id = mark,
       end_row = p[1] + #lines - 1,
@@ -205,8 +228,26 @@ local function send(c, q)
       end_right_gravity = true,
     })
     grey(p[1], lines, #reads + ((answer or ""):match "%S" and 0 or 1))
-    if c.win then
-      fit(c.win)
+    if not win then
+      return
+    end
+    fit(win)
+    local last = api.nvim_buf_line_count(cb)
+    if not follow then
+      api.nvim_win_call(win, function()
+        vim.fn.winrestview(view)
+      end)
+    elseif api.nvim_win_get_cursor(win)[1] ~= last and not api.nvim_get_mode().mode:find "^[vVs\22\19]" then
+      api.nvim_win_set_cursor(win, { last, 0 })
+    end
+  end
+  local function show(text)
+    answer = text or answer
+    if not timer then
+      timer = vim.defer_fn(function()
+        timer = nil
+        render()
+      end, M.frame_ms)
     end
   end
   fit(c.win or -1)
@@ -227,7 +268,8 @@ local function send(c, q)
     end,
     on_done = function(out, err)
       c.busy = false
-      show(out or ("_goose: %s_"):format(err or "no answer"))
+      answer = out or ("_goose: %s_"):format(err or "no answer")
+      render() -- now, not a frame later; a waiting frame then finds no mark
       pcall(api.nvim_buf_del_extmark, cb, ns, mark)
     end,
   })
@@ -242,6 +284,10 @@ local function chat_buf(c)
   vim.bo[b].buftype = "prompt"
   vim.bo[b].bufhidden = "hide"
   vim.bo[b].filetype = "markdown"
+  -- mini.animate's 120 ms glide (terminal Neovim) restarted on every streamed
+  -- line and swallowed wheel steps inside it, so the box lagged and scrolled
+  -- back down under the reader.
+  vim.b[b].minianimate_disable = true
   vim.fn.prompt_setprompt(b, PROMPT)
   c.live = block(b, 0) -- the › line being typed: your turn's block
   vim.fn.prompt_setcallback(b, function(q)

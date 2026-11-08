@@ -403,6 +403,62 @@ check(
   vim.inspect(on_disk(buf))
 )
 
+-- 12. A long answer streaming into the Alt+L box (stub "LONG": 120 lines in
+-- 360 chunks): the view follows only while the end is in view, and the box
+-- updates once per frame, not once per chunk.
+vim.env.GOOSE_STUB_DELAY = "0.005" -- read by the box's claude, started on open
+vim.fn.writefile({ "let a = 1" }, proj .. "/lib/z.ml")
+vim.cmd.edit(proj .. "/lib/z.ml")
+buf = vim.api.nvim_get_current_buf()
+keys "<M-l>"
+c = ask.chat(buf)
+local function view()
+  local info = vim.fn.getwininfo(c.win)[1]
+  return info.topline, info.botline, vim.api.nvim_buf_line_count(c.buf)
+end
+local tick0 = vim.b[c.buf].changedtick
+keys "iLONG please<CR>"
+vim.wait(5000, function()
+  return vim.api.nvim_buf_line_count(c.buf) > 40
+end, 10)
+local _, bot, count = view()
+check("streaming: the view follows the answer while the end is in view", bot == count, bot .. "/" .. count)
+keys "<C-u>"
+local top = view()
+vim.wait(5000, function()
+  return vim.api.nvim_buf_line_count(c.buf) > 70
+end, 10)
+check("streaming: scrolled up, the view stays put", view() == top, top .. " -> " .. view())
+-- Back down to the end, as the wheel does (Ctrl+E drags the cursor along
+-- only as far as the view needs): it follows again, cursor anywhere.
+vim.api.nvim_win_call(c.win, function()
+  for _ = 1, 200 do
+    local _, b, n = view()
+    if b >= n then
+      break
+    end
+    vim.cmd "normal! \5"
+  end
+end)
+vim.wait(5000, function()
+  return vim.api.nvim_buf_line_count(c.buf) > 95
+end, 10)
+_, bot, count = view()
+check("streaming: scrolled back to the end, it follows again", bot == count, bot .. "/" .. count)
+keys "<C-u>"
+keys "A"
+vim.wait(5000, function()
+  return not c.busy
+end, 20)
+_, bot, count = view()
+check("streaming: back at the › line, it follows again", bot == count, bot .. "/" .. count)
+check(
+  "streaming: the box updates once per frame, not per chunk",
+  vim.b[c.buf].changedtick - tick0 < 200,
+  vim.b[c.buf].changedtick - tick0 .. " changes for 360 chunks"
+)
+check("streaming: no scroll glide in the box", vim.b[c.buf].minianimate_disable == true)
+
 vim.notify = notify
 io.stdout:write(("goose reach: %d pass, %d fail\n"):format(pass, fail))
 vim.cmd(fail == 0 and "qa!" or "cquit 1")

@@ -5,7 +5,8 @@ mid-answer; "UGLY" gets an answer ocamlformat would change. A last part
 "Question: ..." gets a Markdown answer, after a preamble and a Read of
 bin/main.ml when the question mentions main; "ELSEWHERE" also changes
 `let target = 1` to 2 (a SEARCH/REPLACE block), "ONLYELSEWHERE" does only
-that. Each log line has the folder the stub runs in (cwd).
+that. Each log line has the folder the stub runs in (cwd). A question with
+"LONG" gets 120 lines, three chunks each, like real token streaming.
 $GOOSE_STUB_DELAY = seconds between streamed chunks."""
 import json, os, sys, time
 
@@ -32,6 +33,8 @@ for line in sys.stdin:
             print(json.dumps({"type": "assistant", "message": {"role": "assistant", "content": [
                 {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": os.path.join(os.getcwd(), "bin/main.ml")}}]}}), flush=True)
         chunks = [f"**answer {n}**", " to: ", q, "\n\nsecond line\n"]
+        if "LONG" in q:
+            chunks = [c for i in range(120) for c in (f"line {i} ", "of a long ", "answer\n")]
     elif "ONLYELSEWHERE" in content:
         chunks = block
     elif "ELSEWHERE" in content:
