@@ -531,6 +531,7 @@ local function clear(buf, mark)
 end
 
 M.preview_max = 200 -- ghost lines shown at most
+M.preview_ms = 40 -- ghost lines update at most this often while streaming
 
 ---Ghost lines under the region: the answer so far, never in the buffer.
 local function show_preview(buf, mark, text)
@@ -577,7 +578,11 @@ end
 local function errors_in(buf, s, e)
   local out = {}
   for _, d in ipairs(vim.diagnostic.get(buf, { severity = vim.diagnostic.severity.ERROR })) do
-    if d.lnum >= s and d.lnum <= e then
+    -- dune's errors (dune --watch, through ocamllsp) are about the saved
+    -- file, not the answer just written: one on these rows sent a retry for
+    -- code that compiled. Merlin checks the new text itself.
+    local stale = d.source == "dune" and vim.bo[buf].modified
+    if d.lnum >= s and d.lnum <= e and not stale then
       out[#out + 1] = ("line %d: %s"):format(d.lnum - s + 1, d.message)
     end
   end
@@ -943,6 +948,18 @@ run = function(buf, s, e, errors, instruction)
     end
     return s2, e2, vim.api.nvim_buf_get_lines(buf, s2, e2 + 1, false)
   end
+  -- One ghost-line update per frame, not one per streamed token: the first
+  -- text shows at once, then the newest text every preview_ms.
+  local latest, frame
+  local function tick()
+    frame = nil
+    if latest then
+      local text = latest
+      latest = nil
+      show_preview(buf, mark, text)
+      frame = vim.defer_fn(tick, M.preview_ms)
+    end
+  end
   M.session_send(buf, {
     system = SESSION_SYSTEM,
     build = function(S)
@@ -957,7 +974,10 @@ run = function(buf, s, e, errors, instruction)
       return s2 and prompt_for(buf, s2, e2, l2, errors, instruction)
     end,
     on_partial = function(text)
-      show_preview(buf, mark, text)
+      latest = text
+      if not frame then
+        tick()
+      end
     end,
     on_done = done,
   })

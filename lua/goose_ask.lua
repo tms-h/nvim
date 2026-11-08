@@ -187,8 +187,9 @@ local function send(c, q)
   end
   grey(at, { wait }, 1)
   -- One buffer update per frame at most, not one per streamed token: each
-  -- update rewrites lines, re-greys, refits the box and redraws.
-  local timer
+  -- update rewrites lines, re-greys, refits the box and redraws. The first
+  -- text shows at once, then the newest every frame_ms.
+  local timer, dirty
   local function render()
     if not api.nvim_buf_is_valid(cb) then
       return
@@ -204,12 +205,22 @@ local function send(c, q)
     vim.list_extend(lines, body(answer))
     -- Follow the answer only while the view shows the end (the › line's text
     -- is on screen, its tinted rows may be cut off); scrolled up to read, the
-    -- view stays where it is.
+    -- view stays where it is. Counted from the view's top line, not read off
+    -- the screen, which lags until the next redraw.
     local win = c.win and api.nvim_win_is_valid(c.win) and c.win
     local follow, view
     if win then
-      follow = vim.fn.screenpos(win, api.nvim_buf_line_count(cb), 1).row > 0
-      view = api.nvim_win_call(win, vim.fn.winsaveview)
+      view = api.nvim_win_call(win, function()
+        vim.fn.line "w0" -- brings the top line up to date with the cursor (no redraw yet)
+        return vim.fn.winsaveview()
+      end)
+      local last = api.nvim_buf_line_count(cb)
+      -- Rows above the › line's text: the shown filler (topfill), then from
+      -- the top line's text (start_vcol skips its rows scrolled off) to the
+      -- › line's text (end_vcol 0 keeps its tinted row above, not the text).
+      local rows = view.topfill
+        + api.nvim_win_text_height(win, { start_row = view.topline - 1, start_vcol = 0, end_row = last - 1, end_vcol = 0 }).all
+      follow = last <= view.topline or rows < api.nvim_win_get_height(win)
     end
     -- Only the lines that changed (the tail, while streaming).
     local old = api.nvim_buf_get_lines(cb, p[1], p[3].end_row + 1, false)
@@ -241,13 +252,19 @@ local function send(c, q)
       api.nvim_win_set_cursor(win, { last, 0 })
     end
   end
+  local function tick()
+    timer = nil
+    if dirty then
+      dirty = false
+      render()
+      timer = vim.defer_fn(tick, M.frame_ms)
+    end
+  end
   local function show(text)
     answer = text or answer
+    dirty = true
     if not timer then
-      timer = vim.defer_fn(function()
-        timer = nil
-        render()
-      end, M.frame_ms)
+      tick()
     end
   end
   fit(c.win or -1)

@@ -2,6 +2,9 @@
 -- Run: tests/goose/run.sh   (headless, no network, no desktop keys)
 local g = require "goose"
 g.setup()
+-- ocamlformat (the format checks) from opam, as the editor finds it; without
+-- this the format checks failed under a shell whose PATH lacks opam.
+require("tools").setup_path()
 local here = vim.fs.dirname(debug.getinfo(1, "S").source:sub(2))
 local dir = vim.env.GOOSE_TEST_DIR
 local log = dir .. "/stub.log"

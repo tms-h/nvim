@@ -404,6 +404,22 @@ check(
 )
 keys "u"
 check("retry: one u still brings the pseudocode back", lines(buf)[2] == "pseudo compile", vim.inspect(lines(buf)))
+-- An error from dune (dune --watch through ocamllsp) is about the saved
+-- file, not the new code: it must not send a retry.
+vim.diagnostic.reset(diag_ns, buf)
+g.last = nil
+type_at(1, "pseudo dune")
+keys "<M-k>"
+vim.wait(5000, function()
+  return g.last ~= nil
+end, 20)
+vim.diagnostic.set(diag_ns, buf, {
+  { lnum = 0, col = 0, severity = vim.diagnostic.severity.ERROR, message = "old error", source = "dune" },
+})
+vim.wait(3000, function()
+  return not vim.bo[buf].modified
+end, 20)
+check("a stale dune error sends no retry", g.last.retry == false and not vim.bo[buf].modified, vim.inspect(g.last))
 vim.lsp.get_client_by_id(client):stop(true)
 vim.diagnostic.reset(diag_ns, buf)
 g.lsp_wait = 50
@@ -475,6 +491,44 @@ check(
   vim.b[c.buf].changedtick - tick0 .. " changes for 360 chunks"
 )
 check("streaming: no scroll glide in the box", vim.b[c.buf].minianimate_disable == true)
+-- The first streamed text shows at once; only later text waits for a frame.
+-- A frame longer than the whole answer (360 chunks, about 2 s) would show
+-- nothing before the end without that.
+keys "<Esc>"
+ask.frame_ms = 3000
+keys "<M-l>"
+local t_ask = vim.uv.hrtime()
+keys "iLONG next<CR>"
+vim.wait(4000, function()
+  return chat_text():find("› LONG next\nline 0", 1, true) ~= nil
+end, 5)
+local shown_ms = (vim.uv.hrtime() - t_ask) / 1e6
+check("Alt+L: the first text shows without waiting a frame", shown_ms < 1000, ("%d ms"):format(shown_ms))
+ask.frame_ms = 40
+vim.wait(5000, function()
+  return not ask.chat(buf).busy
+end, 20)
+keys "<Esc><Esc>"
+
+-- 13. Alt+K's ghost lines: one update per frame, not one per streamed token.
+buf = open { "let a = 1" }
+local preview_ns, previews_set = vim.api.nvim_get_namespaces().goose_preview, 0
+local set_extmark = vim.api.nvim_buf_set_extmark
+vim.api.nvim_buf_set_extmark = function(b, ns_id, ...)
+  if ns_id == preview_ns then
+    previews_set = previews_set + 1
+  end
+  return set_extmark(b, ns_id, ...)
+end
+type_at(1, "LONGCODE write it")
+keys "<M-k>"
+wait_idle(buf)
+vim.api.nvim_buf_set_extmark = set_extmark
+check(
+  "Alt+K: ghost lines update once per frame, not per chunk",
+  previews_set > 0 and previews_set < 200 and lines(buf)[120] ~= nil,
+  previews_set .. " updates for 360 chunks"
+)
 
 vim.notify = notify
 io.stdout:write(("goose reach: %d pass, %d fail\n"):format(pass, fail))

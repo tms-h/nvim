@@ -6,7 +6,9 @@ mid-answer; "UGLY" gets an answer ocamlformat would change. A last part
 bin/main.ml when the question mentions main; "ELSEWHERE" also changes
 `let target = 1` to 2 (a SEARCH/REPLACE block), "ONLYELSEWHERE" does only
 that. Each log line has the folder the stub runs in (cwd). A question with
-"LONG" gets 120 lines, three chunks each, like real token streaming.
+"LONG" gets 120 lines, three chunks each, like real token streaming;
+"LONGCODE" gets 120 lines of code the same way. "BADTYPE" gets code with a
+type error, and the compile-error retry gets code that compiles.
 $GOOSE_STUB_DELAY = seconds between streamed chunks."""
 import json, os, sys, time
 
@@ -24,6 +26,12 @@ for line in sys.stdin:
     block = ["<<<<<<< SEARCH\n", "let target = 1\n", "=======\n", "let target = 2\n", ">>>>>>> REPLACE\n"]
     if "UGLY" in content:
         chunks = ["let   u", " =  (1+2)\n"]
+    elif "gave these compiler errors" in content:
+        chunks = [f"let a{n} = {n}\n"]  # the retry: code that compiles
+    elif "BADTYPE" in content:
+        chunks = [f'let a{n} : int = "{n}"\n']  # a type error the retry fixes
+    elif "LONGCODE" in content:  # 120 lines of code, three chunks each
+        chunks = [c for i in range(120) for c in (f"let v{n}_{i} ", "= ", f"{i}\n")]
     elif "\n\nQuestion: " in content:
         q = content.rsplit("Question: ", 1)[1]
         if "main" in q:
