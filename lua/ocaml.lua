@@ -42,10 +42,10 @@ function M.indent(lnum)
   local input = table.concat(api.nvim_buf_get_lines(0, 0, -1, false), "\n") .. "\n"
   local dir = vim.fs.dirname(api.nvim_buf_get_name(0))
   local result = M.ocp_indent(dir, { "--numeric", "--indent-empty", "--lines", lnum .. "-" .. lnum }, input)
-  if not result then
+  if not result or result.code ~= 0 then
     return -1
   end
-  return result.code == 0 and (tonumber(vim.trim(result.stdout or "")) or -1) or -1
+  return tonumber(vim.trim(result.stdout or "")) or -1
 end
 
 local function use_ocp_indent(buf)
