@@ -63,20 +63,6 @@ local function apply_output(buf, stdout)
   end
 end
 
----The project's .ocamlformat (path `conf`, may be nil) turns ocamlformat off
----(`disable = true`).
-local function ocamlformat_disabled(conf)
-  if not conf then
-    return false
-  end
-  for line in io.lines(conf) do
-    if line:match "^%s*disable%s*=%s*true%s*$" then
-      return true
-    end
-  end
-  return false
-end
-
 ---Re-indent with ocp-indent: leading spaces only, so a project that turns
 ---ocamlformat off still gets Jane Street indentation. `lines` ("X-Y",
 ---1-based) limits it to those lines; nil = the whole buffer.
@@ -94,8 +80,8 @@ function M.format_ocaml(buf, lines)
   local ocamlformat = require("tools").find "ocamlformat"
   local file = api.nvim_buf_get_name(buf)
   local dir = vim.fs.dirname(file)
-  local conf = vim.fs.find(".ocamlformat", { path = dir, upward = true })[1]
-  if not ocamlformat or ocamlformat_disabled(conf) then
+  local conf = require("ocaml").ocamlformat_conf(dir)
+  if not ocamlformat or (conf and conf.disable) then
     indent_ocaml(buf, dir, lines)
     return
   end
