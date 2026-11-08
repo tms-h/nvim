@@ -5,3 +5,5 @@ nvim.log
 lua/surface.lua
 # agent worktrees and settings; untracked files would stop the startup pull
 .claude/
+# Python bytecode from tools/ (lookup.py)
+__pycache__/

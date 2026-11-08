@@ -70,6 +70,12 @@ run() { # extra --cmd, label
     sleep 1
     check "tmux: Alt+W on the last window keeps Neovim" 1 "$( [ -S "$sock" ] && q '1')"
     check "tmux: Alt+W closed the file" "" "$(q 'bufname()')"
+    # One file left (none, after Alt+W): Ctrl+Tab hands back to tmux's next tab.
+    tmux -L "$SOCK" new-window -d
+    tmux -L "$SOCK" send-keys -t 0 C-Tab
+    sleep 0.5
+    check "tmux: Ctrl+Tab with one file goes to the next tmux tab" 1 "$(tmux -L "$SOCK" display -p '#{window_index}')"
+    tmux -L "$SOCK" select-window -t 0
     # Alt+Shift+Left at Neovim's edge (the tree counts) swaps the whole tmux pane.
     nv=$(tmux -L "$SOCK" display -p -t :0.0 '#{pane_id}')
     tmux -L "$SOCK" split-window -h -b -d -t "$nv"
