@@ -954,6 +954,26 @@ local function drop_draft(buf)
   draft[buf] = nil
 end
 
+---Two Esc presses this close together (ms) drop the draft: the lines typed
+---were real code. The Esc that leaves Insert counts as the first press.
+M.double_esc_ms = 300
+local last_esc = {} -- { at = hrtime, buf = buffer } of the last typed Esc
+
+local function on_esc(buf)
+  local now = vim.uv.hrtime()
+  local double = last_esc.buf == buf and (now - last_esc.at) / 1e6 <= M.double_esc_ms
+  last_esc = double and {} or { at = now, buf = buf }
+  if double then
+    -- After the key: the first Esc's InsertLeave has recorded its lines.
+    vim.schedule(function()
+      if draft[buf] then
+        drop_draft(buf)
+        vim.notify "goose: draft cleared"
+      end
+    end)
+  end
+end
+
 ---Add lines s..e to the draft; blocks they touch or overlap merge into one.
 local function add_draft(buf, s, e)
   local keep = {}
@@ -1067,6 +1087,16 @@ function M.setup()
       add_draft(a.buf, s, e)
     end,
   })
+  -- Esc Esc: forget the draft. on_key sees the key as typed, so the Insert
+  -- Esc and the normal-mode Esc map (nohlsearch) both count.
+  vim.on_key(function(_, typed)
+    if typed == "\27" then
+      local buf = vim.api.nvim_get_current_buf()
+      if vim.bo[buf].buftype == "" then
+        on_esc(buf)
+      end
+    end
+  end, vim.api.nvim_create_namespace "goose_esc")
   local chord = require("util").chord
   local map = vim.keymap.set
   map("n", chord "k", M.send, { desc = "Goose: the underlined lines you typed become code" })
