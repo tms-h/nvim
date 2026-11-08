@@ -8,6 +8,18 @@ local util = require "util"
 local is_macos, is_windows = util.is_macos, util.is_windows
 local sep = is_windows and ";" or ":"
 
+---PATH's folders, in order.
+local function path_parts()
+  return vim.split(vim.env.PATH or "", sep, { plain = true })
+end
+
+---`parts` without the folder `dir`.
+local function without(parts, dir)
+  return vim.tbl_filter(function(p)
+    return p ~= dir
+  end, parts)
+end
+
 ---Put `dir` on PATH. A folder already there keeps its place, unless
 ---`first` (then it moves to the front).
 local function prepend(dir, first)
@@ -18,14 +30,12 @@ local function prepend(dir, first)
   if vim.fn.isdirectory(dir) == 0 then
     return
   end
-  local parts = vim.split(vim.env.PATH or "", sep, { plain = true })
+  local parts = path_parts()
   if vim.tbl_contains(parts, dir) then
     if not first then
       return
     end
-    parts = vim.tbl_filter(function(p)
-      return p ~= dir
-    end, parts)
+    parts = without(parts, dir)
   end
   table.insert(parts, 1, dir)
   vim.env.PATH = table.concat(parts, sep)
@@ -65,18 +75,13 @@ function M.setup_path()
   })
 end
 
-local project_bin -- the _opam/bin this window put on PATH
+local project_bin -- the _opam/bin use_project_switch last put on PATH
 
 ---Put the current folder's own opam switch (_opam) first on PATH, and take
 ---the previous folder's off.
 function M.use_project_switch()
   if project_bin then
-    vim.env.PATH = table.concat(
-      vim.tbl_filter(function(p)
-        return p ~= project_bin
-      end, vim.split(vim.env.PATH or "", sep, { plain = true })),
-      sep
-    )
+    vim.env.PATH = table.concat(without(path_parts(), project_bin), sep)
     project_bin = nil
   end
   local switch = vim.fs.find("_opam", { upward = true, type = "directory", path = vim.fn.getcwd() })[1]
