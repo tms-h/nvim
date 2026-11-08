@@ -1030,6 +1030,11 @@ function M.setup()
   vim.api.nvim_create_autocmd("InsertEnter", {
     group = group,
     callback = function(a)
+      -- Drafts are typed code, so only file buffers get them: typing in the
+      -- Alt+L chat box (a prompt buffer) underlined the whole conversation.
+      if vim.bo[a.buf].buftype ~= "" then
+        return
+      end
       -- Typing may end in Alt+K: have a process ready if this buffer has none.
       if not sessions[a.buf] then
         warm(SESSION_SYSTEM)

@@ -204,6 +204,10 @@ check(
   T
 )
 check("text before a tool call is dropped", not T:find("Let me look", 1, true), T)
+local underlined = vim.tbl_filter(function(m)
+  return m[4].hl_group == "GooseDraft"
+end, vim.api.nvim_buf_get_extmarks(c.buf, -1, 0, -1, { details = true }))
+check("typing in the box underlines nothing (no draft)", #underlined == 0, vim.inspect(underlined))
 keys "<Esc><Esc>"
 check(
   "Esc, Esc closes the box, back in the code",
@@ -239,6 +243,18 @@ check(
   vim.fn.getwininfo(c.win)[1].topline < top,
   ("topline %d -> %d"):format(top, vim.fn.getwininfo(c.win)[1].topline)
 )
+
+-- 8b. Ctrl+Backspace deletes the word before the cursor (Neovide sends
+-- <C-BS>, a terminal Ctrl+H) and never the › prompt.
+local function prompt_line()
+  return vim.api.nvim_buf_get_lines(c.buf, -2, -1, false)[1]
+end
+keys "Aone two.three  <C-BS>"
+check("Ctrl+Backspace deletes the last word and its spaces", prompt_line() == "› one two.", prompt_line())
+keys "A<C-h><C-BS>"
+check("Ctrl+Backspace (Ctrl+H) deletes one word at a time", prompt_line() == "› one ", prompt_line())
+keys "A<C-BS><C-BS><C-h>"
+check("Ctrl+Backspace stops at the › prompt", prompt_line() == "› ", prompt_line())
 keys "<Esc>"
 
 -- 9. Alt+K in the box: the asked-about line becomes code from the chat, the

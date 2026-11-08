@@ -12,6 +12,7 @@
 --   Wheel, Ctrl+U / Ctrl+D scroll the box, also while typing: a prompt buffer
 --     keeps the cursor on the › line in Insert mode, so they leave typing
 --     first; i (or a, A) types at the › line again.
+--   Ctrl+Backspace deletes the word before the cursor, never the › prompt.
 --   Esc leaves typing (scroll, copy); Esc again, q, Alt+L or Alt+W close the
 --     box, and so does moving to another window. Alt+L brings the same
 --     conversation back: one per file.
@@ -219,6 +220,21 @@ local function chat_buf(c)
   -- do their usual scroll (the wheel scrolls the window under the mouse).
   for _, key in ipairs { "<ScrollWheelUp>", "<ScrollWheelDown>", "<C-u>", "<C-d>" } do
     vim.keymap.set("i", key, "<Esc>" .. key, { buffer = b, desc = "Goose: scroll the chat box" })
+  end
+  -- Ctrl+Backspace deletes the word before the cursor, as in VS Code (Ctrl+W
+  -- starts a window command in a prompt buffer), never the › prompt. Not an
+  -- expr map: one runs before fast-typed text ahead of it reaches the line.
+  -- Neovide sends <C-BS>; a terminal (kitty, through tmux) sends Ctrl+H.
+  for _, key in ipairs { "<C-BS>", "<C-h>" } do
+    vim.keymap.set("i", key, function()
+      local row, col = unpack(api.nvim_win_get_cursor(0))
+      local typed = api.nvim_get_current_line():sub(#vim.fn.prompt_getprompt(b) + 1, col)
+      local word = vim.fn.matchstr(typed, [[\v(\k+|(\k@!\S)+)?\s*$]])
+      if word ~= "" then
+        api.nvim_buf_set_text(b, row - 1, col - #word, row - 1, col, {})
+        api.nvim_win_set_cursor(0, { row, col - #word })
+      end
+    end, { buffer = b, desc = "Goose: delete the word before the cursor" })
   end
   api.nvim_create_autocmd("WinLeave", {
     buffer = b,
