@@ -314,6 +314,11 @@ check(
   L[1] == "let a = 1" and L[2]:match "^let a%d" and L[3]:match "^let b%d" and L[4] == "let c = 3",
   vim.inspect(L)
 )
+check(
+  "Alt+K in the box saves the file",
+  not vim.bo[buf].modified and vim.deep_equal(vim.fn.readfile(proj .. "/lib/y.ml"), L),
+  vim.inspect(vim.fn.readfile(proj .. "/lib/y.ml"))
+)
 E = {}
 for _, l in ipairs(vim.fn.readfile(log)) do
   E[#E + 1] = vim.json.decode(l)
@@ -325,6 +330,78 @@ check(
 )
 keys "u"
 check("Alt+K in the box: one u undoes it", vim.deep_equal(lines(buf), before), vim.inspect(lines(buf)))
+
+-- 10. Saved once the conversion has landed, compile retry included, so the
+-- build's errors (dune, read from disk) clear without a :w. A fake language
+-- server makes replace() wait for its report; an error in the region then
+-- triggers the retry.
+local function on_disk(b)
+  return vim.fn.readfile(vim.api.nvim_buf_get_name(b))
+end
+buf = open { "let a = 1", "let b = 2" }
+local client = vim.lsp.start({
+  name = "fake",
+  root_dir = dir,
+  cmd = function()
+    return {
+      request = function(method, _, cb)
+        if method == "initialize" then
+          cb(nil, { capabilities = {} })
+        else
+          cb(nil, nil)
+        end
+        return true, 1
+      end,
+      notify = function()
+        return true
+      end,
+      is_closing = function()
+        return false
+      end,
+      terminate = function() end,
+    }
+  end,
+}, { bufnr = buf })
+vim.wait(2000, function()
+  return #vim.lsp.get_clients { bufnr = buf } > 0
+end, 20)
+g.lsp_wait = 3000
+g.last = nil
+type_at(2, "pseudo compile")
+keys "<M-k>"
+vim.wait(5000, function()
+  return g.last ~= nil
+end, 20)
+check("retry: not saved while the compile check waits", vim.bo[buf].modified, vim.inspect(on_disk(buf)))
+local diag_ns = vim.api.nvim_create_namespace "test-compile"
+vim.diagnostic.set(diag_ns, buf, { { lnum = 1, col = 0, severity = vim.diagnostic.severity.ERROR, message = "boom" } })
+vim.wait(5000, function()
+  return g.last.retry and g.pending_count(buf) == 0
+end, 20)
+vim.wait(200)
+check("retry: the fix-up ran", g.last.retry == true, vim.inspect(g.last))
+check(
+  "retry: the fixed file is saved, no :w",
+  not vim.bo[buf].modified and vim.deep_equal(on_disk(buf), lines(buf)),
+  vim.inspect(on_disk(buf))
+)
+keys "u"
+check("retry: one u still brings the pseudocode back", lines(buf)[2] == "pseudo compile", vim.inspect(lines(buf)))
+vim.lsp.get_client_by_id(client):stop(true)
+vim.diagnostic.reset(diag_ns, buf)
+g.lsp_wait = 50
+
+-- 11. An answer thrown away (the region edited while writing) saves nothing.
+buf = open { "let a = 1", "let b = 2" }
+type_at(2, "pseudo kept")
+keys "<M-k>"
+vim.api.nvim_buf_set_lines(buf, 1, 2, false, { "pseudo changed" })
+wait_idle(buf)
+check(
+  "a thrown-away answer saves nothing",
+  vim.bo[buf].modified and vim.deep_equal(on_disk(buf), { "let a = 1", "let b = 2" }),
+  vim.inspect(on_disk(buf))
+)
 
 vim.notify = notify
 io.stdout:write(("goose reach: %d pass, %d fail\n"):format(pass, fail))

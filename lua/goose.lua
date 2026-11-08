@@ -24,7 +24,9 @@
 --
 -- The answer goes through the file's formatter (lsp.format_lines) in the
 -- same undo step; a compile error in it gets one retry as soon as the
--- language server reports it.
+-- language server reports it. Once every conversion in the file has landed
+-- (retry included), the file is saved, so the build's errors clear by
+-- themselves.
 --
 -- ask() (one-shot) is shared with seconder.lua.
 local M = {}
@@ -594,6 +596,53 @@ local ready = {} -- ready[buf] = { mark, text, new, retry } awaiting Alt+K
 
 local run, draft_range
 
+-- The file is written once every conversion in it has landed, compile retry
+-- included, so the build's errors (dune --watch, reported through ocamllsp)
+-- refresh without a :w. They come from the file on disk, so they stayed
+-- after a fix until the next save.
+M.save = true
+local checking = {} -- checking[buf] = compile checks waiting on the language server
+local landed = {} -- landed[buf] = changedtick after goose's last change, not yet saved
+
+---Save buf if goose changed it and nothing in it is still writing, waiting
+---for a compile check or waiting to be accepted. A failed or empty answer
+---never sets `landed`, so it never saves.
+local function settle(buf)
+  if not landed[buf] or not vim.api.nvim_buf_is_valid(buf) then
+    return
+  end
+  if M.pending_count(buf) > 0 or (checking[buf] or 0) > 0 or ready[buf] then
+    return
+  end
+  if vim.api.nvim_get_current_buf() == buf and vim.api.nvim_get_mode().mode:find "^[iR]" then
+    -- Typing in this file: the formatter on save would move text under the
+    -- cursor, so the save waits until Insert ends.
+    vim.api.nvim_create_autocmd("InsertLeave", {
+      buffer = buf,
+      once = true,
+      callback = vim.schedule_wrap(function()
+        settle(buf)
+      end),
+    })
+    return
+  end
+  local tick = landed[buf]
+  landed[buf] = nil
+  local name = vim.api.nvim_buf_get_name(buf)
+  if not M.save or vim.bo[buf].buftype ~= "" or name == "" or require("library").is_library(buf) or not vim.bo[buf].modified then
+    return
+  end
+  vim.api.nvim_buf_call(buf, function()
+    if vim.b[buf].changedtick == tick then
+      pcall(vim.cmd.undojoin) -- the formatter's change on save stays in the same `u`
+    end
+    local ok, err = pcall(vim.cmd, "silent update")
+    if not ok then
+      vim.notify("goose: could not save: " .. tostring(err), vim.log.levels.WARN)
+    end
+  end)
+end
+
 ---The one buffer change: lines s..e become `new`, formatted, then flash and
 ---maybe retry.
 local function replace(buf, s, e, new, retry)
@@ -637,11 +686,13 @@ local function replace(buf, s, e, new, retry)
   -- One retry with the compiler's errors, never a loop: on the language
   -- server's first report after the change, or after lsp_wait at most.
   local checked, au = false, nil
+  checking[buf] = (checking[buf] or 0) + 1
   local function check()
     if checked then
       return
     end
     checked = true
+    checking[buf] = (checking[buf] or 1) - 1
     pcall(vim.api.nvim_del_autocmd, au)
     if not vim.api.nvim_buf_is_valid(buf) then
       return
@@ -652,6 +703,7 @@ local function replace(buf, s, e, new, retry)
     if errs then
       run(buf, s3, e3, errs)
     end
+    settle(buf)
   end
   au =
     vim.api.nvim_create_autocmd("DiagnosticChanged", { buffer = buf, once = true, callback = vim.schedule_wrap(check) })
@@ -756,6 +808,9 @@ local function apply(buf, s, e, new, edits, retry)
   if #rows > 0 then
     vim.notify(("goose: also changed line%s %s (one u undoes it all)"):format(#rows > 1 and "s" or "", table.concat(rows, ", ")))
   end
+  if not vim.deep_equal(all, vim.api.nvim_buf_get_lines(buf, 0, -1, false)) then
+    landed[buf] = vim.b[buf].changedtick -- settle() saves it
+  end
 end
 
 local function drop_ready(buf)
@@ -784,6 +839,7 @@ local function accept(buf)
   else
     apply(buf, s, e, r.new, r.edits, r.retry)
   end
+  settle(buf)
   return true
 end
 M.accept = accept
@@ -873,6 +929,7 @@ run = function(buf, s, e, errors, instruction)
   vim.cmd.redrawstatus()
   local function done(out, err)
     finish(buf, mark, out, err, errors ~= nil)
+    settle(buf)
   end
   if not M.use_session then
     return M.ask(SYSTEM, prompt_for(buf, s, e, lines, errors, instruction), done)
@@ -1034,6 +1091,7 @@ function M.setup()
     callback = function(a)
       M.kill_session(a.buf)
       ready[a.buf], previews[a.buf], pending[a.buf] = nil, nil, nil
+      checking[a.buf], landed[a.buf] = nil, nil
     end,
   })
   vim.api.nvim_create_autocmd("VimLeavePre", {
