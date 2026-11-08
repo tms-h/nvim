@@ -40,6 +40,21 @@ line). Restart to apply a pull.
 | `lua/goose_ask.lua` | `Alt+L` opens a popup chat box about the line or selection: type at `›`, Enter asks, the answer streams in; its claude runs in the project root and reads other files itself (Read, Grep, Glob); Esc, Esc closes; nothing in the file changes |
 | `lua/seconder.lua`, `rubric/seconder.md` | `Space r` review that writes CR comments; `]r` / `[r` jump between CRs |
 
+## Asking an AI about this config
+
+`tools/lookup/lookup.py` answers from the config itself, so it can't drift from what this machine has checked
+out: a headless Neovim loads the checkout (as Neovide and as a terminal Neovim in tmux, scratch state, no pull) and
+reports every key with what it does, the `file:line` that set it and how often you've pressed it.
+
+    python3 tools/lookup/lookup.py keys zoom        # by what it does, or by key: alt+f, "<C-k>", "space o"
+    python3 tools/lookup/lookup.py where "divider hover"   # module headers, Lua blocks, :commands, plugins
+    python3 tools/lookup/lookup.py check            # exit 1 if a key this config sets has no desc
+
+As MCP tools (`keys`, `where`) for omp and Claude Code, once per machine:
+
+    claude mcp add -s user nvimcfg -- python3 ~/.config/nvim/tools/lookup/lookup.py mcp
+    # omp: add the same command as "nvimcfg" under mcpServers in ~/.omp/agent/mcp.json
+
 ## Tests
 
     tests/check.sh            # every friction rule and key, in a private tmux (all checks)

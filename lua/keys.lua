@@ -150,7 +150,7 @@ map("n", "<2-LeftMouse>", "<LeftMouse><Cmd>lua require('words').select_word()<CR
 map("i", "<2-LeftMouse>", "<Esc><LeftMouse><Cmd>lua require('words').select_word()<CR>", { desc = "Select word" })
 -- Alt/Cmd+click is a plain click everywhere (stock Alt+click starts a block
 -- selection, which nobody meant).
-map({ "n", "i", "x", "t" }, super "LeftMouse", "<LeftMouse>")
+map({ "n", "i", "x", "t" }, super "LeftMouse", "<LeftMouse>", { desc = "Plain click (no block selection)" })
 
 -- Completion menu: Tab / Shift+Tab move, Enter takes the chosen item (else a
 -- new line), like VS Code. Inside a snippet, Tab jumps to the next field.
