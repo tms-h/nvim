@@ -38,14 +38,52 @@ local ns = vim.api.nvim_create_namespace "goose"
 -- `claude -p`, and plain leaked CLAUDE.md lines into the code. --bare would be
 -- faster but needs an API key (OAuth logins fail).
 M.model = "claude-sonnet-5-5"
--- opts (questions only): tools = "Read,Grep,Glob", cwd = the project root.
+-- opts (questions only): tools = built-in tools ("Read,Grep,..."), mcp = an
+-- --mcp-config JSON, allow = tools permitted without asking (-p denies the
+-- rest), cwd = the project root. --strict-mcp-config keeps every other MCP
+-- server out.
 local function cmd(system, opts)
-  return {
+  opts = opts or {}
+  local c = {
     "claude", "-p", "--model", M.model,
-    "--setting-sources", "", "--strict-mcp-config", "--tools", opts and opts.tools or "",
+    "--setting-sources", "", "--strict-mcp-config", "--tools", opts.tools or "",
     "--no-session-persistence", "--disable-slash-commands",
     "--system-prompt", system,
   }
+  if opts.mcp then
+    vim.list_extend(c, { "--mcp-config", opts.mcp })
+  end
+  if opts.allow then
+    vim.list_extend(c, { "--allowedTools", opts.allow })
+  end
+  return c
+end
+M.cmd = cmd -- for tests
+
+-- Memory: Thomas's notes (preferences, conventions, corrections), one `- `
+-- line each, in a Markdown file he can edit (:GooseMemory). The Alt+L chat
+-- adds notes through tools/goose/memory.py; every new session (chat or
+-- Alt+K) gets the file in its system prompt, cut at memory_max bytes. Kept
+-- in state, not the repo: an untracked file would stop the startup pull.
+M.memory_max = 4000
+function M.memory_file()
+  return vim.fs.joinpath(vim.fn.stdpath "state", "goose", "memory.md")
+end
+
+---`system` plus the memory file, if it has anything in it.
+function M.with_memory(system)
+  local f = io.open(M.memory_file(), "r")
+  local text = f and f:read(M.memory_max) or ""
+  if f then
+    f:close()
+  end
+  text = vim.trim(text)
+  if text == "" then
+    return system
+  end
+  return system
+    .. "\n\nMemory: notes saved from earlier chats with the programmer (Thomas), his preferences and conventions. Follow the ones that apply:\n"
+    .. text
 end
 
 ---Run claude on `prompt` (stdin) with `system`; on_done(text|nil, err) on the
@@ -248,8 +286,12 @@ local function spawn(system, opts)
   return S
 end
 
----Have a spare process running for the next session that starts.
+---Have a spare process running for the next session that starts. A spare
+---started with another system prompt (the memory changed) is replaced.
 warm = function(system)
+  if spare and not spare.dead and spare.system ~= system then
+    kill(spare)
+  end
   if M.use_session and M.prewarm and not (spare and not spare.dead) then
     spare = spawn(system)
   end
@@ -937,7 +979,7 @@ run = function(buf, s, e, errors, instruction)
     settle(buf)
   end
   if not M.use_session then
-    return M.ask(SYSTEM, prompt_for(buf, s, e, lines, errors, instruction), done)
+    return M.ask(M.with_memory(SYSTEM), prompt_for(buf, s, e, lines, errors, instruction), done)
   end
   -- The region is read again when the message goes out: an earlier send in
   -- this buffer may still be writing and move it.
@@ -961,7 +1003,7 @@ run = function(buf, s, e, errors, instruction)
     end
   end
   M.session_send(buf, {
-    system = SESSION_SYSTEM,
+    system = M.with_memory(SESSION_SYSTEM),
     build = function(S)
       local s2, e2, l2 = now()
       if not s2 then
@@ -1135,7 +1177,7 @@ function M.setup()
       end
       -- Typing may end in Alt+K: have a process ready if this buffer has none.
       if not sessions[a.buf] then
-        warm(SESSION_SYSTEM)
+        warm(M.with_memory(SESSION_SYSTEM))
       end
       start[a.buf] = {
         from = vim.fn.line "." - 1,

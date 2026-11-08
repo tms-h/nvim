@@ -146,6 +146,10 @@ vim.fn.mkdir(proj .. "/lib", "p")
 vim.fn.writefile({ "(lang dune 3.0)" }, proj .. "/dune-project")
 vim.fn.writefile({ "let a = 1", "let b = 2", "let c = 3" }, proj .. "/lib/x.ml")
 vim.cmd.edit(proj .. "/lib/x.ml")
+-- A memory note, saved before both claudes start: it must reach each
+-- one's system prompt.
+vim.fn.mkdir(vim.fs.dirname(g.memory_file()), "p")
+vim.fn.writefile({ "- MEMNOTE prefer Core's List over Stdlib" }, g.memory_file())
 buf = vim.api.nvim_get_current_buf()
 type_at(2, "pseudo q")
 keys "<M-k>" -- starts this file's Alt+K session
@@ -182,7 +186,26 @@ check(
 check("the tinted row above the first question shows", vim.api.nvim_win_call(cwin, vim.fn.winsaveview).topfill == 1)
 local ask_S = c and g.session(c.buf)
 check("Alt+L: its own claude, not Alt+K's", ask_S and ask_S.pid ~= pid and g.session(buf).pid == pid)
-check("Alt+L: its claude has read-only tools", ask_S and ask_S.opts and ask_S.opts.tools == "Read,Grep,Glob")
+check("Alt+L: its claude has read-only tools and the web", ask_S and ask_S.opts and ask_S.opts.tools == "Read,Grep,Glob,WebSearch,WebFetch")
+check("memory reaches the chat's system prompt", ask_S and ask_S.system:find("MEMNOTE", 1, true) ~= nil)
+check("memory reaches Alt+K's system prompt", g.session(buf).system:find("MEMNOTE", 1, true) ~= nil)
+local mcp = ask_S and ask_S.opts.mcp and vim.json.decode(ask_S.opts.mcp).mcpServers or {}
+-- The memory server as the chat's claude would start it: it must run and
+-- save to the memory file.
+local srv = mcp.memory and vim.system(vim.list_extend({ mcp.memory.command }, mcp.memory.args), {
+  stdin = '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"remember","arguments":{"note":"SRVNOTE"}}}\n',
+}):wait()
+check(
+  "Alt+L: the memory server starts, saves to the memory file, and is allowed",
+  srv and srv.code == 0 and vim.fn.readfile(g.memory_file())[2] == "- SRVNOTE" and ask_S.opts.allow:find("mcp__memory", 1, true) ~= nil,
+  vim.inspect { ask_S and ask_S.opts, srv }
+)
+local argv_k = g.cmd(g.session(buf).system, g.session(buf).opts)
+check(
+  "Alt+K's claude stays tool-free: no tools, no MCP server",
+  argv_k[vim.fn.index(argv_k, "--tools") + 2] == "" and not vim.tbl_contains(argv_k, "--mcp-config"),
+  vim.inspect(argv_k)
+)
 local E = {}
 for _, l in ipairs(vim.fn.readfile(log)) do
   E[#E + 1] = vim.json.decode(l)
@@ -210,6 +233,20 @@ check(
   T
 )
 check("text before a tool call is dropped", not T:find("Let me look", 1, true), T)
+keys "iWIKI REMEMBER ppx_let?<CR>"
+vim.wait(3000, function()
+  return chat_text():find("to: WIKI", 1, true) ~= nil and not ask.chat(buf).busy
+end, 20)
+T = chat_text()
+check(
+  "wiki searches, reads and a saved note show as grey lines",
+  T:find(
+    '› WIKI REMEMBER ppx_let?\n_wiki: searched "ppx_let Deferred"_\n_wiki: read ppx-let › How it reads_\n_remembered: Thomas prefers Core\'s List over Stdlib_\n**answer',
+    1,
+    true
+  ) ~= nil,
+  T
+)
 local underlined = vim.tbl_filter(function(m)
   return m[4].hl_group == "GooseDraft"
 end, vim.api.nvim_buf_get_extmarks(c.buf, -1, 0, -1, { details = true }))

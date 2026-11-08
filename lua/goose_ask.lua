@@ -27,9 +27,18 @@
 -- Each file's chat has its own claude, started when the box opens, running
 -- in the project root (the folder with .git, dune-project, Cargo.toml...)
 -- with read-only tools (Read, Grep, Glob): it gets the current file and
--- reads callers, definitions, .mli and dune files itself. Each file it reads
--- shows as a grey line above the answer. Alt+K's claude has no tools, so
--- conversions stay fast.
+-- reads callers, definitions, .mli and dune files itself. Jane Street and
+-- OCaml questions go to Thomas's wiki first (the jswiki MCP server,
+-- ~/Work/js-wiki, find then read, answers cite its page URLs), the web
+-- (WebSearch, WebFetch) only for what the wiki lacks. Each tool call shows
+-- as a grey line above the answer ("read lib/x.ml", "wiki: searched ...").
+-- Alt+K's claude has no tools, so conversions stay fast.
+--
+-- Memory: when Thomas states a lasting preference or corrects it, the chat
+-- saves one note ("remembered: ...", grey) to goose's memory file through
+-- tools/goose/memory.py, which can touch only that file; the chat has no
+-- Edit or Write. Every new chat and Alt+K session gets the file in its
+-- system prompt (goose.with_memory). :GooseMemory opens the file to edit.
 local M = {}
 
 local goose = require "goose"
@@ -64,15 +73,78 @@ definitions, interfaces, build files, tests), look it up instead of guessing.
 The first message gives the current file; later ones give a diff of it since
 the previous message. Answer in short Markdown; code blocks allowed. You never
 edit files.]]
-local TOOLS = "Read,Grep,Glob"
+local WIKI = [[
+
+
+Jane Street and OCaml: for any question about Jane Street's libraries (Core,
+Base, Async, Bonsai, Incremental, expect tests, ppx_* such as ppx_let or
+ppx_jane), its OCaml style and conventions, its tools or its culture, or
+general OCaml practice, search Thomas's Jane Street wiki first: jswiki `find`
+with a few keywords, then `read` the best page or section, and answer from
+it, citing the page URLs it gives. `quote` only when exact wording matters.
+Use WebSearch or WebFetch only for what the wiki lacks, and say that the wiki
+did not cover it. Questions only about this code's own logic need no wiki.]]
+local WEB = [[
+
+
+Use WebSearch or WebFetch for outside facts (library docs, error messages)
+the project does not answer.]]
+local MEMORY = [[
+
+
+Memory: `remember` saves one short note that every later chat and code
+conversion reads. Save one when the programmer states a lasting preference
+("I prefer...", "always...", "never..."), a convention of his projects, or
+corrects you; then answer as usual. Never save one-off details of the current
+question, guesses, or what the memory already says. `forget` drops a note he
+says is wrong or outdated.]]
+local TOOLS = "Read,Grep,Glob,WebSearch,WebFetch"
+M.wiki = vim.fn.expand "~/Work/js-wiki/tools/wiki.py" -- the jswiki MCP server, where present
+local MEMORY_SERVER = vim.fs.joinpath(
+  vim.fs.dirname(vim.fs.dirname(debug.getinfo(1, "S").source:sub(2))),
+  "tools/goose/memory.py"
+)
 local ROOT_MARKERS = { ".git", "dune-project", "Cargo.toml", "package.json", "pyproject.toml", "go.mod" }
+
+local function python()
+  local p = vim.fn.exepath "python3"
+  return p ~= "" and p or "python"
+end
+
+local function has_wiki()
+  return vim.uv.fs_stat(M.wiki) ~= nil
+end
+
+---The chat's system prompt: the rules, the wiki's if present, memory's, and
+---the memory file itself.
+function M.system()
+  return goose.with_memory(SYSTEM .. (has_wiki() and WIKI or WEB) .. MEMORY)
+end
+
+---claude options for a chat in `root`: read-only built-in tools, the web,
+---the wiki and the memory server (--mcp-config; no other MCP server), all
+---permitted up front, since -p denies any tool not allowed.
+function M.opts(root)
+  local servers = {
+    memory = { type = "stdio", command = python(), args = { MEMORY_SERVER, goose.memory_file(), tostring(goose.memory_max) } },
+  }
+  local allow = { "mcp__memory", "WebSearch", "WebFetch" }
+  if has_wiki() then
+    servers.jswiki = { type = "stdio", command = python(), args = { M.wiki, "mcp" } }
+    allow[#allow + 1] = "mcp__jswiki"
+  end
+  return { tools = TOOLS, cwd = root, mcp = vim.json.encode { mcpServers = servers }, allow = table.concat(allow, ",") }
+end
 
 local function root_of(src)
   return vim.fs.root(src, ROOT_MARKERS) or vim.fs.dirname(api.nvim_buf_get_name(src))
 end
 
----One grey line per tool call: what it read or searched for.
+---One grey line per tool call: what it read, searched for or remembered.
 local function describe(name, input, root)
+  local function one(s) -- tool input on one line
+    return (tostring(s or "?"):gsub("%s+", " "))
+  end
   local path = input.file_path or input.path
   if path then
     path = vim.fs.relpath(root, path) or vim.fn.fnamemodify(path, ":~")
@@ -83,8 +155,25 @@ local function describe(name, input, root)
     return ("searched for `%s`%s"):format(input.pattern or "?", path and (" in " .. path) or "")
   elseif name == "Glob" then
     return ("listed `%s`"):format(input.pattern or "?")
+  elseif name == "mcp__jswiki__find" then
+    local scope = input.scope and input.scope ~= "wiki" and (" (" .. input.scope .. ")") or ""
+    return ('wiki: searched "%s"%s'):format(one(input.query), scope)
+  elseif name == "mcp__jswiki__read" then
+    local section = input.section and input.section ~= "" and (" › " .. one(input.section)) or ""
+    return "wiki: read " .. one(input.page) .. section
+  elseif name == "mcp__jswiki__quote" then
+    return ("wiki: quoted %s at %s"):format(one(input.source), one(input.at))
+  elseif name == "WebSearch" then
+    return ('web: searched "%s"'):format(one(input.query))
+  elseif name == "WebFetch" then
+    return "web: read " .. one(input.url)
+  elseif name == "mcp__memory__remember" then
+    return "remembered: " .. one(input.note)
+  elseif name == "mcp__memory__forget" then
+    return ('forgot notes with "%s"'):format(one(input.text))
   end
-  return name
+  local server, tool = name:match "^mcp__(.-)__(.+)$"
+  return server and (server .. ": " .. tool) or name
 end
 
 function M.chat(src) -- for tests
@@ -268,9 +357,14 @@ local function send(c, q)
     end
   end
   fit(c.win or -1)
+  -- A live claude keeps the prompt it started with (a changed one would
+  -- restart it and lose the conversation); a new one reads the memory now.
+  if not goose.session(cb) then
+    c.system = M.system()
+  end
   goose.session_send(cb, {
-    system = SYSTEM,
-    opts = { tools = TOOLS, cwd = root },
+    system = c.system,
+    opts = M.opts(root),
     build = function(S)
       return goose.question_prompt(S, src, q, s, e, root)
     end,
@@ -398,7 +492,8 @@ function M.ask(s, e)
   fit(c.win)
   -- Its claude starts now, while the question is typed.
   if goose.use_session and not goose.session(b) then
-    goose.start_session(b, SYSTEM, { tools = TOOLS, cwd = root_of(src) })
+    c.system = M.system()
+    goose.start_session(b, c.system, M.opts(root_of(src)))
   end
   vim.cmd "startinsert!"
 end
@@ -428,6 +523,14 @@ function M.setup()
       M.ask()
     end
   end, { range = true, desc = "Goose: ask a question about the code" })
+  vim.api.nvim_create_user_command("GooseMemory", function()
+    for _, c in pairs(chats) do
+      close(c)
+    end
+    local file = goose.memory_file()
+    vim.fn.mkdir(vim.fs.dirname(file), "p")
+    vim.cmd.edit(vim.fn.fnameescape(file))
+  end, { desc = "Goose: open the memory file (notes every new chat and Alt+K read)" })
   api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
     group = api.nvim_create_augroup("GooseAsk", { clear = true }),
     callback = function(a)

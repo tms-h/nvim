@@ -8,7 +8,10 @@ bin/main.ml when the question mentions main; "ELSEWHERE" also changes
 that. Each log line has the folder the stub runs in (cwd). A question with
 "LONG" gets 120 lines, three chunks each, like real token streaming;
 "LONGCODE" gets 120 lines of code the same way. "BADTYPE" gets code with a
-type error, and the compile-error retry gets code that compiles.
+type error, and the compile-error retry gets code that compiles. A question
+with "WIKI" first searches the jswiki for ppx_let and reads its page;
+"REMEMBER" saves a note through the memory server's remember (tool calls
+only: no files).
 $GOOSE_STUB_DELAY = seconds between streamed chunks."""
 import json, os, sys, time
 
@@ -40,6 +43,14 @@ for line in sys.stdin:
                                                                      "delta": {"type": "text_delta", "text": c}}}), flush=True)
             print(json.dumps({"type": "assistant", "message": {"role": "assistant", "content": [
                 {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": os.path.join(os.getcwd(), "bin/main.ml")}}]}}), flush=True)
+        tools = []
+        if "WIKI" in q:
+            tools += [("mcp__jswiki__find", {"query": "ppx_let Deferred"}), ("mcp__jswiki__read", {"page": "ppx-let", "section": "How it reads"})]
+        if "REMEMBER" in q:
+            tools += [("mcp__memory__remember", {"note": "Thomas prefers Core's List over Stdlib"})]
+        for i, (name, args) in enumerate(tools):
+            print(json.dumps({"type": "assistant", "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "id": f"m{i}", "name": name, "input": args}]}}), flush=True)
         chunks = [f"**answer {n}**", " to: ", q, "\n\nsecond line\n"]
         if "LONG" in q:
             chunks = [c for i in range(120) for c in (f"line {i} ", "of a long ", "answer\n")]
