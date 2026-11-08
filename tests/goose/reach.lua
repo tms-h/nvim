@@ -244,6 +244,23 @@ end
 check("questions and the › line are tinted blocks, answers are not", #wrong == 0, table.concat(wrong, "; "))
 local read_row = vim.fn.index(vim.api.nvim_buf_get_lines(c.buf, 0, -1, false), "_read bin/main.ml_")
 check("a file it reads is grey", read_row >= 0 and has(read_row, "hl_group", "GooseAskNote"), read_row)
+-- Window fullscreen resizes the editor: the box re-centres and takes the new
+-- width, growing and shrinking ("the window doesnt auto resize", 2026-11-08).
+local cols0, lines0 = vim.o.columns, vim.o.lines
+local function fits(cols, rows)
+  vim.o.columns, vim.o.lines = cols, rows
+  vim.cmd "doautocmd VimResized"
+  local w = math.min(math.max(math.min(100, math.floor(cols * 0.6)), math.min(60, cols - 4)), cols - 4)
+  local cfg = vim.api.nvim_win_get_config(cwin)
+  local ok = cfg.width == w and cfg.col == math.floor((cols - w - 2) / 2) and cfg.row + cfg.height <= rows
+  return ok, ("%dx%d: width %d col %d row %d height %d"):format(cols, rows, cfg.width, cfg.col, cfg.row, cfg.height)
+end
+vim.o.columns, vim.o.lines = 80, 24
+vim.cmd "doautocmd VimResized"
+check("the box refits when the editor grows", fits(200, 60))
+check("the box refits when the editor shrinks", fits(90, 30))
+vim.o.columns, vim.o.lines = cols0, lines0
+vim.cmd "doautocmd VimResized"
 keys "<Esc><Esc>"
 check(
   "Esc, Esc closes the box, back in the code",

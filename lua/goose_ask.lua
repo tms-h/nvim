@@ -422,6 +422,18 @@ function M.setup()
       end
     end,
   })
+  -- The box is sized and centred for the editor it opened in; refit it when
+  -- the editor grows or shrinks (window fullscreen, Neovide resize).
+  api.nvim_create_autocmd("VimResized", {
+    group = "GooseAsk",
+    callback = function()
+      for _, c in pairs(chats) do
+        if c.win then
+          fit(c.win)
+        end
+      end
+    end,
+  })
 end
 
 return M
