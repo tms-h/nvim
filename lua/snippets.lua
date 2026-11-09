@@ -19,7 +19,7 @@ local function title(name)
 end
 
 -- prefix -> body (LSP snippet syntax) for the captured name.
-M.OCAML = {
+local OCAML = {
   mod_ = function(n)
     return "module " .. pascal(n) .. " = struct\n\t$0\nend"
   end,
@@ -47,8 +47,8 @@ function M.try_expand()
   local row, col = unpack(api.nvim_win_get_cursor(0))
   local line = api.nvim_get_current_line()
   local before, after = line:sub(1, col), line:sub(col + 1)
-  local indent, prefix, name = before:match "^(%s*)(%a+_)([%a][%w_]*) $"
-  local body = prefix and M.OCAML[prefix]
+  local indent, prefix, name = before:match "^(%s*)(%a+_)(%a[%w_]*) $"
+  local body = prefix and OCAML[prefix]
   if not body or vim.trim(after) ~= "" then
     return
   end
