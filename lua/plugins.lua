@@ -68,13 +68,16 @@ local function in_comment(buf, row, col)
   -- Tree-sitter parses in the background, and this can run first (busy
   -- machine, big file): parse the row now, or no capture says "comment" and
   -- the word stays plain until the next edit. A no-op once parsed.
-  local has_parser, parser = pcall(vim.treesitter.get_parser, buf)
-  if has_parser and parser then
+  -- No parser for the buffer: get_parser returns nil (it no longer throws).
+  local ok_parser, parser = pcall(vim.treesitter.get_parser, buf)
+  parser = ok_parser and parser or nil
+  if parser then
     parser:parse { row, row + 1 }
   end
   local ok, captures = pcall(vim.treesitter.get_captures_at_pos, buf, row, col)
   if not ok or #captures == 0 then
-    return not pcall(vim.treesitter.get_parser, buf)
+    -- No parser: tree-sitter cannot tell, so colour it.
+    return parser == nil
   end
   for _, c in ipairs(captures) do
     if c.capture:find "comment" then
