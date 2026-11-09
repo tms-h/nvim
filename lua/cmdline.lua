@@ -29,8 +29,8 @@ local state = { firstc = "", prompt = "" }
 local active = false -- the command window is the box, not the bottom line
 
 ---The box: centred, its top on the finder's top row (pressed against the
----pane titles at the top it looked off), at most 100 cells wide, never wider
----than the screen less a margin.
+---pane titles at the top it looked off), 60% of the screen but 60 to 100
+---cells wide, never wider than the screen less a margin.
 local function box_config(height)
   local cols, lines = vim.o.columns, vim.o.lines
   local width = math.max(math.min(100, math.floor(cols * 0.6)), math.min(60, cols - 4))
