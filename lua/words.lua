@@ -18,7 +18,8 @@ end
 function M.select_word()
   M.clear()
   -- On a space, select the space alone (<cword> would name the next word).
-  local char = vim.fn.getline("."):sub(vim.fn.col ".", vim.fn.col ".")
+  local col = vim.fn.col "."
+  local char = vim.fn.getline("."):sub(col, col)
   local word = vim.fn.expand "<cword>"
   if word ~= "" and not char:match "^%s?$" then
     local text = vim.fn.escape(word, "\\")

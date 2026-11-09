@@ -1,5 +1,5 @@
 {
- "generated": "2026-11-09",
+ "generated": "2026-11-10",
  "rules": [
   {
    "id": "poly-compare",
@@ -9,7 +9,7 @@
    ],
    "rule": "Don't compare non-int values with polymorphic `=`, `<>` or `compare`; use the type's own `equal`/`compare` (e.g. `String.equal`, `[%equal: t]`).",
    "cost": "gives wrong answers on abstract types whose layout isn't canonical (two equal `Set.t`s compare unequal), and raises at runtime once a value holds a function or object.",
-   "when": "",
+   "when": "only where Base/Core's int-only `=` isn't in effect (Stdlib-only libraries, `open Poly`, `Poly.`/`Stdlib.` calls, ppx runtimes); comparing constant constructors, chars or bools is fine.",
    "page": "avoid-polymorphic-compare",
    "url": "http://wiki.localhost/avoid-polymorphic-compare",
    "sources": [
@@ -36,9 +36,9 @@
    "langs": [
     "any"
    ],
-   "rule": "Restructure code a careful reader can't follow until it reads plainly; the CR says which part and what would make it clear.",
+   "rule": "Restructure code a careful reader can't follow until it reads plainly; the CR names the lines and the restructuring that would make them clear.",
    "cost": "code a reviewer can't follow can't be checked, so its bugs ship, and it stays harder to change and less likely to do what its author meant.",
-   "when": "you can point at the lines; not for style, naming taste or formatting.",
+   "when": "you can point at the lines; not for formatting or naming taste. Combinator chains that hide control flow count.",
    "page": "code-review",
    "url": "http://wiki.localhost/code-review",
    "sources": [
@@ -60,7 +60,7 @@
    "langs": [
     "ocaml"
    ],
-   "rule": "Keep a type abstract in the `.mli` when its values must satisfy an invariant, and expose only constructors that check it (e.g. `create : … -> t Or_error.t`).",
+   "rule": "Keep a type abstract or `= private` in the `.mli` when its values must satisfy an invariant, and expose only constructors that check it (e.g. `create : … -> t Or_error.t`).",
    "cost": "with the definition exposed, any client can build or mutate a value that breaks the invariant, and the module's functions, which assume it, then give wrong answers.",
    "when": "the invariant isn't already enforced by the type itself (sorted, non-empty, in range, validated).",
    "page": "interface-files",
@@ -84,9 +84,9 @@
    "langs": [
     "ocaml"
    ],
-   "rule": "Turn a type that can hold a value the code must never see (an `option` that's never `None` in some state, two bools that can't both be true, an `int` that's really an id) into a variant or a distinct type, and name the bad state.",
-   "cost": "nothing checks that the code avoids the bad state, so a later change can create it, and every reader must remember which fields are valid when.",
-   "when": "",
+   "rule": "Turn fields that can hold a state the code must never see (an `option` that's never `None` in some state, two bools never both true) into a variant that names the states.",
+   "cost": "nothing stops a later change creating the bad state, and every reader must remember which fields are valid when.",
+   "when": "the fields visibly change together (options set and cleared as a pair) or some combination is never valid; independent optional fields and flags are fine.",
    "page": "make-illegal-states-unrepresentable",
    "url": "http://wiki.localhost/make-illegal-states-unrepresentable",
    "sources": [
@@ -103,14 +103,48 @@
    ]
   },
   {
+   "id": "annotated-ignore",
+   "kind": "CR",
+   "langs": [
+    "ocaml"
+   ],
+   "rule": "Give every ignored value its type: `ignore (e : t)` or `let (_ : t) = e`, unless `e` is a plain name, a constructor or a function.",
+   "cost": "when `e` later starts returning a `Deferred.t` or an `Or_error.t`, or a function gains an argument so `e` is a partial application, an unannotated ignore still compiles and silently drops the wait, the error or the whole call.",
+   "when": "",
+   "page": "ppx-js-style",
+   "url": "http://wiki.localhost/ppx-js-style",
+   "sources": [
+    {
+     "slug": "doc-ppx-js-style",
+     "who": "Jane Street",
+     "date": ""
+    },
+    {
+     "slug": "code-ppx-js-style",
+     "who": "Jane Street",
+     "date": "2026-11-03"
+    },
+    {
+     "slug": "doc-rwo-concurrent-programming",
+     "who": "Yaron Minsky and Anil Madhavapeddy",
+     "date": ""
+    },
+    {
+     "slug": "craigfe-pitfalls-of-polymorphic-ignore-ext",
+     "who": "Craig Ferguson",
+     "date": "2020-01-20"
+    }
+   ]
+  },
+  {
    "id": "pin-bug-with-test",
    "kind": "CR",
    "langs": [
     "any"
    ],
-   "rule": "Ship a bug fix with a test that fails without it, ideally an expect test added first so the fix shows up as its diff.",
+   "rule": "Ship a bug fix with a test that fails without it: ideally an expect test landed first, as its own change recording the wrong behaviour, so the fix shows up as its diff.",
    "cost": "nobody, reviewer included, can see the fix works, and a later change can bring the bug back unnoticed.",
-   "when": "the fix is in code where a break is costly (money, production data, order paths). CR, not CR-soon, because \"it's fixed\" is the claim under review and the test is its evidence.",
+   "when": "the fix is in code where a break is costly (money, production data, order paths); not codegen, runtime or C-stub fixes where a new test is impractical.",
    "page": "testing-philosophy",
    "url": "http://wiki.localhost/testing-philosophy",
    "sources": [
@@ -137,9 +171,9 @@
    "langs": [
     "ocaml"
    ],
-   "rule": "Name a function that can raise with an `_exn` suffix, and make the plain name return an `option` or `Or_error.t`.",
-   "cost": "a caller reading `foo x` assumes it can't throw, so the missing case crashes at run time instead of failing to type-check, and grepping for `_exn` no longer finds every place that can fail.",
-   "when": "the function raises on ordinary inputs (a missing key, bad data), not only on a broken invariant.",
+   "rule": "Name a function that can raise with an `_exn` suffix; give a non-raising twin, if any, the plain name, returning `option` or `Or_error.t`.",
+   "cost": "a caller reading `foo x` assumes it can't throw, so the missing case crashes at run time, and grepping for `_exn` no longer finds every place that can fail.",
+   "when": "it raises on ordinary inputs (a missing key, bad data), not only on a broken invariant; Unix syscall wrappers, `of_string`/`t_of_sexp` and indexing are documented exceptions.",
    "page": "the-exn-suffix",
    "url": "http://wiki.localhost/the-exn-suffix",
    "sources": [
@@ -163,7 +197,7 @@
    ],
    "rule": "Don't allocate on the hot path after startup (no `String.sub`, closures, lists or boxed floats per event); reuse preallocated buffers or the local, non-allocating versions.",
    "cost": "every allocation feeds the GC, and a collection or compaction landing on the hot path is a latency spike.",
-   "when": "only in files with `[@zero_alloc]` attributes or a REVIEW.md that marks the code latency-sensitive, and only in code that runs per event, not at startup.",
+   "when": "unannotated per-event or hot-loop code, not startup, in files that `[@zero_alloc]` attributes or a REVIEW.md mark latency-sensitive; `[@zero_alloc]` functions are already compiler-checked, and `@ local` alone doesn't mark a hot path.",
    "page": "zero-alloc-ocaml",
    "url": "http://wiki.localhost/zero-alloc-ocaml",
    "sources": [
@@ -191,8 +225,8 @@
     "ocaml"
    ],
    "rule": "Build errors from the values involved (`Error.create`, `Or_error.error_s [%message …]`), not from a `sprintf`-ed string.",
-   "cost": "a string error drops the request, input or key that failed, and any code that logs, renders or branches on it must parse text meant for humans, which breaks when the wording changes.",
-   "when": "",
+   "cost": "a string error drops the request, input or key that failed, and code that logs or branches on it must parse text meant for humans, which breaks when the wording changes.",
+   "when": "not in Base-level code without `[%message]`, and not for messages shown to end users (CLI errors, help text).",
    "page": "choosing-an-error-type",
    "url": "http://wiki.localhost/choosing-an-error-type",
    "sources": [
@@ -216,7 +250,7 @@
    ],
    "rule": "Hardcode the one value or implementation in use; don't add options, config fields, flags or parameters nobody sets yet, and make it an argument when a second case appears.",
    "cost": "an option nobody sets is a code path nobody runs, so it rots untested, and a config string can name something that doesn't exist, caught only at run time.",
-   "when": "",
+   "when": "all callers are visible (application code, or the change itself adds the option); not public library APIs.",
    "page": "configuration-as-code",
    "url": "http://wiki.localhost/configuration-as-code",
    "sources": [
@@ -238,9 +272,9 @@
    "langs": [
     "ocaml"
    ],
-   "rule": "Add or update an expect test that prints what a new or changed non-trivial function does, including on the edge case you found.",
+   "rule": "Add or update a test of new or changed code on an edge case you name: an expect test that prints the behaviour, or a property or `require` test that pins it.",
    "cost": "the reviewer can't see the behaviour change, and a later change that breaks it fails no test.",
-   "when": "no existing test's output diff already shows the change; skip pure refactors and trivial wrappers.",
+   "when": "the code is new or changed since the last review and branches on that edge case, and grepping the tests found none covering it; skip pure refactors and trivial wrappers.",
    "page": "expect-tests",
    "url": "http://wiki.localhost/expect-tests",
    "sources": [
@@ -262,9 +296,9 @@
    "langs": [
     "ocaml"
    ],
-   "rule": "Make an expect test show its output depends on the input it's about: print the output for input A and for A with that one value changed, or their diff.",
-   "cost": "a test showing only \"X with Y=Z fails\" may fail for another reason (another field, a new check), so it doesn't prove what its name says.",
-   "when": "the test claims a specific input causes a specific outcome (a validation rule, a branch).",
+   "rule": "Make an expect test show its output depends on the input it's about: print A and A with that one value changed, or their diff.",
+   "cost": "a test showing only \"X with Y=Z fails\" may fail for another reason (another field, a new check), proving less than its name says.",
+   "when": "the test claims a specific input causes a specific outcome and its output doesn't already name that input; a passing neighbour in the same file counts.",
    "page": "expect-tests",
    "url": "http://wiki.localhost/expect-tests",
    "sources": [
@@ -281,9 +315,9 @@
    "langs": [
     "any"
    ],
-   "rule": "Delete code paths nothing calls any more (dead functions, branches behind a flag nobody sets, commented-out blocks) instead of keeping them around.",
-   "cost": "unrun code rots as requirements and libraries move, and the day a later change wires it back in, it brings outdated assumptions and bugs with it.",
-   "when": "the path is unreachable in the tree today; new code already running side by side with the old is not dead.",
+   "rule": "Delete code nothing calls any more (dead functions, branches behind a flag nobody sets, commented-out blocks) instead of keeping it around.",
+   "cost": "unrun code rots as requirements and libraries move, and when a later change wires it back in it brings stale assumptions.",
+   "when": "the path is unreachable in the tree today; code running beside its replacement, `[@@deprecated]` items kept for outside users or as tripwires, and `{[ ]}` examples in doc comments are not dead.",
    "page": "migrating-legacy-systems",
    "url": "http://wiki.localhost/migrating-legacy-systems",
    "sources": [
@@ -300,9 +334,9 @@
    "langs": [
     "ocaml"
    ],
-   "rule": "Lift a helper nested deep inside another function to the top level, passing what it used from the enclosing scope as arguments, and leave it out of the `.mli`.",
+   "rule": "Lift a nested helper to the top level, passing what it used from the enclosing scope as arguments, and leave it out of the `.mli`.",
    "cost": "a reader can't see what a nested helper depends on without scanning its free variables, and the enclosing function gets longer.",
-   "when": "a named helper two or more levels deep that captures nothing or a value or two; short lambdas stay.",
+   "when": "a named helper of 5+ lines that captures at most one value from the enclosing function; `loop`-style workers, closures over several locals or mutable state, and short lambdas stay.",
    "page": "optimize-for-reading",
    "url": "http://wiki.localhost/optimize-for-reading",
    "sources": [
@@ -314,12 +348,36 @@
    ]
   },
   {
+   "id": "underscore-literal",
+   "kind": "CR-soon",
+   "langs": [
+    "ocaml"
+   ],
+   "rule": "Put underscores in number literals every three digits (every two in hex, octal and binary); use `__` to mark fixed-point numbers.",
+   "cost": "`1_000_00` compiles as a hundred thousand but reads as a thousand, so a size, price or limit constant gets misread in review.",
+   "when": "",
+   "page": "ppx-js-style",
+   "url": "http://wiki.localhost/ppx-js-style",
+   "sources": [
+    {
+     "slug": "doc-ppx-js-style",
+     "who": "Jane Street",
+     "date": ""
+    },
+    {
+     "slug": "doc-rwo-guided-tour",
+     "who": "Yaron Minsky, Anil Madhavapeddy",
+     "date": ""
+    }
+   ]
+  },
+  {
    "id": "split-refactor",
    "kind": "CR-soon",
    "langs": [
     "any"
    ],
-   "rule": "Split a change that mixes a refactor (renames, moved code, a new type) with a behaviour change into two features: the refactor first, then the behaviour change.",
+   "rule": "Split a change that mixes a refactor (renames, moved code, a new type) with a behaviour change into two features, or at least two commits, refactor first.",
    "cost": "the reviewer has to check every mechanical line for a hidden semantic change, and the expect-test diff mixes the real change with refactor noise.",
    "when": "judged on the diff since the last review, and only when the refactor part is big enough to hide the behaviour change.",
    "page": "small-features",
@@ -345,7 +403,7 @@
    ],
    "rule": "Fix a quirk in an in-house library in the library itself instead of wrapping or working around it in your code.",
    "cost": "the workaround is more code to carry on top of the problem, and the \"proper fix later\" never gets budgeted.",
-   "when": "the library is in the same repo and can be changed; a tool you don't own (the compiler, outside open source) on a deadline is the exception.",
+   "when": "the library is in this repo and can be changed, and the workaround carries no `CR-someday <owner>` or removal condition; a tool you don't own (the compiler, outside open source) on a deadline is exempt.",
    "page": "working-with-upstream",
    "url": "http://wiki.localhost/working-with-upstream",
    "sources": [

@@ -2082,6 +2082,20 @@ check("TODO in a comment is coloured even before the background syntax parse", f
   expect(in_string == nil, "TODO inside a string got " .. tostring(in_string))
 end)
 
+check("TODO is coloured in a file tree-sitter cannot read", function()
+  -- With no parser (a .txt note, a filetype with none installed) tree-sitter
+  -- cannot tell comments from the rest, so every TODO is coloured. Neovim 0.12's
+  -- get_parser returns nil instead of throwing, and a pcall test of it left
+  -- every such TODO plain.
+  vim.cmd "enew"
+  local buf = api.nvim_get_current_buf()
+  api.nvim_buf_set_lines(buf, 0, -1, false, { "TODO: buy milk" })
+  vim.bo[buf].filetype = "text"
+  local got = MiniHipatterns.config.highlighters.todo.group(buf, "TODO", { line = 1, from_col = 1 })
+  vim.cmd "bwipeout!"
+  expect(got == "TodoTextTodo", "TODO in a text file got " .. tostring(got))
+end)
+
 check("Key hints pop up after a Space pause (mini.clue)", function()
   -- (The hint window itself waits inside getcharstr, which this runner's
   -- timers cannot see; this checks the trigger and its groups.)

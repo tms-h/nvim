@@ -16,7 +16,7 @@ local gh = function(repo)
   return "https://github.com/" .. repo
 end
 local later = function(src)
-  -- Install now, load when first needed (see the autocmds below).
+  -- Install now, load when first needed (see "Loaded when needed" below).
   return { src = src, data = { later = true } }
 end
 
@@ -68,13 +68,16 @@ local function in_comment(buf, row, col)
   -- Tree-sitter parses in the background, and this can run first (busy
   -- machine, big file): parse the row now, or no capture says "comment" and
   -- the word stays plain until the next edit. A no-op once parsed.
-  local has_parser, parser = pcall(vim.treesitter.get_parser, buf)
-  if has_parser and parser then
+  -- No parser for the buffer: get_parser returns nil (it no longer throws).
+  local ok_parser, parser = pcall(vim.treesitter.get_parser, buf)
+  parser = ok_parser and parser or nil
+  if parser then
     parser:parse { row, row + 1 }
   end
   local ok, captures = pcall(vim.treesitter.get_captures_at_pos, buf, row, col)
   if not ok or #captures == 0 then
-    return not pcall(vim.treesitter.get_parser, buf)
+    -- No parser: tree-sitter cannot tell, so colour it.
+    return parser == nil
   end
   for _, c in ipairs(captures) do
     if c.capture:find "comment" then
@@ -241,7 +244,8 @@ vim.api.nvim_create_user_command("Mason", function(args)
   vim.cmd("Mason " .. args.args)
 end, { nargs = "*", desc = "Install language servers and tools" })
 
--- Where the plugin itself looks for its settings.
+-- Only when its settings file exists, in the folder the plugin itself reads
+-- (WAKATIME_HOME, else home); loaded half a second after the UI is up.
 if vim.uv.fs_stat((vim.env.WAKATIME_HOME or vim.fn.expand "~") .. "/.wakatime.cfg") then
   vim.api.nvim_create_autocmd("UIEnter", {
     once = true,
