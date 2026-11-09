@@ -11,7 +11,8 @@ that. Each log line has the folder the stub runs in (cwd). A question with
 type error, and the compile-error retry gets code that compiles. A question
 with "WIKI" first searches the jswiki for ppx_let and reads its page;
 "REMEMBER" saves a note through the memory server's remember (tool calls
-only: no files).
+only: no files). Any other message with "VERDICT" (an Alt+L `/mentor`
+proposal) gets a mentor-check verdict and its message line.
 $GOOSE_STUB_DELAY = seconds between streamed chunks."""
 import json, os, sys, time
 
@@ -54,6 +55,8 @@ for line in sys.stdin:
         chunks = [f"**answer {n}**", " to: ", q, "\n\nsecond line\n"]
         if "LONG" in q:
             chunks = [c for i in range(120) for c in (f"line {i} ", "of a long ", "answer\n")]
+    elif "VERDICT" in content:
+        chunks = ["Sounds good.", "\n\nMessage: clear.\n"]
     elif "ONLYELSEWHERE" in content:
         chunks = block
     elif "ELSEWHERE" in content:

@@ -39,6 +39,11 @@
 -- tools/goose/memory.py, which can touch only that file; the chat has no
 -- Edit or Write. Every new chat and Alt+K session gets the file in its
 -- system prompt (goose.with_memory). :GooseMemory opens the file to edit.
+--
+-- Slash commands: a message that starts with `/mentor` (M.slash) goes to
+-- that Claude Code skill's prompt instead of the chat (`/mentor I'm going to
+-- X because Y, any reason not to?` gets the mentor-check verdict). See
+-- M.slash; anything else after a `/` is an ordinary question.
 local M = {}
 
 local goose = require "goose"
@@ -99,6 +104,76 @@ corrects you; then answer as usual. Never save one-off details of the current
 question, guesses, or what the memory already says. `forget` drops a note he
 says is wrong or outdated.]]
 local TOOLS = "Read,Grep,Glob,WebSearch,WebFetch"
+
+-- Slash commands in the box: `/name text` sends text to a skill's prompt,
+-- read from the skill's own file (a Claude Code skill, so the box and Claude
+-- Code answer the same way; a missing file shows one line in the box). Each
+-- box keeps one claude per skill, beside its chat's (a running chat keeps
+-- the prompt it started with), in the project root with Read, Grep, Glob
+-- and the wiki: no Edit, Write, web or memory. Its answers sit under a grey
+-- line with the skill's name. log = a folder in stdpath('state') whose
+-- log.jsonl gets a line per answer (time, source, text, first line). One
+-- line per skill.
+M.slash = {
+  mentor = { name = "mentor-check", prompt = "~/.claude/skills/mentor-check/prompt.md", log = "mentor" },
+}
+
+---claude options for a slash command's claude in `root`.
+function M.slash_opts(root)
+  return goose.claude_opts(root, { tools = "Read,Grep,Glob" })
+end
+
+---The skill's prompt, or nil and one line saying what is missing.
+local function slash_system(cmd, skill)
+  local path = vim.fs.normalize(skill.prompt)
+  local f = io.open(path, "r")
+  if not f then
+    return nil, ("/%s needs %s (the %s skill isn't on this machine)"):format(cmd, vim.fn.fnamemodify(path, ":~"), skill.name)
+  end
+  local text = f:read "*a"
+  f:close()
+  return text
+end
+
+---The lines the box is about, as context for a slash command ("" if blank).
+local function slash_context(src, s, e, root)
+  local here = table.concat(api.nvim_buf_get_lines(src, s, e + 1, false), "\n")
+  if not here:match "%S" then
+    return ""
+  end
+  local name = api.nvim_buf_get_name(src)
+  name = vim.fs.relpath(root, name) or vim.fn.fnamemodify(name, ":~")
+  if s == e then
+    return ("Code at the cursor, %s line %d (context, may be unrelated):\n%s\n\n"):format(name, s + 1, here)
+  end
+  return ("Selected code, %s lines %d-%d:\n%s\n\n"):format(name, s + 1, e + 1, here)
+end
+
+---Append one answer to stdpath('state')/<skill.log>/log.jsonl.
+local function slash_log(skill, text, out)
+  if not skill.log then
+    return
+  end
+  local dir = vim.fs.joinpath(vim.fn.stdpath "state", skill.log)
+  vim.fn.mkdir(dir, "p")
+  local first = vim.trim(((out:match "[^\n]*%S[^\n]*") or ""):gsub("%*", ""))
+  local line = vim.json.encode { ts = os.date "!%Y-%m-%dT%H:%M:%SZ", source = "nvim", proposal = text, verdict = first }
+  vim.fn.writefile({ line }, vim.fs.joinpath(dir, "log.jsonl"), "a")
+end
+
+---The hidden buffer a box's skill claude is keyed by (goose's sessions are
+---per buffer; deleting it kills the claude).
+local function slash_key(c, cmd)
+  c.keys = c.keys or {}
+  if not (c.keys[cmd] and api.nvim_buf_is_valid(c.keys[cmd])) then
+    c.keys[cmd] = api.nvim_create_buf(false, true)
+  end
+  return c.keys[cmd]
+end
+
+function M.slash_key(c, cmd) -- for tests
+  return c.keys and c.keys[cmd]
+end
 
 ---The chat's system prompt: the rules, the wiki's if present, memory's, and
 ---the memory file itself.
@@ -200,7 +275,17 @@ local function send(c, q)
     return
   end
   local root = root_of(src)
-  local reads, answer = {}, nil
+  -- `/mentor ...`: that skill's prompt, on this box's claude for the skill.
+  local cmd, text = q:match "^/(%S+)%s*(.*)$"
+  local skill = cmd and M.slash[cmd]
+  local system, missing
+  if skill then
+    system, missing = slash_system(cmd, skill)
+    if not missing and text == "" then
+      missing = ("type the text after /%s"):format(cmd)
+    end
+  end
+  local reads, answer = (skill and not missing) and { skill.name } or {}, nil
   c.busy = true
   local wait = body()[1]
   api.nvim_buf_set_lines(cb, at, at, false, { wait, "" })
@@ -296,6 +381,43 @@ local function send(c, q)
     end
   end
   fit(c.win or -1)
+  local function done(out, err)
+    c.busy = false
+    answer = out or ("_goose: %s_"):format(err or "no answer")
+    render() -- now, not a frame later; a waiting frame then finds no mark
+    pcall(api.nvim_buf_del_extmark, cb, ns, mark)
+  end
+  local function on_tool(name, input)
+    reads[#reads + 1] = describe(name, input, root)
+    answer = nil
+    show()
+  end
+  if missing then
+    return done(nil, missing)
+  end
+  if skill then
+    local about = slash_context(src, s, e, root)
+    -- The code goes along only when it changed since this claude last saw it.
+    local function build(S)
+      return (S and S.sent == about and "" or about) .. text, about
+    end
+    return goose.session_send(slash_key(c, cmd), {
+      system = system,
+      opts = M.slash_opts(root),
+      build = build,
+      full = function()
+        return (build(nil))
+      end,
+      on_partial = show,
+      on_tool = on_tool,
+      on_done = function(out, err)
+        if out then
+          slash_log(skill, text, out)
+        end
+        done(out, err)
+      end,
+    })
+  end
   -- A live claude keeps the prompt it started with (a changed one would
   -- restart it and lose the conversation); a new one reads the memory now.
   if not goose.session(cb) then
@@ -311,17 +433,8 @@ local function send(c, q)
       return (goose.question_prompt(nil, src, q, s, e, root))
     end,
     on_partial = show,
-    on_tool = function(name, input)
-      reads[#reads + 1] = describe(name, input, root)
-      answer = nil
-      show()
-    end,
-    on_done = function(out, err)
-      c.busy = false
-      answer = out or ("_goose: %s_"):format(err or "no answer")
-      render() -- now, not a frame later; a waiting frame then finds no mark
-      pcall(api.nvim_buf_del_extmark, cb, ns, mark)
-    end,
+    on_tool = on_tool,
+    on_done = done,
   })
 end
 
@@ -421,7 +534,7 @@ function M.ask(s, e)
   cfg.border = vim.o.winborder ~= "" and vim.o.winborder or "rounded"
   cfg.title = (" Goose · %s "):format(where(c))
   cfg.title_pos = "center"
-  cfg.footer = " Alt+K writes it into the file "
+  cfg.footer = " Alt+K writes it into the file · /mentor checks a plan "
   cfg.footer_pos = "center"
   c.win = api.nvim_open_win(b, true, cfg)
   vim.wo[c.win].wrap, vim.wo[c.win].linebreak = true, true
@@ -478,6 +591,12 @@ function M.setup()
         chats[a.buf] = nil
         close(c)
         pcall(api.nvim_buf_delete, c.buf or -1, { force = true })
+        -- Each skill's claude: autocmds don't nest, so goose's BufDelete
+        -- never sees these buffers go.
+        for _, key in pairs(c.keys or {}) do
+          goose.kill_session(key)
+          pcall(api.nvim_buf_delete, key, { force = true })
+        end
       end
     end,
   })
