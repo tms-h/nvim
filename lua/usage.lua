@@ -1,7 +1,7 @@
 -- Silent usage counter: how often each custom mapping and each typed `:`
--- command is used. Counts live in memory and are appended
--- (as deltas) to ~/.local/state/nvim/usage/counts.jsonl on FocusLost and exit, so
--- there is no disk work per keystroke. :UsageReport sums every line written.
+-- command is used. Counts live in memory and are appended (as deltas) to
+-- ~/.local/state/nvim/usage/counts.jsonl on FocusLost and exit, so there is
+-- no disk work per keystroke. :UsageReport sums every line written.
 -- :FrictionNote <text> appends a timestamped line to usage/friction.md.
 local M = {}
 
