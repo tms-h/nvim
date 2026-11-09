@@ -16,7 +16,7 @@ local gh = function(repo)
   return "https://github.com/" .. repo
 end
 local later = function(src)
-  -- Install now, load when first needed (see the autocmds below).
+  -- Install now, load when first needed (see "Loaded when needed" below).
   return { src = src, data = { later = true } }
 end
 
@@ -244,7 +244,8 @@ vim.api.nvim_create_user_command("Mason", function(args)
   vim.cmd("Mason " .. args.args)
 end, { nargs = "*", desc = "Install language servers and tools" })
 
--- Where the plugin itself looks for its settings.
+-- Only when its settings file exists, in the folder the plugin itself reads
+-- (WAKATIME_HOME, else home); loaded half a second after the UI is up.
 if vim.uv.fs_stat((vim.env.WAKATIME_HOME or vim.fn.expand "~") .. "/.wakatime.cfg") then
   vim.api.nvim_create_autocmd("UIEnter", {
     once = true,
