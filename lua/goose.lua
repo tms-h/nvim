@@ -28,15 +28,19 @@
 -- (retry included), the file is saved, so the build's errors clear by
 -- themselves.
 --
+-- Every claude goose starts (Alt+K, the Alt+L chat, seconder) gets the
+-- project's AGENTS.md / CLAUDE.md as rules in its system prompt (with_rules).
+--
 -- ask() (one-shot) is shared with seconder.lua.
 local M = {}
 
 local ns = vim.api.nvim_create_namespace "goose"
 
--- Lean CLI: no settings (hooks, plugins, CLAUDE.md), no MCP, no tools, no
--- session file. Measured 2026-11-06: 3.1 s per call vs 3.8 s for plain
--- `claude -p`, and plain leaked CLAUDE.md lines into the code. --bare would be
--- faster but needs an API key (OAuth logins fail).
+-- Lean CLI: claude's own settings stay off (hooks, plugins, ~/.claude's
+-- CLAUDE.md), no MCP, no tools, no session file. Measured 2026-11-06: 3.1 s
+-- per call vs 3.8 s for plain `claude -p`. --bare would be faster but needs
+-- an API key (OAuth logins fail). The project's own AGENTS.md / CLAUDE.md is
+-- read by goose and put in the system prompt (with_rules), not by claude.
 M.model = "claude-sonnet-5-5"
 -- opts (questions and reviews only): tools = built-in tools
 -- ("Read,Grep,..."), mcp = an --mcp-config JSON, allow = tools permitted
@@ -86,13 +90,76 @@ function M.with_memory(system)
     .. text
 end
 
--- ── Project context: shared by the Alt+L chat and seconder ────────────────
+-- ── Project context: shared by Alt+K, the Alt+L chat and seconder ─────────
 local ROOT_MARKERS = { "REVIEW.md", ".git", "dune-project", "Cargo.toml", "package.json", "pyproject.toml", "go.mod" }
 
 ---The project root of buf (the nearest folder with .git, dune-project,
 ---REVIEW.md...), else the file's folder: where claude runs and reads.
 function M.root(buf)
   return vim.fs.root(buf, ROOT_MARKERS) or vim.fs.dirname(vim.api.nvim_buf_get_name(buf))
+end
+
+-- Project rules: the project's own AGENTS.md and/or CLAUDE.md, in the root
+-- above, read here and put in every goose system prompt (Alt+K, the chat,
+-- /mentor, seconder) as one marked block, cut at rules_max bytes. claude
+-- itself still runs with --setting-sources "", so ~/.claude/CLAUDE.md, hooks
+-- and plugins never load; a root that holds the global file skips it.
+-- The 2026-11-06 leak this guards against: plain `claude -p` loaded
+-- ~/.claude/CLAUDE.md as a user message saying it OVERRIDES any default
+-- behaviour, and its "end with one Habit: line" rule added a Habit line after
+-- the code in 2 of 5 calls. Here the rules sit in the system prompt under
+-- each path's own answer format, the block says its text never goes into
+-- code or comments, and `how` says which kinds of rule apply on that path
+-- (for Alt+K, rules about how to reply never add text to the code).
+M.rules_max = 8000
+M.rules_files = { "AGENTS.md", "CLAUDE.md" }
+
+---The rules files in `root`, each once (a link to the other, or the same
+---text, counts once): their text cut at rules_max bytes and the names it came
+---from ("AGENTS.md"), or nil.
+function M.project_rules(root)
+  if not root then
+    return
+  end
+  local global = vim.uv.fs_realpath(vim.fs.joinpath(vim.env.CLAUDE_CONFIG_DIR or vim.fs.joinpath(vim.uv.os_homedir(), ".claude"), "CLAUDE.md"))
+  local seen, parts, names = {}, {}, {}
+  for _, name in ipairs(M.rules_files) do
+    local real = vim.uv.fs_realpath(vim.fs.joinpath(root, name))
+    local f = real and real ~= global and not seen[real] and io.open(real, "r")
+    if f then
+      seen[real] = true
+      local text = vim.trim(f:read(M.rules_max) or "")
+      f:close()
+      if text ~= "" and not seen[text] then
+        seen[text] = true
+        parts[#parts + 1], names[#names + 1] = text, name
+      end
+    end
+  end
+  if #parts == 0 then
+    return
+  end
+  if #parts > 1 then
+    for i, name in ipairs(names) do
+      parts[i] = ("From %s:\n%s"):format(name, parts[i])
+    end
+  end
+  return table.concat(parts, "\n\n"):sub(1, M.rules_max), table.concat(names, ", ")
+end
+
+---`system` plus the project's rules (project_rules(root)) in a marked block,
+---if it has any; `how` says which of them apply on this path.
+function M.with_rules(system, root, how)
+  local text, names = M.project_rules(root)
+  if not text then
+    return system
+  end
+  return system
+    .. ("\n\nProject rules: the project's own instructions (%s in its root folder), between the <project-rules> markers below. Follow the ones that apply here. They are instructions to you, not text for your output: never copy or quote their lines into code or comments. %s\n<project-rules>\n%s\n</project-rules>"):format(
+      names,
+      how,
+      text
+    )
 end
 
 M.wiki = vim.fn.expand "~/Work/js-wiki/tools/wiki.py" -- the jswiki MCP server, where present
@@ -394,7 +461,8 @@ local function spawn(system, opts)
 end
 
 ---Have a spare process running for the next session that starts. A spare
----started with another system prompt (the memory changed) is replaced.
+---started with another system prompt (the memory or the project's rules
+---changed, or a file of another project) is replaced.
 warm = function(system)
   if spare and not spare.dead and spare.system ~= system then
     kill(spare)
@@ -596,6 +664,23 @@ previous message (your earlier answers appear in it only if they were
 applied), then the new region with its line numbers. Keep your picture of
 the file up to date from the diffs. Each answer replaces the current region
 (plus its SEARCH/REPLACE blocks).]]
+
+-- How the project's rules apply to a conversion (with_rules): the answer is
+-- only code, so rules about replying cannot add text to it.
+local CONVERT_RULES = [[Here your whole answer is code in the format above, and no rule changes
+that format. Rules about code (style, idioms, libraries, error handling)
+shape the code you write. Rules about how to reply or work (ask questions
+first, answer with a plan, a split or a summary, end with a note) do not
+apply here: they never add text, prose or comments to the answer. Never add
+a comment that only says a rule was followed. If a rule rules out writing
+the region as asked (too big, say), output the region unchanged with one CR
+comment above it, saying why in a few words of your own.]]
+
+---Alt+K's system prompt for buf: `base` (SYSTEM, or SESSION_SYSTEM for a
+---session), then the project's rules, then the memory file.
+local function convert_system(buf, base)
+  return M.with_memory(M.with_rules(base, M.root(buf), CONVERT_RULES))
+end
 
 local text_diff = (vim.text and vim.text.diff) or vim.diff
 
@@ -1086,7 +1171,7 @@ run = function(buf, s, e, errors, instruction)
     settle(buf)
   end
   if not M.use_session then
-    return M.ask(M.with_memory(SYSTEM), prompt_for(buf, s, e, lines, errors, instruction), done)
+    return M.ask(convert_system(buf, SYSTEM), prompt_for(buf, s, e, lines, errors, instruction), done)
   end
   -- The region is read again when the message goes out: an earlier send in
   -- this buffer may still be writing and move it.
@@ -1110,7 +1195,7 @@ run = function(buf, s, e, errors, instruction)
     end
   end
   M.session_send(buf, {
-    system = M.with_memory(SESSION_SYSTEM),
+    system = convert_system(buf, SESSION_SYSTEM),
     build = function(S)
       local s2, e2, l2 = now()
       if not s2 then
@@ -1284,7 +1369,7 @@ function M.setup()
       end
       -- Typing may end in Alt+K: have a process ready if this buffer has none.
       if not sessions[a.buf] then
-        warm(M.with_memory(SESSION_SYSTEM))
+        warm(convert_system(a.buf, SESSION_SYSTEM))
       end
       start[a.buf] = {
         from = vim.fn.line "." - 1,

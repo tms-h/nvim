@@ -40,6 +40,12 @@
 -- Edit or Write. Every new chat and Alt+K session gets the file in its
 -- system prompt (goose.with_memory). :GooseMemory opens the file to edit.
 --
+-- Project rules: the chat and each slash command's claude get the project's
+-- AGENTS.md / CLAUDE.md in their system prompt (goose.with_rules). A running
+-- chat keeps the rules it started with, as it keeps the memory (a changed
+-- prompt would restart it and lose the talk): an edited rules file reaches
+-- a file's chat once that file's buffer is closed and opened again.
+--
 -- Slash commands: a message that starts with `/mentor` (M.slash) goes to
 -- that Claude Code skill's prompt instead of the chat (`/mentor I'm going to
 -- X because Y, any reason not to?` gets the mentor-check verdict). See
@@ -104,6 +110,11 @@ corrects you; then answer as usual. Never save one-off details of the current
 question, guesses, or what the memory already says. `forget` drops a note he
 says is wrong or outdated.]]
 local TOOLS = "Read,Grep,Glob,WebSearch,WebFetch"
+-- How the project's rules apply (goose.with_rules) in the chat and in a
+-- slash command's answer.
+local RULES = [[Code you suggest follows them. Mention a rule only when it
+bears on the question.]]
+local SLASH_RULES = [[Judge what you are asked about against them where they apply.]]
 
 -- Slash commands in the box: `/name text` sends text to a skill's prompt,
 -- read from the skill's own file (a Claude Code skill, so the box and Claude
@@ -123,8 +134,9 @@ function M.slash_opts(root)
   return goose.claude_opts(root, { tools = "Read,Grep,Glob" })
 end
 
----The skill's prompt, or nil and one line saying what is missing.
-local function slash_system(cmd, skill)
+---The skill's prompt plus the project's rules in `root`, or nil and one
+---line saying what is missing.
+local function slash_system(cmd, skill, root)
   local path = vim.fs.normalize(skill.prompt)
   local f = io.open(path, "r")
   if not f then
@@ -132,7 +144,7 @@ local function slash_system(cmd, skill)
   end
   local text = f:read "*a"
   f:close()
-  return text
+  return goose.with_rules(text, root, SLASH_RULES)
 end
 
 ---The lines the box is about, as context for a slash command ("" if blank).
@@ -175,10 +187,10 @@ function M.slash_key(c, cmd) -- for tests
   return c.keys and c.keys[cmd]
 end
 
----The chat's system prompt: the rules, the wiki's if present, memory's, and
----the memory file itself.
-function M.system()
-  return goose.with_memory(SYSTEM .. (goose.has_wiki() and WIKI or WEB) .. MEMORY)
+---The chat's system prompt in `root`: the rules, the wiki's if present,
+---memory's, the project's rules files, and the memory file itself.
+function M.system(root)
+  return goose.with_memory(goose.with_rules(SYSTEM .. (goose.has_wiki() and WIKI or WEB) .. MEMORY, root, RULES))
 end
 
 ---claude options for a chat in `root`: read-only built-in tools, the web,
@@ -280,7 +292,7 @@ local function send(c, q)
   local skill = cmd and M.slash[cmd]
   local system, missing
   if skill then
-    system, missing = slash_system(cmd, skill)
+    system, missing = slash_system(cmd, skill, root)
     if not missing and text == "" then
       missing = ("type the text after /%s"):format(cmd)
     end
@@ -419,9 +431,10 @@ local function send(c, q)
     })
   end
   -- A live claude keeps the prompt it started with (a changed one would
-  -- restart it and lose the conversation); a new one reads the memory now.
+  -- restart it and lose the conversation); a new one reads the memory and
+  -- the project's rules now.
   if not goose.session(cb) then
-    c.system = M.system()
+    c.system = M.system(root)
   end
   goose.session_send(cb, {
     system = c.system,
@@ -544,8 +557,9 @@ function M.ask(s, e)
   fit(c.win)
   -- Its claude starts now, while the question is typed.
   if goose.use_session and not goose.session(b) then
-    c.system = M.system()
-    goose.start_session(b, c.system, M.opts(root_of(src)))
+    local root = root_of(src)
+    c.system = M.system(root)
+    goose.start_session(b, c.system, M.opts(root))
   end
   vim.cmd "startinsert!"
 end

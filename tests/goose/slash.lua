@@ -115,8 +115,8 @@ settle "to: /foo VERDICT what is this"
 E = sent()
 check("an unknown /name is an ordinary question", E[#E].content:find("Question: /foo VERDICT what is this", 1, true) ~= nil, E[#E].content)
 local A = g.session(c.buf)
-check("the chat keeps Alt+L's system prompt", A and A.system == ask.system())
-local want = g.cmd(ask.system(), g.claude_opts(proj, { tools = "Read,Grep,Glob,WebSearch,WebFetch", allow = { "WebSearch", "WebFetch" }, memory = true }))
+check("the chat keeps Alt+L's system prompt", A and A.system == ask.system(proj))
+local want = g.cmd(ask.system(proj), g.claude_opts(proj, { tools = "Read,Grep,Glob,WebSearch,WebFetch", allow = { "WebSearch", "WebFetch" }, memory = true }))
 check("Alt+L's claude flags are unchanged", A and vim.deep_equal(g.cmd(A.system, A.opts), want), A and vim.inspect(g.cmd(A.system, A.opts)))
 check("the mentor log has no line for a plain question", #vim.fn.readfile(verdicts) == 2)
 

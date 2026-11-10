@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Goose headless tests: session (stub claude), the one-shot path, the
-# memory server, seconder's review with codebase context (fake claude) and
-# Alt+L's /mentor slash command.
+# memory server, seconder's review with codebase context (fake claude),
+# Alt+L's /mentor slash command and the project's rules file in every prompt.
 # Scratch state/cache, no network, no desktop keys.
 set -u
 root=$(cd "$(dirname "$0")/../.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 status=0
-for t in session oneshot reach esc memory review slash; do
+for t in session oneshot reach esc memory review slash rules; do
   mkdir -p "$tmp/$t"
   (cd "$tmp/$t" && GOOSE_TEST_DIR="$tmp/$t" XDG_STATE_HOME="$tmp/state" XDG_CACHE_HOME="$tmp/cache" \
     timeout 120 nice -n 19 nvim --headless -u NONE -i NONE --cmd "set rtp^=$root" -c "luafile $root/tests/goose/$t.lua" 2>&1) || status=1

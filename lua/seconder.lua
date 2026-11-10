@@ -30,8 +30,9 @@
 -- checks callers, the .mli, definitions, dune files and tests before
 -- objecting, and does not flag what the codebase shows is intended. Where
 -- ~/Work/js-wiki exists it also has the jswiki MCP tools for style and
--- idiom objections the rules above do not settle, and goose's memory file
--- (Thomas's saved preferences, goose.with_memory) ends its system prompt.
+-- idiom objections the rules above do not settle. The project's AGENTS.md /
+-- CLAUDE.md (goose.with_rules) and goose's memory file (Thomas's saved
+-- preferences, goose.with_memory) end its system prompt.
 local M = {}
 
 local goose = require "goose"
@@ -223,11 +224,17 @@ For a Jane Street style or idiom objection the wiki rules do not settle,
 check Thomas's wiki (jswiki find, then read) and raise it only if a page
 backs it; end its text with "(wiki: <page>)" as for a rule, "rule" null.]]
 M.tools = "Read,Grep,Glob"
+-- How the project's rules (goose.with_rules) apply to a review.
+local RULES = [[Hold the code to the rules about code (style, idioms, error handling,
+tests); a CR a rule drove says why in your own words. Rules about how to
+reply or work (questions, plans, change size) are not review points.]]
 
----The review's system prompt (the memory file included) and claude options.
+---The review's system prompt (the project's rules and the memory file
+---included) and claude options.
 function M.claude(buf)
-  local system = goose.with_memory(SYSTEM .. CONTEXT .. (goose.has_wiki() and WIKI or ""))
-  return system, goose.claude_opts(project_root(buf), { tools = M.tools })
+  local root = project_root(buf)
+  local system = goose.with_memory(goose.with_rules(SYSTEM .. CONTEXT .. (goose.has_wiki() and WIKI or ""), root, RULES))
+  return system, goose.claude_opts(root, { tools = M.tools })
 end
 
 local function numbered(lines)
