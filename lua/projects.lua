@@ -5,7 +5,8 @@
 --                           root), else the last project no other window has
 --                           open (two windows never show the same project)
 --   nvim some/folder        open that folder: its session and the tree
---   Alt/Cmd+O, :OpenFolder  switch this window to another folder
+--   Alt/Cmd+O, :OpenFolder  switch this window to another folder; in that
+--                           picker Alt/Cmd+N makes the typed folder and opens it
 --
 -- Files changed on disk (by agents, git) reload without a keypress.
 --
@@ -277,7 +278,8 @@ end
 
 ---Alt/Cmd+O: pick a folder. Recent projects first, newest first, each with
 ---when it was last open; then folders inside this one, then folders under
----home. Typing keeps the recent projects on top.
+---home. Typing keeps the recent projects on top. Alt/Cmd+N makes the typed
+---folder (~/x, /x, or x inside this one; parents too) and opens it.
 function M.pick_folder()
   local home = normalize "~"
   local scratch = normalize "~/.cache"
@@ -335,7 +337,8 @@ function M.pick_folder()
       end
     end
   end
-  require("finder").load().start {
+  local pick = require("finder").load()
+  pick.start {
     source = {
       name = "Open folder",
       items = items,
@@ -346,6 +349,32 @@ function M.pick_folder()
           M.open_folder(item.path)
         end)
       end,
+    },
+    mappings = {
+      new_folder = {
+        char = require("util").chord "n",
+        func = function()
+          local typed = vim.trim(table.concat(pick.get_picker_query() or {}))
+          if typed == "" then
+            vim.notify("Type the new folder's name first", vim.log.levels.WARN)
+            return
+          end
+          if typed:sub(1, 1) == "~" then
+            typed = home .. typed:sub(2)
+          elseif vim.fn.isabsolutepath(typed) == 0 then
+            typed = vim.fn.getcwd() .. "/" .. typed
+          end
+          local path = vim.fs.normalize(typed)
+          if vim.fn.isdirectory(path) == 0 and vim.fn.mkdir(path, "p") == 0 then
+            vim.notify("Could not make " .. path, vim.log.levels.ERROR)
+            return
+          end
+          vim.schedule(function()
+            M.open_folder(path)
+          end)
+          return true
+        end,
+      },
     },
   }
 end
