@@ -6,7 +6,8 @@
 --                           open (two windows never show the same project)
 --   nvim some/folder        open that folder: its session and the tree
 --   Alt/Cmd+O, :OpenFolder  switch this window to another folder; in that
---                           picker Alt/Cmd+N makes the typed folder and opens it
+--                           picker Alt/Cmd+N makes the typed folder (a bare
+--                           name goes in ~/Work) and opens it
 --
 -- Files changed on disk (by agents, git) reload without a keypress.
 --
@@ -279,7 +280,8 @@ end
 ---Alt/Cmd+O: pick a folder. Recent projects first, newest first, each with
 ---when it was last open; then folders inside this one, then folders under
 ---home. Typing keeps the recent projects on top. Alt/Cmd+N makes the typed
----folder (~/x, /x, or x inside this one; parents too) and opens it.
+---folder (a bare name goes in ~/Work; ~/x and /x as typed; parents too) and
+---opens it.
 function M.pick_folder()
   local home = normalize "~"
   local scratch = normalize "~/.cache"
@@ -362,7 +364,7 @@ function M.pick_folder()
           if typed:sub(1, 1) == "~" then
             typed = home .. typed:sub(2)
           elseif vim.fn.isabsolutepath(typed) == 0 then
-            typed = vim.fn.getcwd() .. "/" .. typed
+            typed = home .. "/Work/" .. typed
           end
           local path = vim.fs.normalize(typed)
           if vim.fn.isdirectory(path) == 0 and vim.fn.mkdir(path, "p") == 0 then
