@@ -120,6 +120,49 @@ require("mini.completion").setup {
   lsp_completion = { source_func = "omnifunc", auto_setup = false },
   mappings = { force_twostep = "<C-Space>", force_fallback = "", scroll_down = "<C-f>", scroll_up = "<C-b>" },
 }
+-- ocamllsp answers signatureHelp with activeParameter = null (LSP 3.18: no
+-- parameter is active), even when told the client can't take it. mini.completion
+-- compares that with a number and errors on every keystroke inside a call
+-- ("attempt to compare number with userdata", completion.lua:1695, mini.nvim
+-- a6e2313). Turn null into -1 (out of range, so nothing is highlighted) before
+-- mini sees it. Drop this once mini.nvim handles vim.NIL there.
+local function no_null_active(res)
+  if type(res) ~= "table" then
+    return
+  end
+  if res.activeSignature == vim.NIL then
+    res.activeSignature = nil
+  end
+  if res.activeParameter == vim.NIL then
+    res.activeParameter = -1
+  end
+  for _, sig in ipairs(type(res.signatures) == "table" and res.signatures or {}) do
+    if sig.activeParameter == vim.NIL then
+      sig.activeParameter = -1
+    end
+  end
+end
+vim.api.nvim_create_autocmd("LspAttach", {
+  group = vim.api.nvim_create_augroup("SignatureNullFix", { clear = true }),
+  callback = function(args)
+    local client = vim.lsp.get_client_by_id(args.data.client_id)
+    if not client or client._no_null_active then
+      return
+    end
+    client._no_null_active = true
+    local request = client.request
+    client.request = function(self, method, params, handler, bufnr)
+      if method == "textDocument/signatureHelp" and handler then
+        local inner = handler
+        handler = function(err, result, ...)
+          no_null_active(result)
+          return inner(err, result, ...)
+        end
+      end
+      return request(self, method, params, handler, bufnr)
+    end
+  end,
+})
 -- TODO / FIXME / HACK / NOTE in comments: coloured words, never a filled
 -- block (TodoText* in theme.lua). Outside a comment (a string, prose with
 -- no tree-sitter comment) they stay plain, when tree-sitter can tell.
