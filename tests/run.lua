@@ -789,7 +789,10 @@ check("Alt+= / Alt+- widen / narrow a split, Alt+Shift+= / Alt+Shift+- make it t
   local h = api.nvim_win_get_height(0)
   -- Through herdr Alt+Shift+= arrives as <M-S-=>; Neovide sends <M-+>.
   press(super "S-=")
-  expect(api.nvim_win_get_height(0) > h, "Alt+Shift+= (S-=) left it " .. api.nvim_win_get_height(0) .. " tall, was " .. h)
+  expect(
+    api.nvim_win_get_height(0) > h,
+    "Alt+Shift+= (S-=) left it " .. api.nvim_win_get_height(0) .. " tall, was " .. h
+  )
   press(super "_")
   press(super "S--")
   press(super "_")
@@ -2335,7 +2338,10 @@ check("A resize and back keeps each pane's view (zoom, herdr split; 2026-11-08)"
   local buf = api.nvim_get_current_buf()
   local lines = {}
   for i = 1, 300 do
-    lines[i] = ("let long_name_%d = %q"):format(i, i .. " the quick brown fox jumps over the lazy dog and keeps running far")
+    lines[i] = ("let long_name_%d = %q"):format(
+      i,
+      i .. " the quick brown fox jumps over the lazy dog and keeps running far"
+    )
   end
   api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.wo.wrap = true
@@ -2579,56 +2585,59 @@ check("OCaml gt wraps a motion, a selection or a line in (fun () -> ...)", funct
   vim.cmd "edit! c.ml"
 end)
 
-check("Alt+L box: the wheel scrolls at once while an answer streams, and the stream never pulls the view back", function()
-  -- Terminal Neovim's smooth scroll (plugins.lua), which this Neovide-mode
-  -- run otherwise skips: its glide dropped wheel steps and dragged the view
-  -- back down to the newest line.
-  local animate = require "mini.animate"
-  animate.setup {
-    scroll = { timing = animate.gen_timing.linear { duration = 120, unit = "total" } },
-    cursor = { enable = false },
-    resize = { enable = false },
-    open = { enable = false },
-    close = { enable = false },
-  }
-  local g = require "goose"
-  local saved = { g.session_argv, g.prewarm, vim.env.GOOSE_STUB_DELAY }
-  g.session_argv = { "python3", "-I", vim.fn.stdpath "config" .. "/tests/goose/stub-claude.py" }
-  g.prewarm = false
-  vim.env.GOOSE_STUB_DELAY = "0.01"
-  vim.cmd "edit! a.ml"
-  local src = api.nvim_get_current_buf()
-  press(super "l", 300)
-  press("LONG please<CR>", 1500)
-  local c = require("goose_ask").chat(src)
-  local win = c and c.win
-  local function top()
-    return vim.fn.getwininfo(win)[1].topline
-  end
-  local before, moved, final = 0, 0, 0
-  if win then
-    before = top()
-    local pos = api.nvim_win_get_position(win)
-    for _ = 1, 5 do
-      api.nvim_input_mouse("wheel", "up", "", 0, pos[1] + 3, pos[2] + 10)
+check(
+  "Alt+L box: the wheel scrolls at once while an answer streams, and the stream never pulls the view back",
+  function()
+    -- Terminal Neovim's smooth scroll (plugins.lua), which this Neovide-mode
+    -- run otherwise skips: its glide dropped wheel steps and dragged the view
+    -- back down to the newest line.
+    local animate = require "mini.animate"
+    animate.setup {
+      scroll = { timing = animate.gen_timing.linear { duration = 120, unit = "total" } },
+      cursor = { enable = false },
+      resize = { enable = false },
+      open = { enable = false },
+      close = { enable = false },
+    }
+    local g = require "goose"
+    local saved = { g.session_argv, g.prewarm, vim.env.GOOSE_STUB_DELAY }
+    g.session_argv = { "python3", "-I", vim.fn.stdpath "config" .. "/tests/goose/stub-claude.py" }
+    g.prewarm = false
+    vim.env.GOOSE_STUB_DELAY = "0.01"
+    vim.cmd "edit! a.ml"
+    local src = api.nvim_get_current_buf()
+    press(super "l", 300)
+    press("LONG please<CR>", 1500)
+    local c = require("goose_ask").chat(src)
+    local win = c and c.win
+    local function top()
+      return vim.fn.getwininfo(win)[1].topline
     end
-    wait(500)
-    moved = top()
-    for _ = 1, 40 do
-      if not c.busy then
-        break
+    local before, moved, final = 0, 0, 0
+    if win then
+      before = top()
+      local pos = api.nvim_win_get_position(win)
+      for _ = 1, 5 do
+        api.nvim_input_mouse("wheel", "up", "", 0, pos[1] + 3, pos[2] + 10)
       end
-      wait(250)
+      wait(500)
+      moved = top()
+      for _ = 1, 40 do
+        if not c.busy then
+          break
+        end
+        wait(250)
+      end
+      final = top()
+      g.kill_session(c.buf)
     end
-    final = top()
-    g.kill_session(c.buf)
+    vim.g.minianimate_disable = true -- off again for the checks after this one
+    g.session_argv, g.prewarm, vim.env.GOOSE_STUB_DELAY = saved[1], saved[2], saved[3]
+    expect(win, "Alt+L opened no box")
+    expect(moved <= before - 15, ("5 wheel steps up moved the top line %d -> %d"):format(before, moved))
+    expect(final == moved, ("the stream moved the view %d -> %d"):format(moved, final))
   end
-  vim.g.minianimate_disable = true -- off again for the checks after this one
-  g.session_argv, g.prewarm, vim.env.GOOSE_STUB_DELAY = saved[1], saved[2], saved[3]
-  expect(win, "Alt+L opened no box")
-  expect(moved <= before - 15, ("5 wheel steps up moved the top line %d -> %d"):format(before, moved))
-  expect(final == moved, ("the stream moved the view %d -> %d"):format(moved, final))
-end)
+)
 
 -- ── Seconder (Space r) status, 2026-11-08 ────────────────────────────────
 -- "if i space r to add seconder, but i do stuff with the cursor, the prompt
@@ -2734,15 +2743,39 @@ local sec_log = vim.fn.stdpath "state" .. "/seconder/log.jsonl"
 local SEC_RULES = vim.json.encode {
   generated = "2026-11-08",
   rules = {
-    { id = "poly-compare", kind = "CR", langs = { "ocaml" }, rule = "Don't compare records with polymorphic =.",
-      cost = "Raises on functional values.", when = "always in OCaml.", page = "avoid-polymorphic-compare",
+    {
+      id = "poly-compare",
+      kind = "CR",
+      langs = { "ocaml" },
+      rule = "Don't compare records with polymorphic =.",
+      cost = "Raises on functional values.",
+      when = "always in OCaml.",
+      page = "avoid-polymorphic-compare",
       url = "http://wiki.localhost/avoid-polymorphic-compare",
-      sources = { { slug = "hn-16410738-ext", who = "Will Yager", date = "2018-09-07" } } },
-    { id = "delete-dead-code", kind = "CR-soon", langs = { "any" }, rule = "Delete code nothing calls.",
-      cost = "Every reader keeps it in their head.", when = vim.NIL, page = "migrating-legacy-systems",
-      url = "http://wiki.localhost/migrating-legacy-systems", sources = {} },
-    { id = "py-only", kind = "CR", langs = { "python" }, rule = "A Python-only rule.", cost = "Python cost.",
-      when = vim.NIL, page = "python-page", url = "http://wiki.localhost/python-page", sources = {} },
+      sources = { { slug = "hn-16410738-ext", who = "Will Yager", date = "2018-09-07" } },
+    },
+    {
+      id = "delete-dead-code",
+      kind = "CR-soon",
+      langs = { "any" },
+      rule = "Delete code nothing calls.",
+      cost = "Every reader keeps it in their head.",
+      when = vim.NIL,
+      page = "migrating-legacy-systems",
+      url = "http://wiki.localhost/migrating-legacy-systems",
+      sources = {},
+    },
+    {
+      id = "py-only",
+      kind = "CR",
+      langs = { "python" },
+      rule = "A Python-only rule.",
+      cost = "Python cost.",
+      when = vim.NIL,
+      page = "python-page",
+      url = "http://wiki.localhost/python-page",
+      sources = {},
+    },
   },
 }
 
@@ -2856,18 +2889,31 @@ end)
 check("Seconder wiki: a CR a rule drove ends with (wiki: page), once", function()
   with_sec(function(_, made)
     local ans = vim.json.encode {
-      verdict = "crs", reason = "r", delete = {}, reopen = {},
+      verdict = "crs",
+      reason = "r",
+      delete = {},
+      reopen = {},
       add = {
         { line = 2, kind = "CR", text = "x_2 = y compares records polymorphically.", rule = "poly-compare" },
-        { line = 4, kind = "CR-soon", text = "x_4 is never used. (wiki: migrating-legacy-systems)", rule = "delete-dead-code" },
+        {
+          line = 4,
+          kind = "CR-soon",
+          text = "x_4 is never used. (wiki: migrating-legacy-systems)",
+          rule = "delete-dead-code",
+        },
         { line = 5, kind = "CR", text = "x_5 overflows on max_int.", rule = vim.NIL },
       },
     }
     sec_review(made, "rev.ml", sec_lines(5), ans)
     local text = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
-    expect(text:find("CR claude: x_2 = y compares records polymorphically. (wiki: avoid-polymorphic-compare) *)", 1, true),
-      "no wiki suffix added:\n" .. text)
-    expect(text:find("x_4 is never used. (wiki: migrating-legacy-systems) *)", 1, true), "the model's suffix was lost:\n" .. text)
+    expect(
+      text:find("CR claude: x_2 = y compares records polymorphically. (wiki: avoid-polymorphic-compare) *)", 1, true),
+      "no wiki suffix added:\n" .. text
+    )
+    expect(
+      text:find("x_4 is never used. (wiki: migrating-legacy-systems) *)", 1, true),
+      "the model's suffix was lost:\n" .. text
+    )
     expect(not text:find("(wiki: migrating-legacy-systems) (wiki:", 1, true), "suffix doubled:\n" .. text)
     expect(text:find("x_5 overflows on max_int. *)", 1, true), "a CR with no rule got a suffix:\n" .. text)
   end)
@@ -2876,7 +2922,10 @@ end)
 check("Seconder wiki: the log gets add, fixed, pushback (with the reply) and reopen", function()
   with_sec(function(_, made)
     local ans = vim.json.encode {
-      verdict = "crs", reason = "r", delete = {}, reopen = {},
+      verdict = "crs",
+      reason = "r",
+      delete = {},
+      reopen = {},
       add = {
         { line = 3, kind = "CR", text = "x_3 = y on records.", rule = "poly-compare" },
         { line = 6, kind = "CR-soon", text = "x_6 is dead.", rule = vim.NIL },
@@ -2888,16 +2937,35 @@ check("Seconder wiki: the log gets add, fixed, pushback (with the reply) and reo
     local buf = vim.api.nvim_get_current_buf()
     for i, l in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
       if l:find("x_3 = y on records", 1, true) then
-        vim.api.nvim_buf_set_lines(buf, i - 1, i, false, { (l:gsub("%(%* CR", "(* XCR"):gsub(" %*%)$", " thomas: they're ints here *)")) })
+        vim.api.nvim_buf_set_lines(
+          buf,
+          i - 1,
+          i,
+          false,
+          { (l:gsub("%(%* CR", "(* XCR"):gsub(" %*%)$", " thomas: they're ints here *)")) }
+        )
       elseif l:find("x_9 overflows", 1, true) then
-        vim.api.nvim_buf_set_lines(buf, i - 1, i, false, { (l:gsub("%(%* CR", "(* XCR"):gsub(" %*%)$", " thomas: can't happen *)")) })
+        vim.api.nvim_buf_set_lines(
+          buf,
+          i - 1,
+          i,
+          false,
+          { (l:gsub("%(%* CR", "(* XCR"):gsub(" %*%)$", " thomas: can't happen *)")) }
+        )
       end
     end
-    sec_review(made, "rev.ml", nil, vim.json.encode {
-      verdict = "crs", reason = "r", add = {},
-      delete = { { id = 1, why = "pushback" }, { id = 2, why = "fixed" } },
-      reopen = { { id = 3, text = "x_9 = max_int + 1 still wraps." } },
-    })
+    sec_review(
+      made,
+      "rev.ml",
+      nil,
+      vim.json.encode {
+        verdict = "crs",
+        reason = "r",
+        add = {},
+        delete = { { id = 1, why = "pushback" }, { id = 2, why = "fixed" } },
+        reopen = { { id = 3, text = "x_9 = max_int + 1 still wraps." } },
+      }
+    )
     local ev = sec_events()
     local kinds = vim.tbl_map(function(e)
       return e.event
@@ -2913,7 +2981,10 @@ check("Seconder wiki: the log gets add, fixed, pushback (with the reply) and reo
     expect(ev[4].rule == "poly-compare" and ev[4].text == ev[1].text, "pushback lost its CR: " .. vim.inspect(ev[4]))
     expect(ev[4].reply == "thomas: they're ints here", "pushback reply: " .. tostring(ev[4].reply))
     expect(ev[5].kind == "CR-soon" and ev[5].text == "x_6 is dead.", "fixed: " .. vim.inspect(ev[5]))
-    expect(ev[6].text == "x_9 = max_int + 1 still wraps." and tostring(ev[6].reply):find "can't happen", "reopen: " .. vim.inspect(ev[6]))
+    expect(
+      ev[6].text == "x_9 = max_int + 1 still wraps." and tostring(ev[6].reply):find "can't happen",
+      "reopen: " .. vim.inspect(ev[6])
+    )
   end)
 end)
 
@@ -2932,16 +3003,34 @@ end)
 check("Seconder wiki: a CR-soon fix shows in grey, Alt+. applies it, one u undoes, never by itself", function()
   with_sec(function(_, made)
     local orig = sec_lines(10)
-    sec_review(made, "rev.ml", orig, vim.json.encode {
-      verdict = "crs", reason = "r", delete = {}, reopen = {},
-      add = {
-        { line = 5, kind = "CR-soon", text = "x_5 reads better as 50.", rule = vim.NIL,
-          fix = { from = 5, to = 5, lines = { "let x_5 = 50" } } },
-        -- A CR's fix is ignored: correctness stays the author's to think through.
-        { line = 8, kind = "CR", text = "x_8 is wrong.", rule = vim.NIL,
-          fix = { from = 8, to = 8, lines = { "let x_8 = 80" } } },
-      },
-    })
+    sec_review(
+      made,
+      "rev.ml",
+      orig,
+      vim.json.encode {
+        verdict = "crs",
+        reason = "r",
+        delete = {},
+        reopen = {},
+        add = {
+          {
+            line = 5,
+            kind = "CR-soon",
+            text = "x_5 reads better as 50.",
+            rule = vim.NIL,
+            fix = { from = 5, to = 5, lines = { "let x_5 = 50" } },
+          },
+          -- A CR's fix is ignored: correctness stays the author's to think through.
+          {
+            line = 8,
+            kind = "CR",
+            text = "x_8 is wrong.",
+            rule = vim.NIL,
+            fix = { from = 8, to = 8, lines = { "let x_8 = 80" } },
+          },
+        },
+      }
+    )
     local buf = vim.api.nvim_get_current_buf()
     local function code()
       return vim.tbl_filter(function(l)
@@ -2973,7 +3062,10 @@ check("Seconder wiki: a CR-soon fix shows in grey, Alt+. applies it, one u undoe
     table.insert(want, 8, reviewed[9]) -- the x_8 CR stays
     expect(vim.deep_equal(after, want), "after Alt+.:\n" .. table.concat(after, "\n"))
     local ev = sec_events()
-    expect(ev[#ev].event == "fix-accepted" and ev[#ev].text == "x_5 reads better as 50.", "log: " .. vim.inspect(ev[#ev]))
+    expect(
+      ev[#ev].event == "fix-accepted" and ev[#ev].text == "x_5 reads better as 50.",
+      "log: " .. vim.inspect(ev[#ev])
+    )
     press("u", 200)
     local undone = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
     expect(vim.deep_equal(undone, reviewed), "one u left:\n" .. table.concat(undone, "\n"))

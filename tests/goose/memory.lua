@@ -10,7 +10,8 @@ local check = lib.check
 
 ---Run the server on `calls` ({ name, arguments } each); the reply texts.
 local function run(calls, max)
-  local msgs = { vim.json.encode { jsonrpc = "2.0", id = 0, method = "initialize", params = { protocolVersion = "2025-06-18" } } }
+  local msgs =
+    { vim.json.encode { jsonrpc = "2.0", id = 0, method = "initialize", params = { protocolVersion = "2025-06-18" } } }
   for i, c in ipairs(calls) do
     msgs[#msgs + 1] = vim.json.encode {
       jsonrpc = "2.0",
@@ -19,7 +20,12 @@ local function run(calls, max)
       params = { name = c[1], arguments = c[2] },
     }
   end
-  local r = vim.system({ "python3", "-I", server, file, max and tostring(max) }, { stdin = table.concat(msgs, "\n") .. "\n", text = true }):wait()
+  local r = vim
+    .system(
+      { "python3", "-I", server, file, max and tostring(max) },
+      { stdin = table.concat(msgs, "\n") .. "\n", text = true }
+    )
+    :wait()
   local out = {}
   for _, l in ipairs(vim.split(vim.trim(r.stdout), "\n")) do
     local m = vim.json.decode(l)
@@ -41,12 +47,19 @@ local out = run {
 }
 check(
   "the server offers remember and forget only",
-  vim.deep_equal(vim.tbl_map(function(t)
-    return t.name
-  end, out[1]), { "remember", "forget" }),
+  vim.deep_equal(
+    vim.tbl_map(function(t)
+      return t.name
+    end, out[1]),
+    { "remember", "forget" }
+  ),
   vim.inspect(out[1])
 )
-check("remember writes one line per note to its file", vim.deep_equal(lines(), { "- Thomas prefers Core's List over Stdlib", "- Prefer `let%bind`" }), vim.inspect(lines()))
+check(
+  "remember writes one line per note to its file",
+  vim.deep_equal(lines(), { "- Thomas prefers Core's List over Stdlib", "- Prefer `let%bind`" }),
+  vim.inspect(lines())
+)
 check("a path in the call is ignored: no other file is written", not vim.uv.fs_stat(other))
 check("a note already saved is not saved twice", out[4] == "Already in memory.", out[4])
 

@@ -130,12 +130,31 @@ vim.fn.writefile({ vim.json.encode { mode = mode, totals = totals, results = res
 local out = {}
 for _, res in ipairs(results) do
   local tag = res.rule and (res.caught and "caught" or "MISSED") or "clean"
-  out[#out + 1] = ("%-16s %-7s %d CRs%s"):format(res.case, tag, #res.crs, res.error and ("  error: " .. res.error:sub(1, 80)) or "")
+  out[#out + 1] = ("%-16s %-7s %d CRs%s"):format(
+    res.case,
+    tag,
+    #res.crs,
+    res.error and ("  error: " .. res.error:sub(1, 80)) or ""
+  )
   for _, c in ipairs(res.crs) do
-    out[#out + 1] = ("    %s %-7s L%-3d [%s] %s"):format(c.plant and "+" or "-", c.kind or "?", c.line, c.rule or "-", tostring(c.text):sub(1, 150))
+    out[#out + 1] = ("    %s %-7s L%-3d [%s] %s"):format(
+      c.plant and "+" or "-",
+      c.kind or "?",
+      c.line,
+      c.rule or "-",
+      tostring(c.text):sub(1, 150)
+    )
   end
 end
 out[#out + 1] = ("%s: caught %d/%d, missed %d, false positives %d of %d CRs, wiki-tagged CR lines %d, calls %d"):format(
-  mode, totals.caught, totals.plants, totals.missed, totals.fp, totals.crs, totals.wiki_tagged, totals.calls)
+  mode,
+  totals.caught,
+  totals.plants,
+  totals.missed,
+  totals.fp,
+  totals.crs,
+  totals.wiki_tagged,
+  totals.calls
+)
 io.stdout:write(table.concat(out, "\n") .. "\n")
 vim.cmd "qa!"
