@@ -9,7 +9,22 @@ local dir = vim.env.GOOSE_TEST_DIR
 
 -- The one-shot path with --output-format json, only to read its token usage.
 local usage
-local real_cmd = { "claude", "-p", "--model", g.model, "--setting-sources", "", "--strict-mcp-config", "--tools", "", "--no-session-persistence", "--disable-slash-commands", "--output-format", "json", "--system-prompt" }
+local real_cmd = {
+  "claude",
+  "-p",
+  "--model",
+  g.model,
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--no-session-persistence",
+  "--disable-slash-commands",
+  "--output-format",
+  "json",
+  "--system-prompt",
+}
 g.ask = function(system, prompt, cb)
   local c = vim.list_extend(vim.deepcopy(real_cmd), { system })
   vim.system(c, { stdin = prompt, text = true }, function(r)
@@ -19,7 +34,13 @@ g.ask = function(system, prompt, cb)
         return cb(nil, r.stderr)
       end
       local u = j.usage or {}
-      usage = { input = u.input_tokens or 0, cache_write = u.cache_creation_input_tokens or 0, cache_read = u.cache_read_input_tokens or 0, output = u.output_tokens or 0, prompt_chars = #prompt }
+      usage = {
+        input = u.input_tokens or 0,
+        cache_write = u.cache_creation_input_tokens or 0,
+        cache_read = u.cache_read_input_tokens or 0,
+        output = u.output_tokens or 0,
+        prompt_chars = #prompt,
+      }
       cb(j.result)
     end)
   end)
@@ -35,9 +56,9 @@ local i = 0
 while #lines < 300 do
   i = i + 1
   vim.list_extend(lines, {
-    ("let notional_%d (o : order) = o.price *. float_of_int o.qty *. %d." ):format(i, i),
+    ("let notional_%d (o : order) = o.price *. float_of_int o.qty *. %d."):format(i, i),
     ("let is_big_%d (o : order) = o.qty > %d && o.price > %d.0"):format(i, i * 10, i),
-    ("let tag_%d (o : order) = Printf.sprintf \"%%s-%%d-%d\" o.symbol o.id"):format(i, i),
+    ('let tag_%d (o : order) = Printf.sprintf "%%s-%%d-%d" o.symbol o.id'):format(i, i),
     "",
   })
 end
@@ -80,11 +101,30 @@ local function path(name, session)
     first[n] = t_first and math.floor((t_first - t0) / 1e6) or ms[n]
     toks[n] = u and (u.input + u.cache_write + u.cache_read) or -1
     chars[n] = u and u.prompt_chars or -1
-    io.stdout:write(("%s send %d: %d ms (first ghost line %d ms), tokens in %d (new %d, cache write %d, cache read %d), prompt %d chars, out: %s\n"):format(
-      name, n, ms[n], first[n], toks[n], u and u.input or -1, u and u.cache_write or -1, u and u.cache_read or -1, chars[n],
-      (vim.api.nvim_buf_get_lines(buf, p[1], p[1] + 1, false)[1] or "")))
+    io.stdout:write(
+      ("%s send %d: %d ms (first ghost line %d ms), tokens in %d (new %d, cache write %d, cache read %d), prompt %d chars, out: %s\n"):format(
+        name,
+        n,
+        ms[n],
+        first[n],
+        toks[n],
+        u and u.input or -1,
+        u and u.cache_write or -1,
+        u and u.cache_read or -1,
+        chars[n],
+        (vim.api.nvim_buf_get_lines(buf, p[1], p[1] + 1, false)[1] or "")
+      )
+    )
   end
-  io.stdout:write(("%s: median %d ms, median first-visible %d ms, median tokens in %d, median prompt %d chars\n"):format(name, median(ms), median(first), median(toks), median(chars)))
+  io.stdout:write(
+    ("%s: median %d ms, median first-visible %d ms, median tokens in %d, median prompt %d chars\n"):format(
+      name,
+      median(ms),
+      median(first),
+      median(toks),
+      median(chars)
+    )
+  )
   vim.cmd "silent! write"
   vim.cmd "silent! bwipeout!"
 end

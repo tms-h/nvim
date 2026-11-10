@@ -1,23 +1,13 @@
 -- Goose draft rules on the one-shot path (use_session = false), with a stub
 -- ask. Run: tests/goose/run.sh
+local lib = dofile(vim.fs.dirname(debug.getinfo(1, "S").source:sub(2)) .. "/lib.lua")
 local g = require "goose"
 g.setup()
 g.use_session = false
 g.flash_ms = 50
 local dir = vim.env.GOOSE_TEST_DIR
-local pass, fail = 0, 0
-local function check(name, ok, detail)
-  if ok then
-    pass = pass + 1
-    io.stdout:write("pass  " .. name .. "\n")
-  else
-    fail = fail + 1
-    io.stdout:write("FAIL  " .. name .. (detail and ("  (" .. tostring(detail) .. ")") or "") .. "\n")
-  end
-end
-local function keys(k)
-  vim.api.nvim_feedkeys(vim.keycode(k), "xt", false)
-end
+local check = lib.check
+local keys = lib.keys
 vim.fn.writefile({ "def total(orders):", "    return 0", "", "", "", "x = 1", "y = 2", "z = 3" }, dir .. "/t.py")
 vim.cmd.edit(dir .. "/t.py")
 local buf = vim.api.nvim_get_current_buf()
@@ -80,5 +70,4 @@ check("last-line draft lands", L(9, 9) == "CODE4", L(8, 9))
 keys "ggVj<M-k>"
 wait_idle()
 check("a selection sends the selected lines", L(1, 1) == "CODE5", L(1, 3))
-io.stdout:write(("goose one-shot: %d pass, %d fail\n"):format(pass, fail))
-vim.cmd(fail == 0 and "qa!" or "cquit 1")
+lib.finish "goose one-shot"

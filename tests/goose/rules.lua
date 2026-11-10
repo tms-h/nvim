@@ -4,34 +4,21 @@
 -- global ~/.claude/CLAUDE.md; a project without one is unchanged; Alt+K's
 -- claude stays tool-free with claude's own settings off. Stub claude.
 -- Run: tests/goose/run.sh   (headless, no network, no desktop keys)
+local lib = dofile(vim.fs.dirname(debug.getinfo(1, "S").source:sub(2)) .. "/lib.lua")
 local g = require "goose"
 g.setup()
 local ask = require "goose_ask"
 ask.setup()
 local seconder = require "seconder"
-local here = vim.fs.dirname(debug.getinfo(1, "S").source:sub(2))
 local dir = vim.env.GOOSE_TEST_DIR
 local log = dir .. "/stub.log"
-vim.env.GOOSE_STUB_LOG = log
-vim.env.GOOSE_STUB_DELAY = "0.02"
-g.session_argv = { "python3", "-I", here .. "/stub-claude.py" }
+lib.stub(g, log, "0.02")
 g.prewarm = false
 g.lsp_wait = 50
 g.flash_ms = 50
 
-local pass, fail = 0, 0
-local function check(name, ok, detail)
-  if ok then
-    pass = pass + 1
-    io.stdout:write("pass  " .. name .. "\n")
-  else
-    fail = fail + 1
-    io.stdout:write("FAIL  " .. name .. (detail and ("  (" .. tostring(detail) .. ")") or "") .. "\n")
-  end
-end
-local function keys(k)
-  vim.api.nvim_feedkeys(vim.keycode(k), "xt", false)
-end
+local check = lib.check
+local keys = lib.keys
 ---How many times `needle` is in `s`.
 local function count(s, needle)
   local n, at = 0, 1
@@ -71,7 +58,11 @@ vim.fn.writefile({ "- GLOBALRULE end with one Habit: line" }, home .. "/.claude/
 vim.env.HOME = home
 vim.env.CLAUDE_CONFIG_DIR = nil
 
-local RULES = { "# rules for AI agents", "- RULELINE return Or_error rather than raising", "- One prompt makes at most 40 changed lines." }
+local RULES = {
+  "# rules for AI agents",
+  "- RULELINE return Or_error rather than raising",
+  "- One prompt makes at most 40 changed lines.",
+}
 local proj = project("proj", { ["AGENTS.md"] = RULES })
 vim.uv.fs_symlink("AGENTS.md", proj .. "/CLAUDE.md")
 local bare = project("bare", {})
@@ -79,7 +70,11 @@ local bare = project("bare", {})
 -- 1. The loader.
 local ok, err = pcall(function()
   local text, names = g.project_rules(proj)
-  check("AGENTS.md with CLAUDE.md linked to it: read once", text and count(text, "RULELINE") == 1 and names == "AGENTS.md", vim.inspect { text, names })
+  check(
+    "AGENTS.md with CLAUDE.md linked to it: read once",
+    text and count(text, "RULELINE") == 1 and names == "AGENTS.md",
+    vim.inspect { text, names }
+  )
   check("no rules file: nothing", g.project_rules(bare) == nil and g.with_rules("SYS", bare, "how") == "SYS")
   local twin = project("twin", { ["AGENTS.md"] = RULES, ["CLAUDE.md"] = RULES })
   text = g.project_rules(twin)
@@ -88,7 +83,11 @@ local ok, err = pcall(function()
   text, names = g.project_rules(pair)
   check(
     "two different files: both, each once, named",
-    text and count(text, "AGENTRULE") == 1 and count(text, "CLAUDERULE") == 1 and text:find("From CLAUDE.md:", 1, true) and names == "AGENTS.md, CLAUDE.md",
+    text
+      and count(text, "AGENTRULE") == 1
+      and count(text, "CLAUDERULE") == 1
+      and text:find("From CLAUDE.md:", 1, true)
+      and names == "AGENTS.md, CLAUDE.md",
     vim.inspect { text, names }
   )
   local only_claude = project("onlyclaude", { ["CLAUDE.md"] = RULES })
@@ -96,7 +95,11 @@ local ok, err = pcall(function()
   check("CLAUDE.md alone is read", text and count(text, "RULELINE") == 1 and names == "CLAUDE.md", names)
   local big = project("big", { ["AGENTS.md"] = vim.split(("RULELINE " .. ("x"):rep(70) .. "\n"):rep(400), "\n") })
   text = g.with_rules("SYS", big, "how")
-  check("a big rules file is cut at rules_max", #g.project_rules(big) <= g.rules_max and #text < g.rules_max + 1000, #text)
+  check(
+    "a big rules file is cut at rules_max",
+    #g.project_rules(big) <= g.rules_max and #text < g.rules_max + 1000,
+    #text
+  )
   check("the global ~/.claude/CLAUDE.md never loads, even as a root's file", g.project_rules(home .. "/.claude") == nil)
   text = g.with_rules("SYS", proj, "HOWTEXT")
   check(
@@ -120,10 +123,17 @@ wait_idle(buf)
 local S = g.session(buf)
 local sys = S and S.system or ""
 check("Alt+K session: the rules are in its system prompt once", once(sys), sys)
-check("Alt+K session: rules about replying never add text to the code", sys:find("they never add text, prose or comments to the answer", 1, true) ~= nil)
+check(
+  "Alt+K session: rules about replying never add text to the code",
+  sys:find("they never add text, prose or comments to the answer", 1, true) ~= nil
+)
 check("Alt+K session: no global CLAUDE.md", not sys:find("GLOBALRULE", 1, true))
 local msgs = vim.uv.fs_stat(log) and vim.fn.readfile(log) or {}
-check("Alt+K: the rules are never in the user's message", #msgs > 0 and not table.concat(msgs, "\n"):find("RULELINE", 1, true), #msgs)
+check(
+  "Alt+K: the rules are never in the user's message",
+  #msgs > 0 and not table.concat(msgs, "\n"):find("RULELINE", 1, true),
+  #msgs
+)
 local argv = S and g.cmd(S.system, S.opts) or {}
 local function flag(name)
   local i = vim.fn.index(argv, name)
@@ -131,7 +141,10 @@ local function flag(name)
 end
 check(
   "Alt+K's claude stays tool-free with claude's own settings off",
-  flag "--tools" == "" and flag "--setting-sources" == "" and vim.tbl_contains(argv, "--strict-mcp-config") and not vim.tbl_contains(argv, "--mcp-config"),
+  flag "--tools" == ""
+    and flag "--setting-sources" == ""
+    and vim.tbl_contains(argv, "--strict-mcp-config")
+    and not vim.tbl_contains(argv, "--mcp-config"),
   vim.inspect(argv)
 )
 
@@ -158,7 +171,11 @@ local bbuf = vim.api.nvim_get_current_buf()
 keys "Opseudo s<Esc>"
 keys "<M-k>"
 wait_idle(bbuf)
-check("no rules file: Alt+K's system prompt has no block", seen and not seen.system:find("project-rules", 1, true), seen and seen.system)
+check(
+  "no rules file: Alt+K's system prompt has no block",
+  seen and not seen.system:find("project-rules", 1, true),
+  seen and seen.system
+)
 check("no rules file: the chat's prompt is unchanged", ask.system(bare) == ask.system(nil))
 check("no rules file: seconder's prompt is unchanged", not seconder.claude(bbuf):find("project-rules", 1, true))
 g.ask = real_ask
@@ -186,11 +203,14 @@ vim.wait(3000, function()
 end, 20)
 local key = c and ask.slash_key(c, "mentor")
 local Mt = key and g.session(key)
-check("/mentor: the skill's prompt, then the rules once", Mt and Mt.system:find("^MENTORPROMPT") and once(Mt.system), Mt and Mt.system)
+check(
+  "/mentor: the skill's prompt, then the rules once",
+  Mt and Mt.system:find "^MENTORPROMPT" and once(Mt.system),
+  Mt and Mt.system
+)
 
 -- 6. Seconder.
 local ssys, sopts = seconder.claude(buf)
 check("seconder: the rules are in its system prompt once", once(ssys) and sopts.cwd == proj, ssys)
 
-io.stdout:write(("goose rules: %d pass, %d fail\n"):format(pass, fail))
-vim.cmd(fail == 0 and "qa!" or "cquit 1")
+lib.finish "goose rules"
