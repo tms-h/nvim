@@ -2,33 +2,20 @@
 -- every typed block goes on Alt+K, answers may change lines outside the
 -- block, and Alt+L answers a question without touching the file.
 -- Run: tests/goose/run.sh   (headless, no network, no desktop keys)
+local lib = dofile(vim.fs.dirname(debug.getinfo(1, "S").source:sub(2)) .. "/lib.lua")
 local g = require "goose"
 g.setup()
 local ask = require "goose_ask"
 ask.setup()
-local here = vim.fs.dirname(debug.getinfo(1, "S").source:sub(2))
 local dir = vim.env.GOOSE_TEST_DIR
 local log = dir .. "/stub.log"
-vim.env.GOOSE_STUB_LOG = log
-vim.env.GOOSE_STUB_DELAY = "0.02"
-g.session_argv = { "python3", "-I", here .. "/stub-claude.py" }
+lib.stub(g, log, "0.02")
 g.prewarm = false
 g.lsp_wait = 50
 g.flash_ms = 50
 
-local pass, fail = 0, 0
-local function check(name, ok, detail)
-  if ok then
-    pass = pass + 1
-    io.stdout:write("pass  " .. name .. "\n")
-  else
-    fail = fail + 1
-    io.stdout:write("FAIL  " .. name .. (detail and ("  (" .. tostring(detail) .. ")") or "") .. "\n")
-  end
-end
-local function keys(k)
-  vim.api.nvim_feedkeys(vim.keycode(k), "xt", false)
-end
+local check = lib.check
+local keys = lib.keys
 local notes = {}
 local notify = vim.notify
 vim.notify = function(m, ...)
@@ -568,5 +555,4 @@ check(
 )
 
 vim.notify = notify
-io.stdout:write(("goose reach: %d pass, %d fail\n"):format(pass, fail))
-vim.cmd(fail == 0 and "qa!" or "cquit 1")
+lib.finish "goose reach"

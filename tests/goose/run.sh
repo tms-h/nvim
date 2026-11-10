@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Goose headless tests: session (stub claude), the one-shot path, the
-# memory server, seconder's review with codebase context (fake claude),
-# Alt+L's /mentor slash command and the project's rules file in every prompt.
-# Scratch state/cache, no network, no desktop keys.
+# Goose headless tests: session (stub claude), the one-shot path, reach
+# (Alt+K blocks and the Alt+L box), Esc Esc clearing the draft, the memory
+# server, seconder's review with codebase context (fake claude), Alt+L's
+# /mentor slash command and the project's rules file in every prompt. Shared
+# helpers in lib.lua. Scratch state/cache, no network, no desktop keys.
 set -u
 root=$(cd "$(dirname "$0")/../.." && pwd)
 tmp=$(mktemp -d)

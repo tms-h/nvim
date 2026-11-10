@@ -1,21 +1,12 @@
 -- Goose memory server (tools/goose/memory.py): remember/forget edit only the
 -- file named on its command line. Run: tests/goose/run.sh
-local here = vim.fs.dirname(debug.getinfo(1, "S").source:sub(2))
-local server = vim.fs.joinpath(here, "../../tools/goose/memory.py")
+local lib = dofile(vim.fs.dirname(debug.getinfo(1, "S").source:sub(2)) .. "/lib.lua")
+local server = vim.fs.joinpath(lib.here, "../../tools/goose/memory.py")
 local dir = vim.env.GOOSE_TEST_DIR
 local file = dir .. "/state/memory.md"
 local other = dir .. "/other.md"
 
-local pass, fail = 0, 0
-local function check(name, ok, detail)
-  if ok then
-    pass = pass + 1
-    io.stdout:write("pass  " .. name .. "\n")
-  else
-    fail = fail + 1
-    io.stdout:write("FAIL  " .. name .. (detail and ("  (" .. tostring(detail) .. ")") or "") .. "\n")
-  end
-end
+local check = lib.check
 
 ---Run the server on `calls` ({ name, arguments } each); the reply texts.
 local function run(calls, max)
@@ -66,5 +57,4 @@ out = run { { "forget", { text = "core's LIST" } }, { "forget", { text = "nothin
 check("forget drops the matching note", vim.deep_equal(lines(), { "- Prefer `let%bind`" }), vim.inspect(lines()))
 check("forget with no match changes nothing", out[2] == "No note contains that text." and #lines() == 1, out[2])
 
-io.stdout:write(("goose memory: %d pass, %d fail\n"):format(pass, fail))
-vim.cmd(fail == 0 and "qa!" or "cquit")
+lib.finish "goose memory"

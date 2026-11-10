@@ -1,32 +1,19 @@
 -- Goose session tests against a stub claude (tests/goose/stub-claude.py).
 -- Run: tests/goose/run.sh   (headless, no network, no desktop keys)
+local lib = dofile(vim.fs.dirname(debug.getinfo(1, "S").source:sub(2)) .. "/lib.lua")
 local g = require "goose"
 g.setup()
 -- ocamlformat (the format checks) from opam, as the editor finds it; without
 -- this the format checks failed under a shell whose PATH lacks opam.
 require("tools").setup_path()
-local here = vim.fs.dirname(debug.getinfo(1, "S").source:sub(2))
 local dir = vim.env.GOOSE_TEST_DIR
 local log = dir .. "/stub.log"
-vim.env.GOOSE_STUB_LOG = log
-vim.env.GOOSE_STUB_DELAY = "0.15"
-g.session_argv = { "python3", "-I", here .. "/stub-claude.py" }
+lib.stub(g, log, "0.15")
 g.lsp_wait = 50
 g.flash_ms = 50
 
-local pass, fail = 0, 0
-local function check(name, ok, detail)
-  if ok then
-    pass = pass + 1
-    io.stdout:write("pass  " .. name .. "\n")
-  else
-    fail = fail + 1
-    io.stdout:write("FAIL  " .. name .. (detail and ("  (" .. tostring(detail) .. ")") or "") .. "\n")
-  end
-end
-local function keys(k)
-  vim.api.nvim_feedkeys(vim.keycode(k), "xt", false)
-end
+local check = lib.check
+local keys = lib.keys
 local function entries()
   local out = {}
   if vim.uv.fs_stat(log) then
@@ -163,7 +150,6 @@ vim.notify = notify
 
 -- 6. accept_first: the answer waits; Alt+K accepts, Esc drops.
 g.accept_first = true
-local tick = vim.api.nvim_buf_get_changedtick(buf)
 send_at(120, "pseudo nine")
 local tick1 = vim.api.nvim_buf_get_changedtick(buf)
 wait_idle()
@@ -240,5 +226,4 @@ local answers = #vim.tbl_filter(function(l)
 end, got)
 check("format: a region still writing is left alone", answers == 2 and #notes2 == 0, vim.inspect(got) .. " " .. vim.inspect(notes2))
 
-io.stdout:write(("goose session: %d pass, %d fail\n"):format(pass, fail))
-vim.cmd(fail == 0 and "qa!" or "cquit 1")
+lib.finish "goose session"

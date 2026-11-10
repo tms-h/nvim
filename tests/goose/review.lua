@@ -1,19 +1,11 @@
 -- Seconder's codebase context: its claude runs in the project root with
 -- read-only tools, the wiki and the memory file, and each tool call shows in
 -- its status note. Run: tests/goose/run.sh (no network: a fake claude).
+local lib = dofile(vim.fs.dirname(debug.getinfo(1, "S").source:sub(2)) .. "/lib.lua")
 local g, sec = require "goose", require "seconder"
 local dir = vim.env.GOOSE_TEST_DIR
 
-local pass, fail = 0, 0
-local function check(name, ok, detail)
-  if ok then
-    pass = pass + 1
-    io.stdout:write("pass  " .. name .. "\n")
-  else
-    fail = fail + 1
-    io.stdout:write("FAIL  " .. name .. (detail and ("  (" .. tostring(detail) .. ")") or "") .. "\n")
-  end
-end
+local check = lib.check
 
 -- A fake `claude` first on PATH: streams a Read of lib/x.mli, then a review
 -- with one CR, as `claude -p --output-format stream-json --verbose` does.
@@ -72,5 +64,4 @@ check(
   vim.inspect(run.argv)
 )
 
-io.stdout:write(("goose review: %d pass, %d fail\n"):format(pass, fail))
-vim.cmd(fail == 0 and "qa!" or "cquit 1")
+lib.finish "goose review"

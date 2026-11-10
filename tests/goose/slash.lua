@@ -3,31 +3,18 @@
 -- or Write) and its verdict is logged; plain questions still go to the chat
 -- with Alt+L's flags unchanged; a missing prompt file shows one line.
 -- Run: tests/goose/run.sh   (headless, no network, no desktop keys)
+local lib = dofile(vim.fs.dirname(debug.getinfo(1, "S").source:sub(2)) .. "/lib.lua")
 local g = require "goose"
 g.setup()
 local ask = require "goose_ask"
 ask.setup()
-local here = vim.fs.dirname(debug.getinfo(1, "S").source:sub(2))
 local dir = vim.env.GOOSE_TEST_DIR
 local log = dir .. "/stub.log"
-vim.env.GOOSE_STUB_LOG = log
-vim.env.GOOSE_STUB_DELAY = "0.02"
-g.session_argv = { "python3", "-I", here .. "/stub-claude.py" }
+lib.stub(g, log, "0.02")
 g.prewarm = false
 
-local pass, fail = 0, 0
-local function check(name, ok, detail)
-  if ok then
-    pass = pass + 1
-    io.stdout:write("pass  " .. name .. "\n")
-  else
-    fail = fail + 1
-    io.stdout:write("FAIL  " .. name .. (detail and ("  (" .. tostring(detail) .. ")") or "") .. "\n")
-  end
-end
-local function keys(k)
-  vim.api.nvim_feedkeys(vim.keycode(k), "xt", false)
-end
+local check = lib.check
+local keys = lib.keys
 local function sent()
   local out = {}
   for _, l in ipairs(vim.uv.fs_stat(log) and vim.fn.readfile(log) or {}) do
@@ -144,5 +131,4 @@ local gone = vim.wait(2000, function()
 end, 20)
 check("wiping the file ends the mentor claude", gone and g.session(key) == nil and not vim.api.nvim_buf_is_valid(key), mpid)
 
-io.stdout:write(("goose slash: %d pass, %d fail\n"):format(pass, fail))
-vim.cmd(fail == 0 and "qa!" or "cquit")
+lib.finish "goose slash"
