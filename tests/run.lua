@@ -102,6 +102,13 @@ local function sizes()
   return s
 end
 
+-- Resize the test's tmux window (check.sh starts it at 200x50) to `cols`
+-- columns, as a window resize would.
+local function screen(cols)
+  vim.fn.system { "tmux", "resize-window", "-x", tostring(cols), "-y", "50" }
+  wait(500)
+end
+
 -- Back to one editor pane showing a.ml, Normal mode, no tree, no terminals.
 local function reset()
   vim.cmd "stopinsert"
@@ -2280,10 +2287,6 @@ end)
 
 check("A window resize scales every pane; the terminal is never squeezed to a strip", function()
   expect(vim.env.TMUX, "SKIP not inside tmux")
-  local function screen(cols)
-    vim.fn.system { "tmux", "resize-window", "-x", tostring(cols), "-y", "50" }
-    wait(500)
-  end
   local editor = api.nvim_get_current_win()
   -- A bare shell: this check is about the pane, and a zsh that loads nvm takes
   -- a second, or 20 and more on a busy machine (tests run at nice 19).
@@ -2328,10 +2331,6 @@ end)
 
 check("A resize and back keeps each pane's view (zoom, herdr split; 2026-11-08)", function()
   expect(vim.env.TMUX, "SKIP not inside tmux")
-  local function screen(cols)
-    vim.fn.system { "tmux", "resize-window", "-x", tostring(cols), "-y", "50" }
-    wait(500)
-  end
   vim.cmd "only | enew"
   local buf = api.nvim_get_current_buf()
   local lines = {}
