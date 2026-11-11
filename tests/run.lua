@@ -1182,6 +1182,174 @@ check("Tree keys: - goes up a folder, q closes the tree", function()
   expect(not visible, "q left the tree open")
 end)
 
+-- Git in a scratch folder beside the test project (author set here, so no
+-- global git config is needed).
+local function git(dir, ...)
+  local cmd = { "git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", "-C", dir }
+  return vim.system(vim.list_extend(cmd, { ... }), { text = true }):wait()
+end
+
+local function put(path, text)
+  vim.fn.mkdir(vim.fs.dirname(path), "p")
+  vim.fn.writefile({ text }, path)
+end
+
+-- The tree's rows by name: the right-hand badge, its group, and the name's
+-- own highlight groups (not the icon's).
+local function tree_rows()
+  local rows = {}
+  local win = tree_win()
+  if not win then
+    return rows
+  end
+  local buf = api.nvim_win_get_buf(win)
+  for _, m in ipairs(api.nvim_buf_get_extmarks(buf, -1, 0, -1, { details = true })) do
+    local d = m[4]
+    local line = api.nvim_buf_get_lines(buf, m[2], m[2] + 1, false)[1] or ""
+    local name = line:match "(%S+)%s*$"
+    if name then
+      local row = rows[name] or { groups = {} }
+      rows[name] = row
+      if d.virt_text and d.virt_text[1][2] then
+        row.badge, row.badge_group = d.virt_text[1][1], d.virt_text[1][2]
+      elseif type(d.hl_group) == "string" and line:find(name, 1, true) == m[3] + 1 then
+        table.insert(row.groups, d.hl_group)
+      end
+    end
+  end
+  return rows
+end
+
+-- The colour and weight a row's name ends up with, groups merged in order.
+local function name_look(row)
+  local look = {}
+  for _, group in ipairs(row and row.groups or {}) do
+    look = vim.tbl_extend("force", look, api.nvim_get_hl(0, { name = group, link = false }))
+  end
+  return look
+end
+
+-- Polls the tree (100 ms steps, up to `ms`) until `pred(rows)` holds.
+local function tree_until(pred, ms)
+  for _ = 1, (ms or 3000) / 100 do
+    if pred(tree_rows()) then
+      return true
+    end
+    wait(100)
+  end
+  return pred(tree_rows())
+end
+
+check("Tree git status: VS Code letters and colours for each state; open is bold only", function()
+  local dir = vim.fs.dirname(proj) .. "/treegit"
+  vim.fn.delete(dir, "rf")
+  for _, f in ipairs {
+    "edited.ml",
+    "staged_edit.ml",
+    "old.ml",
+    "both.ml",
+    "clean.ml",
+    "gone/x.ml",
+    "gone/y.ml",
+    "work/w.ml",
+  } do
+    put(dir .. "/" .. f, "let x = 1")
+  end
+  put(dir .. "/.gitignore", "ign/")
+  put(dir .. "/ign/junk.ml", "junk")
+  git(dir, "init", "-q")
+  git(dir, "add", ".")
+  git(dir, "commit", "-qm", "one")
+  -- both.ml: a merge conflict (UU).
+  git(dir, "checkout", "-qb", "other")
+  put(dir .. "/both.ml", "let x = 2")
+  git(dir, "commit", "-qam", "other")
+  git(dir, "checkout", "-q", "main")
+  put(dir .. "/both.ml", "let x = 3")
+  git(dir, "commit", "-qam", "main")
+  git(dir, "merge", "-q", "other")
+  put(dir .. "/edited.ml", "let x = 2")
+  put(dir .. "/staged_edit.ml", "let x = 2")
+  git(dir, "add", "staged_edit.ml")
+  git(dir, "mv", "old.ml", "renamed.ml")
+  put(dir .. "/untracked.ml", "new")
+  put(dir .. "/intent.ml", "new")
+  git(dir, "add", "-N", "intent.ml")
+  put(dir .. "/staged_new.ml", "new")
+  git(dir, "add", "staged_new.ml")
+  vim.fn.delete(dir .. "/gone/x.ml")
+  put(dir .. "/work/w.ml", "let x = 2")
+  vim.cmd("cd " .. dir)
+  vim.cmd "edit edited.ml"
+  require("explorer").show()
+  tree_until(function(rows)
+    return rows["edited.ml"] and rows["edited.ml"].badge
+  end)
+  local rows = tree_rows()
+  require("nvim-tree.api").tree.toggle_gitignore_filter()
+  wait(300)
+  local ignored = tree_rows()["ign"]
+  require("nvim-tree.api").tree.toggle_gitignore_filter()
+  vim.cmd("cd " .. proj)
+  require("nvim-tree.api").tree.change_root(proj)
+  local want = {
+    ["untracked.ml"] = { "U", "ExplorerGitUntracked" },
+    ["intent.ml"] = { "A", "ExplorerGitAdded" }, -- git add -N
+    ["staged_new.ml"] = { "A", "ExplorerGitAdded" },
+    ["edited.ml"] = { "M", "ExplorerGitModified" },
+    ["staged_edit.ml"] = { "M", "ExplorerGitModified" },
+    ["renamed.ml"] = { "R", "ExplorerGitRenamed" },
+    ["both.ml"] = { "!", "ExplorerGitConflict" },
+    ["gone"] = { "●", "ExplorerGitDeleted" }, -- a folder with a deleted file
+    ["work"] = { "●", "ExplorerGitModified" }, -- a folder with an edited file
+  }
+  for name, w in pairs(want) do
+    local row = rows[name]
+    expect(row, name .. " not in the tree")
+    expect(
+      row.badge == w[1] and row.badge_group == w[2],
+      ("%s badge %s %s"):format(name, tostring(row.badge), tostring(row.badge_group))
+    )
+    local fg = api.nvim_get_hl(0, { name = w[2], link = false }).fg
+    expect(fg and name_look(row).fg == fg, name .. " name groups " .. table.concat(row.groups, ","))
+  end
+  expect(rows["clean.ml"] and not rows["clean.ml"].badge, "clean.ml has a badge")
+  expect(name_look(rows["edited.ml"]).bold, "the open file is not bold")
+  expect(not api.nvim_get_hl(0, { name = "NvimTreeOpenedHL", link = false }).fg, "the open-file mark has a colour")
+  expect(
+    ignored and not ignored.badge and vim.tbl_contains(ignored.groups, "ExplorerGitIgnored"),
+    "ignored folder: " .. vim.inspect(ignored)
+  )
+end)
+
+check("Tree git status follows git init in an open folder, outside adds and commits, new files", function()
+  local dir = vim.fs.dirname(proj) .. "/treeinit"
+  vim.fn.delete(dir, "rf")
+  put(dir .. "/main.ml", "let x = 1")
+  vim.cmd("cd " .. dir)
+  require("explorer").show()
+  wait(600)
+  git(dir, "init", "-q")
+  git(dir, "add", "-N", "main.ml")
+  local inited = tree_until(function(rows)
+    return rows["main.ml"] and rows["main.ml"].badge == "A"
+  end)
+  git(dir, "add", "main.ml")
+  git(dir, "commit", "-qm", "one")
+  local committed = tree_until(function(rows)
+    return rows["main.ml"] and not rows["main.ml"].badge
+  end)
+  put(dir .. "/new.ml", "let y = 2")
+  local created = tree_until(function(rows)
+    return rows["new.ml"] and rows["new.ml"].badge == "U"
+  end)
+  vim.cmd("cd " .. proj)
+  require("nvim-tree.api").tree.change_root(proj)
+  expect(inited, "no A on main.ml after git init + git add -N")
+  expect(committed, "main.ml still marked after an outside commit")
+  expect(created, "a file made outside shows no U")
+end)
+
 check("A message takes one line: three lines show as one with [+2]", function()
   press(':echo "one\\ntwo\\nthree"<CR>', 300)
   local cmd = cmd_win()

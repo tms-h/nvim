@@ -1,6 +1,7 @@
 -- The file tree (nvim-tree), laid out like the old config's: a two-cell
--- gutter, folder arrows and git marks before each name, and a clickable
--- Sort row on top (M.winbar). Its first line is the open folder's name.
+-- gutter, folder arrows before each name, git status as VS Code shows it
+-- (letters at the right edge, names coloured; see Git status below), and a
+-- clickable Sort row on top (M.winbar). Its first line is the folder's name.
 -- Files open in the editor pane used last, never in a terminal and never
 -- with a "which window?" prompt. Only the keys below do anything; any other
 -- key is plain Vim on a read-only list (at most one short line).
@@ -117,6 +118,131 @@ local function set_winbar()
   end
 end
 
+-- ── Git status ───────────────────────────────────────────────────────────
+-- As VS Code's explorer: a letter at the right edge of each changed file
+-- (U untracked, A added, M modified, D deleted, R renamed, C copied, T type
+-- changed, ! conflict) with the name in the same colour (ExplorerGit* in
+-- theme.lua), and a dot on each folder holding changes, coloured by the most
+-- urgent one. Ignored names are dimmed, without a letter. Open files are
+-- bold only (NvimTreeOpenedHL), so being open never hides or fakes a status.
+
+local GIT_GROUP = {
+  U = "ExplorerGitUntracked",
+  A = "ExplorerGitAdded",
+  C = "ExplorerGitAdded",
+  M = "ExplorerGitModified",
+  T = "ExplorerGitModified",
+  D = "ExplorerGitDeleted",
+  R = "ExplorerGitRenamed",
+  ["!"] = "ExplorerGitConflict",
+  I = "ExplorerGitIgnored",
+}
+-- A folder's colour: its most urgent change.
+local GIT_RANK = { ["!"] = 6, M = 5, T = 5, D = 4, A = 3, C = 3, U = 2, R = 1 }
+local CONFLICT = { DD = true, AU = true, UD = true, UA = true, DU = true, AA = true, UU = true }
+
+---VS Code's letter for a `git status --porcelain` XY (X the index, Y the
+---working tree): a conflict first, then the working tree's change, then the
+---index's. " A" is `git add -N` (intent to add): A, as VS Code shows it.
+function M.git_letter(xy)
+  if xy == "??" then
+    return "U"
+  elseif xy == "!!" then
+    return "I"
+  elseif CONFLICT[xy] then
+    return "!"
+  end
+  local y = xy:sub(2, 2)
+  return y ~= " " and y or xy:sub(1, 1)
+end
+
+---The letter that decides a node's colour; a folder takes its most urgent
+---change, its own or any below it.
+local function node_letter(node)
+  local status = node.git_status
+  if not status then
+    return nil
+  end
+  if not node.nodes or status.file == "!!" then
+    return status.file and M.git_letter(status.file)
+  end
+  local best = status.file and M.git_letter(status.file)
+  for _, xys in pairs { status.dir and status.dir.direct or {}, status.dir and status.dir.indirect or {} } do
+    for _, xy in ipairs(xys) do
+      local letter = M.git_letter(xy)
+      if (GIT_RANK[letter] or 0) > (GIT_RANK[best] or 0) then
+        best = letter
+      end
+    end
+  end
+  return best
+end
+
+-- nvim-tree's decorator for the above, built once nvim-tree is loaded.
+local function git_decorator()
+  local Git = require("nvim-tree.api").Decorator:extend()
+  function Git:new()
+    self.enabled = true
+    self.highlight_range = "name"
+    self.icon_placement = "right_align"
+  end
+  function Git:highlight_group(node)
+    return GIT_GROUP[node_letter(node)]
+  end
+  function Git:icons(node)
+    local letter = node_letter(node)
+    if not GIT_GROUP[letter] or letter == "I" then
+      return nil
+    end
+    -- nvim-tree puts one space after it, before the window's edge. Folders
+    -- get ● (VS Code's • is a speck in Neovide's font).
+    return { { str = node.nodes and "●" or letter, hl = { GIT_GROUP[letter] } } }
+  end
+  return Git
+end
+
+-- nvim-tree remembers "not a git repo" for a folder until Neovim quits, and
+-- its R refresh keeps that, so a folder opened before its `git init` never
+-- showed any status (~/Work/janus, 2026-11-11). After each draw, a root
+-- still marked so is looked at again: once it has a .git, git status loads
+-- and from then on nvim-tree's watcher on .git (index, HEAD) follows outside
+-- adds and commits. Tried once per change of that .git, so a .git that git
+-- cannot read (another user's, say) costs nothing on later draws.
+local tried, pending = {}, false
+
+local function load_new_repo()
+  pending = false
+  local explorer = require("nvim-tree.core").get_explorer()
+  local git = require "nvim-tree.git"
+  local root = explorer and explorer.absolute_path
+  if not root or git._toplevels_by_path[root] ~= false then
+    return
+  end
+  local top = vim.fs.root(root, ".git")
+  local stat = top and vim.uv.fs_stat(top .. "/.git")
+  if not stat then
+    return
+  end
+  local key = ("%d.%d"):format(stat.mtime.sec, stat.mtime.nsec)
+  if tried[root] == key then
+    return
+  end
+  tried[root] = key
+  git.purge_state()
+  git.load_project(root)
+  require("nvim-tree.api").tree.reload()
+end
+
+---TreeRendered: cheap unless the root is a folder git did not know. The
+---look waits a moment, so a `git init` still writing its files is done.
+function M.after_draw()
+  local root = require("nvim-tree.core").get_cwd()
+  if not pending and root and require("nvim-tree.git")._toplevels_by_path[root] == false then
+    pending = true
+    vim.defer_fn(load_new_repo, 200)
+  end
+end
+
 -- ── Keys ─────────────────────────────────────────────────────────────────
 
 -- With nothing copied in the tree, nvim-tree's paste reads the system
@@ -200,19 +326,20 @@ function M.setup()
     sync_root_with_cwd = true,
     update_focused_file = { enable = true },
     sort = { sorter = M.sorter },
-    -- The old layout: a two-cell gutter on the left, a folder arrow and a git
-    -- mark before each name, two cells per level.
+    -- The old layout: a two-cell gutter on the left, a folder arrow before
+    -- each name, two cells per level.
     view = { width = 30, preserve_window_proportions = true, signcolumn = "yes" },
     renderer = {
       root_folder_label = function(path)
         return vim.fn.fnamemodify(path, ":t")
       end,
       group_empty = true,
-      highlight_git = "name",
+      -- nvim-tree's own "Git" swapped for the VS Code look (git_decorator).
+      decorators = { git_decorator(), "Open", "Hidden", "Modified", "Bookmark", "Diagnostics", "Copied", "Cut" },
       highlight_opened_files = "name",
       indent_width = 2,
       indent_markers = { enable = false },
-      icons = { padding = " ", show = { git = true, folder_arrow = true } },
+      icons = { padding = " ", show = { folder_arrow = true } },
     },
     filters = { git_ignored = true, custom = { "^.git$", "^_build$", "^_opam$" } },
     actions = {
@@ -238,6 +365,7 @@ function M.setup()
   }
   local tree = require "nvim-tree.api"
   tree.events.subscribe(tree.events.Event.TreeOpen, set_winbar)
+  tree.events.subscribe(tree.events.Event.TreeRendered, M.after_draw)
   api.nvim_create_autocmd("BufWinEnter", {
     group = api.nvim_create_augroup("ExplorerWinbar", { clear = true }),
     callback = function(args)
