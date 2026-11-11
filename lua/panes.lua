@@ -8,6 +8,7 @@
 local M = {}
 
 local api = vim.api
+local util = require "util"
 
 -- Cells are about twice as tall as wide: compare sides in pixels, not cells.
 local CELL_ASPECT = 2
@@ -108,7 +109,6 @@ end
 -- splits and multiplexer panes alike. `hand_back(tmux_argv, herdr_argv)` runs
 -- the command for the multiplexer Neovim is in. Neovide started from a tmux
 -- or herdr shell is not in it (util.in_mux): it hands nothing back.
-local util = require "util"
 local function hand_back(tmux_argv, herdr_argv)
   local argv = util.in_mux and (util.in_tmux and tmux_argv or util.in_herdr and herdr_argv)
   if argv then
@@ -117,15 +117,17 @@ local function hand_back(tmux_argv, herdr_argv)
   end
 end
 
+-- A wincmd direction as tmux's and herdr's side names.
+local SIDE = { h = "left", j = "down", k = "up", l = "right" }
+
 function M.focus(dir)
   local before = api.nvim_get_current_win()
   vim.cmd.wincmd(dir)
   if api.nvim_get_current_win() == before then
     -- At the edge: move to the multiplexer pane beyond it.
-    local side = ({ h = "left", j = "down", k = "up", l = "right" })[dir]
     hand_back(
       { "tmux", "select-pane", ({ h = "-L", j = "-D", k = "-U", l = "-R" })[dir] },
-      { "herdr", "pane", "focus", "--direction", side, "--current" }
+      { "herdr", "pane", "focus", "--direction", SIDE[dir], "--current" }
     )
   end
 end
@@ -140,10 +142,9 @@ function M.swap(dir)
   end
   local target = vim.fn.win_getid(vim.fn.winnr(dir))
   if target == cur or M.is_tree(target) then
-    local side = ({ h = "left", j = "down", k = "up", l = "right" })[dir]
     hand_back(
-      { "tmux", "swap-pane", "-d", "-t", "{" .. side .. "-of}" },
-      { "herdr", "pane", "swap", "--direction", side, "--current" }
+      { "tmux", "swap-pane", "-d", "-t", "{" .. SIDE[dir] .. "-of}" },
+      { "herdr", "pane", "swap", "--direction", SIDE[dir], "--current" }
     )
     return
   end
