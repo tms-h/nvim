@@ -117,6 +117,16 @@ local function hand_back(tmux_argv, herdr_argv)
   end
 end
 
+-- A helper script in ~/.local/bin (herdr-keys, tmux-tabs).
+local function bin(name)
+  return vim.fn.expand "~/.local/bin/" .. name
+end
+
+-- Zoom or unzoom the tmux or herdr pane Neovim runs in.
+local function zoom_mux_pane()
+  hand_back({ "tmux", "resize-pane", "-Z" }, { "herdr", "pane", "zoom", "--current", "--toggle" })
+end
+
 -- A wincmd direction as tmux's and herdr's side names.
 local SIDE = { h = "left", j = "down", k = "up", l = "right" }
 
@@ -339,14 +349,14 @@ function M.zoom()
   -- The tmux/herdr pane Neovim is in is zoomed: unzoom it, even with splits
   -- open, or Alt+F would zoom a split and the pane could never come back.
   if M.mux_zoomed() then
-    hand_back({ "tmux", "resize-pane", "-Z" }, { "herdr", "pane", "zoom", "--current", "--toggle" })
+    zoom_mux_pane()
     return
   end
   local win = api.nvim_get_current_win()
   if not is_pane(win) or #vim.tbl_filter(is_pane, panes()) < 2 then
     -- Nothing to zoom inside Neovim (one pane, maybe beside the tree): zoom
     -- its multiplexer pane. Hiding the tree is Alt+B's job.
-    hand_back({ "tmux", "resize-pane", "-Z" }, { "herdr", "pane", "zoom", "--current", "--toggle" })
+    zoom_mux_pane()
     return
   end
   vim.cmd "tab split"
@@ -470,7 +480,7 @@ function M.resize(how)
   end
   hand_back(
     { "tmux", "if", "-F", "-t", t, at_far, tmux_resize(grow and near or far), tmux_resize(grow and far or near) },
-    { vim.fn.expand "~/.local/bin/herdr-keys", "resize", how, vim.env.HERDR_PANE_ID or "" }
+    { bin "herdr-keys", "resize", how, vim.env.HERDR_PANE_ID or "" }
   )
 end
 
@@ -663,10 +673,9 @@ function M.close()
   -- Nothing left to close (Chrome and VS Code close the window here): hand
   -- the key back so tmux or herdr closes this pane. Neovide keeps its window.
   if util.in_mux and M.nothing_open() then
-    local bin = vim.fn.expand "~/.local/bin/"
     return hand_back(
-      { "tmux", "run-shell", "-b", bin .. "tmux-tabs close-pane " .. (vim.env.TMUX_PANE or "") },
-      { bin .. "herdr-keys", "close-pane", vim.env.HERDR_PANE_ID or "" }
+      { "tmux", "run-shell", "-b", bin "tmux-tabs" .. " close-pane " .. (vim.env.TMUX_PANE or "") },
+      { bin "herdr-keys", "close-pane", vim.env.HERDR_PANE_ID or "" }
     )
   end
   if M.is_float(win) then
@@ -747,10 +756,7 @@ function M.cycle(step)
   local tabs = require "tabs"
   if util.in_mux and #tabs.list() < 2 then
     local dir = step > 0 and "next" or "previous"
-    return hand_back(
-      { "tmux", dir .. "-window" },
-      { vim.fn.expand "~/.local/bin/herdr-keys", "tab", dir, vim.env.HERDR_PANE_ID or "" }
-    )
+    return hand_back({ "tmux", dir .. "-window" }, { bin "herdr-keys", "tab", dir, vim.env.HERDR_PANE_ID or "" })
   end
   M.in_editor(function()
     tabs.next(step)
