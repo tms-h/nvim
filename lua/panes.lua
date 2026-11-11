@@ -106,10 +106,11 @@ end
 -- (~/.config/tmux/tmux.conf, ~/.local/bin/herdr-keys: "same key, same job").
 -- What Neovim can't do itself it hands back, so one key works across Neovim
 -- splits and multiplexer panes alike. `hand_back(tmux_argv, herdr_argv)` runs
--- the command for the multiplexer Neovim is in.
+-- the command for the multiplexer Neovim is in. Neovide started from a tmux
+-- or herdr shell is not in it (util.in_mux): it hands nothing back.
 local util = require "util"
 local function hand_back(tmux_argv, herdr_argv)
-  local argv = util.in_tmux and tmux_argv or util.in_herdr and herdr_argv
+  local argv = util.in_mux and (util.in_tmux and tmux_argv or util.in_herdr and herdr_argv)
   if argv then
     vim.system(argv)
     return true
@@ -289,7 +290,7 @@ end
 
 ---Is the tmux or herdr pane Neovim runs in zoomed? (No multiplexer: false.)
 function M.mux_zoomed()
-  if vim.g.neovide then
+  if not util.in_mux then
     return false
   end
   local function run(argv, stdin)
