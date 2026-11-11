@@ -2529,6 +2529,36 @@ check("A resize and back keeps each pane's view (zoom, herdr split; 2026-11-08)"
   expect(ok, err)
 end)
 
+check("Neovide started in a tmux or herdr shell never hands pane keys to it", function()
+  -- This Neovim is that case: g:neovide is set and $TMUX is the test's tmux.
+  expect(vim.env.TMUX, "SKIP not inside tmux")
+  vim.cmd "only | enew"
+  local real, sent = vim.system, {}
+  vim.system = function(argv, ...)
+    local cmd = type(argv) == "table" and vim.fs.basename(argv[1]) or ""
+    if cmd == "tmux" or cmd == "herdr" or cmd == "herdr-keys" then
+      sent[#sent + 1] = table.concat(argv, " ")
+      return {
+        wait = function()
+          return { code = 0, stdout = "", stderr = "" }
+        end,
+      }
+    end
+    return real(argv, ...)
+  end
+  -- One pane: each key is at Neovim's edge (focus, swap, resize) or has
+  -- nothing to zoom, so a multiplexer Neovim runs in would get it.
+  local ok, err = pcall(function()
+    press(super "Right")
+    press(super "S-Right")
+    press(super "=")
+    press(super "f")
+  end)
+  vim.system = real
+  expect(ok, err)
+  expect(#sent == 0, "sent to the multiplexer: " .. table.concat(sent, "; "))
+end)
+
 check("Every Space key in the key hints has a name (OCaml, Python, Markdown, Org files too)", function()
   local missing = {}
   for _, file in ipairs { "a.ml", "a.mli", "hello.py", "README.md", "README.org" } do
