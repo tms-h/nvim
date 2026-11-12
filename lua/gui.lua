@@ -44,7 +44,10 @@ g.neovide_padding_right = 0
 -- SUPER+W with unsaved changes: ask to save instead of refusing with E37.
 g.neovide_confirm_quit = true
 g.neovide_hide_mouse_when_typing = true
-g.neovide_remember_window_size = true
+-- Not on the Mac: Rift sizes the window there. A remembered size came back as
+-- "Maximized" after quitting from fullscreen: the window opened screen-sized,
+-- could not be resized, and its bottom rows sat under the screen edge.
+g.neovide_remember_window_size = not is_macos
 if is_macos then
   -- Cmd reaches Neovim as <D-...> (every Cmd chord, util.chord).
   g.neovide_input_use_logo = true
@@ -58,10 +61,6 @@ if is_macos then
   -- Not g.neovide_macos_simple_fullscreen: set at startup it makes the window
   -- a fixed screen-sized one Rift can't tile. Rift's Alt+F
   -- (~/.config/rift/scripts/fullscreen.sh) places the window itself.
-  -- Rift sizes the window. A remembered size came back as "Maximized" after
-  -- quitting from fullscreen: the window opened screen-sized, could not be
-  -- resized, and its bottom rows sat under the screen edge.
-  g.neovide_remember_window_size = false
 end
 
 -- The pointer's position is needed for the divider hover (dividers.lua).
