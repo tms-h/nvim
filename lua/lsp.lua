@@ -5,6 +5,7 @@
 -- (keys.lua) and Alt+. quick fix (seconder.lua). ocamllsp also shows each
 -- top-level let's type above it (code lens), and a failing expect test from
 -- `dune test -w` as an error at its [%expect] with only the changed lines.
+-- A non-exhaustive match names Alt+. Destruct, which writes the missing cases.
 local M = {}
 
 local api = vim.api
@@ -82,6 +83,12 @@ function M.format_ocaml(buf, lines)
   local ocamlformat = require("tools").find "ocamlformat"
   local file = api.nvim_buf_get_name(buf)
   local dir = vim.fs.dirname(file)
+  -- The file's folder was moved or deleted on disk: running a formatter there
+  -- throws ENOENT, which aborted the save with a stack trace on top of
+  -- Neovim's own E212 (2026-11-12). The save cannot land anyway; skip.
+  if vim.fn.isdirectory(dir) == 0 then
+    return
+  end
   local conf = require("ocaml").ocamlformat_conf(dir)
   if not ocamlformat or (conf and conf.disable) then
     indent_ocaml(buf, dir, lines)
@@ -202,9 +209,24 @@ local function fit_beside_code(diagnostic)
   return message
 end
 
-local EXPECT_HEAD = ("expect test output differs (- expected, + got); %s Promote accepts it"):format(
-  require("util").is_macos and "Cmd+." or "Alt+."
-)
+local QUICK_FIX = require("util").is_macos and "Cmd+." or "Alt+."
+
+---ocamllsp's "this pattern-matching is not exhaustive" (warning 8) gets the
+---key that writes the missing cases at the end of its first line. Destruct
+---needs the cursor on a case's pattern: on the `match` keyword, where ]d
+---lands, it wraps the whole match in a new one.
+function M.destruct_hint(diagnostics)
+  return vim.tbl_map(function(d)
+    if not d.message:find("pattern-matching is not exhaustive", 1, true) then
+      return d
+    end
+    local first, rest = d.message:match "^([^\n]*)(.*)$"
+    local hint = (" %s on a case's pattern (after a |): Destruct adds the missing cases"):format(QUICK_FIX)
+    return vim.tbl_extend("force", d, { message = first .. hint .. rest })
+  end, diagnostics)
+end
+
+local EXPECT_HEAD = ("expect test output differs (- expected, + got); %s Promote accepts it"):format(QUICK_FIX)
 
 ---A failing expect test reaches ocamllsp from `dune test -w` (Dune RPC) as
 ---one error on line 1 holding the diff's `------ file` / `++++++
@@ -374,7 +396,7 @@ function M.setup()
   vim.lsp.handlers["textDocument/publishDiagnostics"] = function(err, result, ctx, ...)
     local client = vim.lsp.get_client_by_id(ctx.client_id)
     if result and client and client.name == "ocamllsp" then
-      result = vim.tbl_extend("force", result, { diagnostics = M.expect_diffs(result.diagnostics) })
+      result = vim.tbl_extend("force", result, { diagnostics = M.destruct_hint(M.expect_diffs(result.diagnostics)) })
     end
     return publish(err, result, ctx, ...)
   end

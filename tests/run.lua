@@ -2915,6 +2915,60 @@ check("A code lens whose let now ends past the file's end draws no error after a
   expect(vim.deep_equal(lens, { 2 }), "lens rows after the reload: " .. vim.inspect(lens))
 end)
 
+check("A non-exhaustive match names Alt+. Destruct, which on a case's pattern adds only the missing cases", function()
+  local file = proj .. "/partial.ml"
+  vim.fn.writefile(
+    { "type t =", "  | Apple", "  | Banana", "  | Cherry", "", "let f x =", "  match x with", "  | Apple -> 1", ";;" },
+    file
+  )
+  vim.cmd "edit! partial.ml"
+  local buf = api.nvim_get_current_buf()
+  wait_for_lsp(buf)
+  local warn
+  for _ = 1, 40 do
+    for _, d in ipairs(vim.diagnostic.get(buf)) do
+      warn = d.message:find("not exhaustive", 1, true) and d or warn
+    end
+    if warn then
+      break
+    end
+    wait(250)
+  end
+  local client = vim.lsp.get_clients({ bufnr = buf, name = "ocamllsp" })[1]
+  local params = {
+    textDocument = { uri = vim.uri_from_bufnr(buf) },
+    range = { start = { line = 7, character = 4 }, ["end"] = { line = 7, character = 4 } },
+    context = { diagnostics = {} },
+  }
+  local answer = client and client:request_sync("textDocument/codeAction", params, 5000, buf)
+  local destruct
+  for _, a in ipairs(answer and answer.result or {}) do
+    destruct = a.title == "Destruct" and a or destruct
+  end
+  local new = destruct and destruct.edit and vim.json.encode(destruct.edit) or ""
+  api.nvim_buf_delete(buf, { force = true })
+  vim.fn.delete(file)
+  expect(warn, "no non-exhaustive warning")
+  local first = warn.message:match "^[^\n]*"
+  local hint = "Alt+. on a case's pattern (after a |): Destruct adds the missing cases"
+  expect(first:find(hint, 1, true), "warning: " .. warn.message)
+  expect(new:find("Banana | Cherry", 1, true) and not new:find("Apple", 1, true), "Destruct on | Apple: " .. new)
+end)
+
+check("Saving a file whose folder was moved away shows E212 alone, no formatter stack trace", function()
+  local dir = proj .. "/gone"
+  vim.fn.mkdir(dir, "p")
+  vim.fn.writefile({ "let x = 1" }, dir .. "/x.ml")
+  vim.cmd "edit! gone/x.ml"
+  local buf = api.nvim_get_current_buf()
+  vim.fn.delete(dir, "rf")
+  api.nvim_buf_set_lines(buf, 1, 1, false, { "let y =  2" })
+  local ok, err = pcall(vim.cmd.write)
+  api.nvim_buf_delete(buf, { force = true })
+  err = tostring(err)
+  expect(not ok and err:find("E212", 1, true) and not err:find("BufWritePre", 1, true), "save error: " .. err)
+end)
+
 check("Alt+. away from a seconder fix opens the language server's code actions", function()
   vim.cmd "edit! b.ml"
   wait_for_lsp(api.nvim_get_current_buf())
