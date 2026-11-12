@@ -21,13 +21,28 @@ RT=/run/user/$(id -u)/nvnest.$$
 mkdir -p "$RT"
 chmod 700 "$RT"
 PIDS=""
+# Every process in the nest, found by its private XDG_RUNTIME_DIR, not by
+# parent: pkill -P missed children reparented to systemd once their parent
+# died, and an mpvpaper ran on for hours. Read per thread, because
+# /proc/PID/environ is unreadable once the main thread has exited while
+# others still run (how mpvpaper is left after SIGTERM).
+nest() { grep -lsxzF "XDG_RUNTIME_DIR=$RT" /proc/[0-9]*/task/[0-9]*/environ | cut -d/ -f3 | sort -u; }
 cleanup() {
-  for p in $PIDS; do pkill -TERM -P "$p" 2>/dev/null; kill "$p" 2>/dev/null; done
-  sleep 0.5
-  for p in $PIDS; do pkill -KILL -P "$p" 2>/dev/null; kill -9 "$p" 2>/dev/null; done
+  # SIGKILL, not SIGTERM: mpvpaper's SIGTERM handler hangs on NVIDIA (see
+  # ~/.local/bin/live-wallpaper). The wait keeps bash's "Killed" line quiet.
+  [ -n "${MPV:-}" ] && { kill -9 "$MPV"; wait "$MPV"; } 2>/dev/null
+  P=$(nest)
+  [ -n "$P" ] && kill $P 2>/dev/null && sleep 0.5
+  for _ in 1 2 3 4 5; do
+    P=$(nest)
+    [ -z "$P" ] && break
+    kill -9 $P 2>/dev/null
+    sleep 0.2
+  done
   rm -rf "$RT"
 }
-trap cleanup EXIT INT TERM HUP
+trap cleanup EXIT
+trap 'exit 1' INT TERM HUP
 base() { env -i HOME="$HOME" USER="$USER" PATH=/usr/bin:/bin XDG_RUNTIME_DIR="$RT" LANG=C.UTF-8 "$@"; }
 base nice -n 19 "$BIN" parent >"$OUT/dummy.log" 2>&1 &
 PIDS="$PIDS $!"
@@ -44,7 +59,8 @@ for _ in $(seq 40); do [ -S "$RT/wayland-1" ] && break; sleep 0.2; done
 SIG=$(ls "$RT/hypr" | head -1)
 inner() { base WAYLAND_DISPLAY=wayland-1 HYPRLAND_INSTANCE_SIGNATURE="$SIG" "$@"; }
 inner nice -n 19 mpvpaper -o "no-audio image-display-duration=inf load-scripts=no" ALL "$WALL" >"$OUT/mpvpaper.log" 2>&1 &
-PIDS="$PIDS $!"
+MPV=$!
+PIDS="$PIDS $MPV"
 sleep 1.5
 SOCK=$RT/nv.sock
 cd "$PROJ" || exit 1
