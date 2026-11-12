@@ -2,7 +2,9 @@
 -- diagnostics, and format on save. Keys are Neovim's own: K hover, grn
 -- rename, grr references, gra code action, gri implementation, grt type
 -- definition, gO symbols, [d ]d diagnostics, <C-s> signature; plus gd
--- (keys.lua).
+-- (keys.lua) and Alt+. quick fix (seconder.lua). ocamllsp also shows each
+-- top-level let's type above it (code lens), and a failing expect test from
+-- `dune test -w` as an error at its [%expect] with only the changed lines.
 local M = {}
 
 local api = vim.api
@@ -200,6 +202,46 @@ local function fit_beside_code(diagnostic)
   return message
 end
 
+local EXPECT_HEAD = ("expect test output differs (- expected, + got); %s Promote accepts it"):format(
+  require("util").is_macos and "Cmd+." or "Alt+."
+)
+
+---A failing expect test reaches ocamllsp from `dune test -w` (Dune RPC) as
+---one error on line 1 whose first line is dune's diff command, `(cd
+---_build/default && patdiff ...)`, and whose diff shows the whole file. Turn
+---it into one error per changed block, on that block's line, reading the
+---header above and then only the changed lines. Other diagnostics pass as
+---they are. `diagnostics` are LSP ones (0-based ranges).
+function M.expect_diffs(diagnostics)
+  local out = {}
+  for _, d in ipairs(diagnostics) do
+    local cmd, rest = d.message:match "^(%(cd [^\n]*%))\n(.*)$"
+    if d.source ~= "dune" or not (cmd and cmd:find("diff", 1, true)) then
+      out[#out + 1] = d
+    else
+      local hunks, cur = {}, nil
+      for line in (rest .. "\n"):gmatch "([^\n]*)\n" do
+        local lnum, s, e = line:match '^File "[^"]*", line (%d+), characters (%d+)%-(%d+)'
+        if lnum then
+          cur = { line = tonumber(lnum) - 1, s = tonumber(s), e = tonumber(e), lines = { EXPECT_HEAD } }
+          hunks[#hunks + 1] = cur
+        elseif cur and line:match "^[-+]|" then
+          cur.lines[#cur.lines + 1] = line
+        end
+      end
+      if #hunks == 0 then
+        -- Plain diff (no patdiff): no locations, so line 1 with the diff.
+        out[#out + 1] = vim.tbl_extend("force", d, { message = EXPECT_HEAD .. "\n" .. rest })
+      end
+      for _, h in ipairs(hunks) do
+        local range = { start = { line = h.line, character = h.s }, ["end"] = { line = h.line, character = h.e } }
+        out[#out + 1] = vim.tbl_extend("force", d, { range = range, message = table.concat(h.lines, "\n") })
+      end
+    end
+  end
+  return out
+end
+
 -- ocamllsp started in a dune project before its first build reports "No
 -- config found" and "Unbound module" (merlin has no build output to read),
 -- and keeps reporting them after `dune build` or `dune test -w` until it
@@ -281,6 +323,15 @@ function M.setup()
     },
   }
 
+  local publish = vim.lsp.handlers["textDocument/publishDiagnostics"]
+  vim.lsp.handlers["textDocument/publishDiagnostics"] = function(err, result, ctx, ...)
+    local client = vim.lsp.get_client_by_id(ctx.client_id)
+    if result and client and client.name == "ocamllsp" then
+      result = vim.tbl_extend("force", result, { diagnostics = M.expect_diffs(result.diagnostics) })
+    end
+    return publish(err, result, ctx, ...)
+  end
+
   local group = api.nvim_create_augroup("Lsp", { clear = true })
   api.nvim_create_autocmd("LspAttach", {
     group = group,
@@ -289,6 +340,9 @@ function M.setup()
       local client = vim.lsp.get_client_by_id(args.data.client_id)
       if client and client.name == "ocamllsp" then
         restart_after_first_build(client.root_dir, args.buf)
+        -- Each top-level let's inferred type on a grey line above it
+        -- (ocamllsp's code lens, turned on in lsp/ocamllsp.lua).
+        vim.lsp.codelens.enable(true, { bufnr = args.buf })
         vim.keymap.set("n", "K", function()
           ocaml_hover(client, args.buf)
         end, { buffer = args.buf, desc = "Hover (full type)" })

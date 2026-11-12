@@ -201,6 +201,7 @@ local function groups(p, look)
     LspReferenceRead = { underline = true, sp = faint },
     LspReferenceWrite = { underline = true, sp = c.orange },
     LspInlayHint = { fg = faint, italic = true },
+    LspCodeLens = { fg = faint, italic = true },
     LspSignatureActiveParameter = { fg = c.accent, bold = true, underline = true },
     -- Code
     Comment = { fg = comment, italic = true },

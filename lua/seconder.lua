@@ -10,7 +10,8 @@
 --   Alt+.     (Cmd+. on the Mac, VS Code's Quick Fix) applies the fix shown
 --             in grey under the cursor's CR-soon and removes that CR; one `u`
 --             undoes both. Only CR-soon nits carry a fix, never a CR, and a
---             fix is never applied by itself.
+--             fix is never applied by itself. Away from a fix it opens the
+--             language server's code actions instead (Promote, Destruct...).
 --
 -- Reply to a CR by turning it into `XCR thomas: <why>`; the next Space r reads
 -- it. The rubric is rubric/seconder.md (condensed from the js-wiki articles),
@@ -498,6 +499,12 @@ function M.accept_fix(buf)
     end
   end
   if not pick then
+    -- No CR fix here: then it is VS Code's Quick Fix, the language server's
+    -- code actions (ocamllsp: Promote a failing expect test, Destruct a
+    -- match into its cases, add a type annotation).
+    if vim.lsp.get_clients({ bufnr = buf, method = "textDocument/codeAction" })[1] then
+      return vim.lsp.buf.code_action()
+    end
     return vim.notify "seconder: no fix at the cursor's CR"
   end
   local f, cr, s, e = pick.f, pick.cr, pick.s, pick.e
@@ -838,7 +845,7 @@ function M.setup()
   end, { desc = "Previous CR" })
   -- VS Code's Quick Fix is Ctrl+. (Cmd+. on the Mac): Alt+. / Cmd+. here.
   local chord = require("util").chord
-  local desc = "Seconder: apply the fix shown under the cursor's CR-soon (one u undoes)"
+  local desc = "Quick fix: the fix under the cursor's CR-soon (one u undoes), else code actions"
   map("n", chord ".", function()
     M.accept_fix()
   end, { desc = desc })

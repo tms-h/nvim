@@ -2783,6 +2783,94 @@ check("OCaml gt wraps a motion, a selection or a line in (fun () -> ...)", funct
   vim.cmd "edit! c.ml"
 end)
 
+check("A failing expect test from dune -w is an error at its [%expect] with only the changed lines; ]d shows them", function()
+  vim.cmd "edit! b.ml"
+  local buf = api.nvim_get_current_buf()
+  wait_for_lsp(buf)
+  local client = vim.lsp.get_clients({ bufnr = buf, name = "ocamllsp" })[1]
+  expect(client, "ocamllsp not attached")
+  -- ocamllsp's own first report for b.ml would replace the fake one below.
+  wait(1500)
+  -- The shape ocamllsp 1.17 passes on from Dune RPC: line 1, dune's diff
+  -- command first, then patdiff's hunks with the whole file around them.
+  local message = table.concat({
+    "(cd _build/default && /x/patdiff -keep-whitespace -location-style omake -ascii b.ml b.ml.corrected)",
+    "------ b.ml",
+    "++++++ b.ml.corrected",
+    'File "b.ml", line 3, characters 0-1:',
+    " |let helper x = x + 1",
+    "-|    old",
+    "+|    new",
+    'File "b.ml", line 5, characters 2-4:',
+    " |type point",
+    "-|    5:00 /km",
+    "+|    5:00 /mi",
+  }, "\n")
+  local zero = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 0 } }
+  vim.lsp.handlers["textDocument/publishDiagnostics"](nil, {
+    uri = vim.uri_from_bufnr(buf),
+    diagnostics = {
+      { range = zero, severity = 1, source = "dune", message = message },
+      { range = zero, severity = 1, source = "ocamllsp", message = "(cd x) is left alone" },
+    },
+  }, { client_id = client.id, method = "textDocument/publishDiagnostics" })
+  local ds = vim.diagnostic.get(buf, { severity = vim.diagnostic.severity.ERROR })
+  table.sort(ds, function(a, b)
+    return a.lnum < b.lnum
+  end)
+  local got = vim.tbl_map(function(d)
+    return ("%d:%d-%d %s"):format(d.lnum, d.col, d.end_col, d.message)
+  end, ds)
+  local head = require("lsp").expect_diffs({ { range = zero, source = "dune", message = message } })[1].message
+  expect(head:match "^expect test output differs", "header: " .. head)
+  expect(#ds == 3, "diagnostics: " .. vim.inspect(got))
+  expect(got[1] == "0:0-0 (cd x) is left alone", "other diagnostic changed: " .. tostring(got[1]))
+  expect(got[2] and got[2]:find("^2:0%-1 expect test.-\n%-|    old\n%+|    new$"), "first hunk: " .. tostring(got[2]))
+  expect(got[3] and got[3]:find("^4:2%-4 expect test.-\n%-|    5:00 /km\n%+|    5:00 /mi$"), "second hunk: " .. tostring(got[3]))
+  vim.fn.cursor(2, 1)
+  press("]d", 400)
+  local text = ""
+  for _, w in ipairs(api.nvim_list_wins()) do
+    local fb = api.nvim_win_get_buf(w)
+    if api.nvim_win_get_config(w).relative ~= "" and not vim.tbl_contains({ "msg", "cmd" }, vim.bo[fb].filetype) then
+      text = text .. table.concat(api.nvim_buf_get_lines(fb, 0, -1, false), "\n")
+    end
+  end
+  expect(vim.fn.line "." == 3 and text:find("+|    new", 1, true), "]d to line " .. vim.fn.line "." .. ", float: " .. text)
+  close_floats()
+  vim.diagnostic.reset(nil, buf)
+end)
+
+check("OCaml shows each top-level let's type above it (ocamllsp code lens)", function()
+  vim.cmd "edit! b.ml"
+  local buf = api.nvim_get_current_buf()
+  wait_for_lsp(buf)
+  local titles = {}
+  for _ = 1, 40 do
+    titles = vim.tbl_map(function(l)
+      return l.lens.command and l.lens.command.title or ""
+    end, vim.lsp.codelens.get { bufnr = buf })
+    if #titles > 0 then
+      break
+    end
+    wait(250)
+  end
+  expect(vim.tbl_contains(titles, "int -> int"), "lenses: " .. vim.inspect(titles))
+end)
+
+check("Alt+. away from a seconder fix opens the language server's code actions", function()
+  vim.cmd "edit! b.ml"
+  wait_for_lsp(api.nvim_get_current_buf())
+  local real, called = vim.lsp.buf.code_action, false
+  vim.lsp.buf.code_action = function()
+    called = true
+  end
+  vim.fn.cursor(1, 5)
+  press(super ".", 300)
+  vim.lsp.buf.code_action = real
+  expect(called, "Alt+. did not open code actions")
+end)
+
 check(
   "Alt+L box: the wheel scrolls at once while an answer streams, and the stream never pulls the view back",
   function()
@@ -3248,9 +3336,13 @@ check("Seconder wiki: a CR-soon fix shows in grey, Alt+. applies it, one u undoe
     expect(reviewed[ghosts[1].row + 1]:find "CR%-soon claude: x_5", "the ghost is not under the CR-soon")
     wait(500)
     expect(vim.api.nvim_buf_get_lines(buf, 5, 6, false)[1] == "let x_5 = 5", "the fix applied itself")
-    -- Alt+. away from the CR does nothing.
+    -- Alt+. away from the CR changes nothing (it opens code actions instead,
+    -- stubbed here; the check "Alt+. away from a seconder fix" covers them).
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    local code_action = vim.lsp.buf.code_action
+    vim.lsp.buf.code_action = function() end
     press(super ".", 200)
+    vim.lsp.buf.code_action = code_action
     expect(vim.deep_equal(vim.api.nvim_buf_get_lines(buf, 0, -1, false), reviewed), "Alt+. on line 1 changed the file")
     vim.api.nvim_win_set_cursor(0, { ghosts[1].row + 1, 0 })
     press(super ".", 200)

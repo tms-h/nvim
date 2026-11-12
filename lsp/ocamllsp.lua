@@ -1,6 +1,8 @@
 return {
   cmd = { "ocamllsp" },
   filetypes = { "ocaml", "ocaml_interface", "ocamllex", "menhir", "dune" },
+  -- Code lens: each top-level let's inferred type above it (off by default).
+  settings = { codelens = { enable = true } },
   -- The nearest dune project or opam file, else the repository root.
   root_dir = function(buf, on_dir)
     on_dir(vim.fs.root(buf, function(name)
