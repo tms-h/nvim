@@ -207,16 +207,18 @@ local EXPECT_HEAD = ("expect test output differs (- expected, + got); %s Promote
 )
 
 ---A failing expect test reaches ocamllsp from `dune test -w` (Dune RPC) as
----one error on line 1 whose first line is dune's diff command, `(cd
----_build/default && patdiff ...)`, and whose diff shows the whole file. Turn
----it into one error per changed block, on that block's line, reading the
----header above and then only the changed lines. Other diagnostics pass as
----they are. `diagnostics` are LSP ones (0-based ranges).
+---one error on line 1 holding the diff's `------ file` / `++++++
+---file.corrected` header and a diff that shows the whole file; with `CI` set,
+---dune puts its `(cd _build/default && patdiff ...)` command line first.
+---Turn it into one error per changed block, on that block's line, reading
+---the header above and then only the changed lines. Other diagnostics pass
+---as they are. `diagnostics` are LSP ones (0-based ranges).
 function M.expect_diffs(diagnostics)
   local out = {}
   for _, d in ipairs(diagnostics) do
-    local cmd, rest = d.message:match "^(%(cd [^\n]*%))\n(.*)$"
-    if d.source ~= "dune" or not (cmd and cmd:find("diff", 1, true)) then
+    local rest = d.message:gsub("^%(cd [^\n]*%)\n", "", 1)
+    -- patdiff's header is ------/++++++, diff -u's ---/+++.
+    if d.source ~= "dune" or not rest:find "^%-%-%-[^\n]*\n%+%+%+" then
       out[#out + 1] = d
     else
       local hunks, cur = {}, nil

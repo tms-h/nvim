@@ -2791,10 +2791,10 @@ check("A failing expect test from dune -w is an error at its [%expect] with only
   expect(client, "ocamllsp not attached")
   -- ocamllsp's own first report for b.ml would replace the fake one below.
   wait(1500)
-  -- The shape ocamllsp 1.17 passes on from Dune RPC: line 1, dune's diff
-  -- command first, then patdiff's hunks with the whole file around them.
+  -- The shape ocamllsp 1.17 passes on from Dune RPC: line 1, patdiff's
+  -- header, then its hunks with the whole file around them. With CI set,
+  -- dune's diff command comes first (checked below with expect_diffs).
   local message = table.concat({
-    "(cd _build/default && /x/patdiff -keep-whitespace -location-style omake -ascii b.ml b.ml.corrected)",
     "------ b.ml",
     "++++++ b.ml.corrected",
     'File "b.ml", line 3, characters 0-1:',
@@ -2823,6 +2823,9 @@ check("A failing expect test from dune -w is an error at its [%expect] with only
   end, ds)
   local head = require("lsp").expect_diffs({ { range = zero, source = "dune", message = message } })[1].message
   expect(head:match "^expect test output differs", "header: " .. head)
+  local ci = "(cd _build/default && /x/patdiff -keep-whitespace -location-style omake b.ml b.ml.corrected)\n"
+  local with_cmd = require("lsp").expect_diffs({ { range = zero, source = "dune", message = ci .. message } })
+  expect(#with_cmd == 2 and with_cmd[1].message == head, "with dune's command first: " .. vim.inspect(with_cmd))
   expect(#ds == 3, "diagnostics: " .. vim.inspect(got))
   expect(got[1] == "0:0-0 (cd x) is left alone", "other diagnostic changed: " .. tostring(got[1]))
   expect(got[2] and got[2]:find("^2:0%-1 expect test.-\n%-|    old\n%+|    new$"), "first hunk: " .. tostring(got[2]))
