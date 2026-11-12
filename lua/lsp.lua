@@ -294,7 +294,52 @@ local function restart_after_first_build(root, buf)
   end)
 end
 
+-- Two Neovim 0.12 bugs, fixed on Neovim master, behind one error: after
+-- a file was rewritten shorter on disk and reloaded (:checktime, autoread),
+-- every redraw raised `Decoration provider "win" (ns=nvim.lsp.codelens):
+-- ... pos.lua:145: Index out of bounds` (2026-11-12). A reload changes the
+-- text but not the buffer's LSP version, so lenses (and other answers) for
+-- the old text still counted as current; and the code lens draws the last
+-- answer on any row it has not drawn yet, so a lens whose `let` ended past
+-- the new last line was drawn there. As on master: a reload sets the
+-- version to the new changedtick, and lenses draw only for the current
+-- version (marks already drawn stay; the answer asked 200 ms after each
+-- change draws the rest).
+local reload_tracked = {} -- buf -> true once its reloads bump the version
+
+local function bump_version_on_reload(buf)
+  if reload_tracked[buf] then
+    return
+  end
+  reload_tracked[buf] = true
+  api.nvim_buf_attach(buf, false, {
+    on_reload = function(_, b)
+      if vim.lsp.util.buf_versions[b] then
+        vim.lsp.util.buf_versions[b] = api.nvim_buf_get_changedtick(b)
+      end
+    end,
+    on_detach = function(_, b)
+      reload_tracked[b] = nil
+    end,
+  })
+end
+
+local function codelens_current_text_only()
+  require "vim.lsp.codelens"
+  local Provider = require("vim.lsp._capability").all.codelens
+  local on_win = Provider and Provider.on_win
+  if not on_win then
+    return
+  end
+  Provider.on_win = function(self, toprow, botrow)
+    if self.version == vim.lsp.util.buf_versions[self.bufnr] then
+      return on_win(self, toprow, botrow)
+    end
+  end
+end
+
 function M.setup()
+  codelens_current_text_only()
   for name, cmd in pairs(SERVERS) do
     if require("tools").find(cmd) then
       vim.lsp.enable(name)
@@ -339,6 +384,7 @@ function M.setup()
     group = group,
     callback = function(args)
       vim.bo[args.buf].omnifunc = "v:lua.MiniCompletion.completefunc_lsp"
+      bump_version_on_reload(args.buf)
       local client = vim.lsp.get_client_by_id(args.data.client_id)
       if client and client.name == "ocamllsp" then
         restart_after_first_build(client.root_dir, args.buf)

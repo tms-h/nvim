@@ -2861,6 +2861,47 @@ check("OCaml shows each top-level let's type above it (ocamllsp code lens)", fun
   expect(vim.tbl_contains(titles, "int -> int"), "lenses: " .. vim.inspect(titles))
 end)
 
+check("A code lens whose let now ends past the file's end draws no error after a reload", function()
+  -- The lens arrives while the file is hidden, then the file is rewritten
+  -- shorter on disk and reloaded: the stale lens (rows 3-5) sat on row 3 of
+  -- a 3-line file, and every redraw raised "Decoration provider "win"
+  -- (ns=nvim.lsp.codelens): ... Index out of bounds".
+  local file = proj .. "/lens_reload.ml"
+  vim.fn.writefile({ "open! Core", "", "let f x =", "  x", "  + 1000000", ";;" }, file)
+  vim.cmd "edit! lens_reload.ml"
+  local lb = api.nvim_get_current_buf()
+  vim.cmd "edit! b.ml"
+  for _ = 1, 40 do
+    if #vim.lsp.codelens.get { bufnr = lb } > 0 then
+      break
+    end
+    wait(250)
+  end
+  expect(#vim.lsp.codelens.get { bufnr = lb } > 0, "no lens for lens_reload.ml")
+  vim.fn.writefile({ "open! Core", "", "let f x = x" }, file)
+  vim.cmd "messages clear"
+  vim.cmd "checktime"
+  vim.cmd("buffer " .. lb)
+  vim.cmd "redraw"
+  wait(300)
+  local messages = vim.fn.execute "messages"
+  -- The new text's lens still comes: one, on `let f x = x`.
+  local lens = {}
+  for _ = 1, 20 do
+    lens = vim.tbl_map(function(l)
+      return l.lens.range["end"].line
+    end, vim.lsp.codelens.get { bufnr = lb })
+    if vim.deep_equal(lens, { 2 }) then
+      break
+    end
+    wait(250)
+  end
+  api.nvim_buf_delete(lb, { force = true })
+  vim.fn.delete(file)
+  expect(not messages:find("Decoration provider", 1, true), "messages: " .. messages)
+  expect(vim.deep_equal(lens, { 2 }), "lens rows after the reload: " .. vim.inspect(lens))
+end)
+
 check("Alt+. away from a seconder fix opens the language server's code actions", function()
   vim.cmd "edit! b.ml"
   wait_for_lsp(api.nvim_get_current_buf())
