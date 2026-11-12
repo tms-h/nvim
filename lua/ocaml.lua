@@ -2,7 +2,7 @@
 -- and dune in a terminal pane. Keys (OCaml files only):
 --   <leader>oi  switch .ml / .mli        <leader>of  format now
 --   <leader>ob  dune build               <leader>ot  dune runtest
---   <leader>ow  dune build --watch       <leader>op  dune promote
+--   <leader>ow  dune build --watch       <leader>op  dune promote, this file only
 --   gt{motion} / gt on a selection / gtt   wrap in (fun () -> ...)
 local M = {}
 
@@ -132,6 +132,18 @@ function M.dune(buf, args)
   vim.cmd "startinsert"
 end
 
+---`dune promote` for this buffer's file only: a bare promote accepts every
+---pending correction, so accepting your own test's output also rewrote a
+---spec test file next to it (2026-11-12).
+function M.promote(buf)
+  local file = vim.fs.relpath(root(buf), api.nvim_buf_get_name(buf))
+  if not file then
+    vim.notify("This file is outside the dune project", vim.log.levels.WARN)
+    return
+  end
+  M.dune(buf, { "promote", file })
+end
+
 ---Jump between foo.ml and foo.mli.
 function M.switch(buf)
   local name = api.nvim_buf_get_name(buf)
@@ -194,8 +206,8 @@ function M.setup(buf)
     M.dune(buf, { "build", "--watch" })
   end, "dune watch")
   map("<leader>op", function()
-    M.dune(buf, { "promote" })
-  end, "dune promote")
+    M.promote(buf)
+  end, "dune promote this file")
   -- gt: stock "next tab page", which here only reaches an Alt+F zoom.
   local function thunk(motion)
     return function()
