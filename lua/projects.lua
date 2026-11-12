@@ -381,6 +381,34 @@ function M.pick_folder()
   }
 end
 
+-- Reloads each loaded file that changed on disk and has no edits here (a
+-- plain `checktime` would also ask W12 about the edited ones). Skipped while
+-- Neovim waits on a prompt, a pending key or the command line.
+local reload_timer
+function M.reload_unedited()
+  local mode = api.nvim_get_mode()
+  if mode.blocking or mode.mode:find "^[cr]" or vim.fn.getcmdwintype() ~= "" then
+    return
+  end
+  for _, buf in ipairs(api.nvim_list_bufs()) do
+    if
+      api.nvim_buf_is_loaded(buf)
+      and api.nvim_get_option_value("buftype", { buf = buf }) == ""
+      and not api.nvim_get_option_value("modified", { buf = buf })
+      and api.nvim_buf_get_name(buf) ~= ""
+    then
+      -- 'autoread' off (it is global-local) would turn a reload into W11.
+      local autoread = api.nvim_get_option_value("autoread", { buf = buf })
+      if autoread == nil then
+        autoread = vim.go.autoread
+      end
+      if autoread then
+        vim.cmd("silent! checktime " .. buf)
+      end
+    end
+  end
+end
+
 function M.setup()
   local group = api.nvim_create_augroup("Projects", { clear = true })
   api.nvim_create_autocmd({ "VimEnter", "DirChanged" }, { group = group, callback = record_open })
@@ -438,6 +466,8 @@ function M.setup()
   })
 
   -- Files changed outside reload on their own (unless you edited them too).
+  -- Focus, entering a buffer and the pause after a key check every file; one
+  -- you edited too asks (W12), as you are there to answer.
   api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "TermLeave" }, {
     group = group,
     callback = function()
@@ -446,6 +476,16 @@ function M.setup()
       end
     end,
   })
+  -- A pane you are not in (herdr, tmux, Neovide behind another window) gets
+  -- none of those, so once a second a timer checks the files you have not
+  -- edited. Edited ones wait for you: their W12 prompt would sit unseen.
+  if reload_timer then
+    reload_timer:stop()
+  else
+    reload_timer = vim.uv.new_timer()
+    reload_timer:unref()
+  end
+  reload_timer:start(1000, 1000, vim.schedule_wrap(M.reload_unedited))
 end
 
 return M

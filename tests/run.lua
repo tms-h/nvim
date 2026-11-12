@@ -3365,6 +3365,55 @@ check("Seconder wiki: a CR-soon fix shows in grey, Alt+. applies it, one u undoe
   end)
 end)
 
+-- ── Files changed on disk (2026-11-12) ────────────────────────────────────
+-- "my editor dosent refresh until i click o it in herdr": a pane Thomas is
+-- not in gets no FocusGained, BufEnter or key, so nothing ran checktime.
+
+check("A file changed on disk reloads with no key or focus; one edited here is left alone", function()
+  local inplace, renamed, edited = proj .. "/reload_a.ml", proj .. "/reload_b.ml", proj .. "/reload_c.ml"
+  vim.fn.writefile({ "let a = 1" }, inplace)
+  vim.fn.writefile({ "let b = 1" }, renamed)
+  vim.fn.writefile({ "let c = 1" }, edited)
+  vim.cmd("edit " .. vim.fn.fnameescape(inplace))
+  local inplace_buf = api.nvim_get_current_buf()
+  vim.cmd("vsplit " .. vim.fn.fnameescape(renamed))
+  local renamed_buf = api.nvim_get_current_buf()
+  vim.cmd("split " .. vim.fn.fnameescape(edited))
+  local edited_buf = api.nvim_get_current_buf()
+  api.nvim_buf_set_lines(edited_buf, 0, -1, false, { "let c = 2 (* typed here *)" })
+  -- Let the pause after the last key (CursorHold) pass: from here on no key,
+  -- no focus change and no window change, as in a pane nobody is in.
+  wait(vim.o.updatetime + 500)
+  -- An agent saves all three: one in place, one as a new file renamed over
+  -- the old (a new inode), and the one edited here too.
+  vim.system({
+    "sh",
+    "-c",
+    'printf "let a = 22\\n" >"$1"; printf "let b = 22\\n" >"$2.tmp" && mv "$2.tmp" "$2"; printf "let c = 22\\n" >"$3"',
+    "sh",
+    inplace,
+    renamed,
+    edited,
+  }):wait()
+  local function first(buf)
+    return api.nvim_buf_get_lines(buf, 0, 1, false)[1]
+  end
+  local waited = 0
+  while (first(inplace_buf) ~= "let a = 22" or first(renamed_buf) ~= "let b = 22") and waited < 2500 do
+    wait(100)
+    waited = waited + 100
+  end
+  expect(first(inplace_buf) == "let a = 22", "saved in place: still '" .. first(inplace_buf) .. "' after 2.5 s")
+  expect(first(renamed_buf) == "let b = 22", "renamed over: still '" .. first(renamed_buf) .. "' after 2.5 s")
+  expect(not vim.bo[inplace_buf].modified and not vim.bo[renamed_buf].modified, "a reloaded file reads as edited")
+  expect(
+    first(edited_buf) == "let c = 2 (* typed here *)" and vim.bo[edited_buf].modified,
+    "the file edited here was replaced: '" .. first(edited_buf) .. "'"
+  )
+  local m = api.nvim_get_mode()
+  expect(m.mode == "n" and not m.blocking, "a prompt is waiting (mode " .. m.mode .. ")")
+end)
+
 -- ── The test tools themselves ────────────────────────────────────────────
 
 local tests_dir = vim.fn.stdpath "config" .. "/tests"
