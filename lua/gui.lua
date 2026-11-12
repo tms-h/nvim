@@ -8,7 +8,7 @@ local g = vim.g
 local is_macos = require("util").is_macos
 
 vim.o.guifont = "JetBrainsMono Nerd Font Mono:h14"
--- Start two zoom steps below the font size; Alt/Cmd+0 comes back here.
+-- Start two zoom steps below the font size; Ctrl+0 comes back here (keys.lua).
 g.default_scale = 1 / 1.25 ^ 2
 g.neovide_scale_factor = g.default_scale
 
@@ -46,7 +46,7 @@ g.neovide_confirm_quit = true
 g.neovide_hide_mouse_when_typing = true
 g.neovide_remember_window_size = true
 if is_macos then
-  -- Cmd reaches Neovim as <D-...> (every Cmd chord in keys.lua).
+  -- Cmd reaches Neovim as <D-...> (every Cmd chord, util.chord).
   g.neovide_input_use_logo = true
   g.neovide_input_macos_option_key_is_meta = "only_left"
   -- Blur the desktop behind the glass, like Hyprland's blur on Omarchy.
