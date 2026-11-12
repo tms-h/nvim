@@ -445,7 +445,7 @@ local function keeps_bg(name)
 end
 
 ---Safety net for groups a plugin defines on its own: drop any background
----that is not a selection, search, cursor or diff fill.
+---that KEEP_BG does not allow.
 function M.one_surface()
   for name, hl in pairs(api.nvim_get_hl(0, {})) do
     -- A link takes its fill from its target, which is judged on its own
