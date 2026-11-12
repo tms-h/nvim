@@ -1,8 +1,8 @@
 -- OCaml: ocp-indent while typing, ocamlformat on save (lsp.lua), ocamllsp,
 -- and dune in a terminal pane. Keys (OCaml files only):
 --   <leader>oi  switch .ml / .mli        <leader>of  format now
---   <leader>ob  dune build               <leader>ot  dune runtest
---   <leader>ow  dune build --watch       <leader>op  dune promote, this file only
+--   <leader>ob  dune build               <leader>ot  dune test, this folder
+--   <leader>ow  dune test -w, this folder <leader>op  dune promote, this file only
 --   gt{motion} / gt on a selection / gtt   wrap in (fun () -> ...)
 local M = {}
 
@@ -132,16 +132,33 @@ function M.dune(buf, args)
   vim.cmd "startinsert"
 end
 
+---`path` relative to the dune root, or nil with a warning when it lies outside.
+local function in_project(buf, path)
+  local rel = vim.fs.relpath(root(buf), path)
+  if not rel then
+    vim.notify("This file is outside the dune project", vim.log.levels.WARN)
+  end
+  return rel
+end
+
 ---`dune promote` for this buffer's file only: a bare promote accepts every
 ---pending correction, so accepting your own test's output also rewrote a
 ---spec test file next to it (2026-11-12).
 function M.promote(buf)
-  local file = vim.fs.relpath(root(buf), api.nvim_buf_get_name(buf))
-  if not file then
-    vim.notify("This file is outside the dune project", vim.log.levels.WARN)
-    return
+  local file = in_project(buf, api.nvim_buf_get_name(buf))
+  if file then
+    M.dune(buf, { "promote", file })
   end
-  M.dune(buf, { "promote", file })
+end
+
+---`dune test` on this buffer's folder only (with `-w`, rerun on every save).
+---From the root, runtest also ran sibling folders, such as the drills'
+---hidden edge-case tests, and showed their diffs (2026-11-12).
+function M.test(buf, watch)
+  local dir = in_project(buf, vim.fs.dirname(api.nvim_buf_get_name(buf)))
+  if dir then
+    M.dune(buf, watch and { "test", dir, "-w" } or { "test", dir })
+  end
 end
 
 ---Jump between foo.ml and foo.mli.
@@ -200,11 +217,11 @@ function M.setup(buf)
     M.dune(buf, { "build" })
   end, "dune build")
   map("<leader>ot", function()
-    M.dune(buf, { "runtest" })
-  end, "dune runtest")
+    M.test(buf, false)
+  end, "dune test this folder")
   map("<leader>ow", function()
-    M.dune(buf, { "build", "--watch" })
-  end, "dune watch")
+    M.test(buf, true)
+  end, "dune test this folder on every save")
   map("<leader>op", function()
     M.promote(buf)
   end, "dune promote this file")
