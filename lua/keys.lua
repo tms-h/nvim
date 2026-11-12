@@ -9,10 +9,11 @@
 -- * Pane, tab, find and file chords do the same thing from Normal, Insert, a
 --   selection or a terminal: they first leave that mode (`call`); a
 --   terminal you land in goes back to typing. Edit chords work where you edit.
--- * Stock Vim and Neovim keys keep their meaning (s, ;, -, H, L, gi, ga,
+-- * Stock Vim and Neovim keys keep their meaning (;, -, H, L, gi, ga,
 --   grr, grn, gra, gri, grt, gO, K, gc, [d, ]d). Exceptions, with reasons:
---   c, C, s, S and Visual p edit as usual but leave the clipboard alone
---   (below);
+--   s (flash.nvim's jump, its own default key, in every file: stock s is
+--   cl, and in a selection c); c, C, S and Visual p edit as usual but leave
+--   the clipboard alone (below);
 --   gd (go to definition: the stock heuristic aims at the same thing and
 --   misses across files); <C-h/j/k/l> (pane focus; most used keys);
 --   <C-Arrows> (move the divider: brief); <C-PageUp/Down> (file tabs, as in
@@ -198,16 +199,22 @@ end, { expr = true, replace_keycodes = false, desc = "Accept completion or new l
 
 -- ── Clipboard ──────────────────────────────────────────────────────────────
 -- The clipboard holds what was last copied or cut (y, d, x, Alt+C, Alt+X), as
--- in VS Code. Retyping text (c, s) or pasting over a selection does not
+-- in VS Code. Retyping text (c, S) or pasting over a selection does not
 -- replace it, so the same text pastes again and again. A named register
--- ("ac) still gets the old text.
-for _, key in ipairs { "c", "C", "s", "S" } do
+-- ("ac) still gets the old text. (s is flash's jump, below.)
+for _, key in ipairs { "c", "C", "S" } do
   map({ "n", "x" }, key, function()
     return (vim.v.register == "+" or vim.v.register == '"') and '"_' .. key or key
   end, { expr = true, desc = "Change, keep the clipboard" })
 end
 -- Visual P is the stock put that keeps the register.
 map("x", "p", "P", { desc = "Paste over the selection, keep the clipboard" })
+-- s jumps (flash.nvim, plugins.lua): type a couple of letters, then press the
+-- label on the match you want. After an operator too (ds<label> deletes to
+-- it). Stock s is cl, still there.
+map({ "n", "x", "o" }, "s", function()
+  require("flash").jump()
+end, { desc = "Jump: type letters, press the label (flash)" })
 -- Typing over a Select mode selection (a snippet field) sends the old text
 -- nowhere: Select mode's CTRL-R _. Fed in front of any keys already typed; if
 -- a key beats it, it lands in Insert mode, where it inserts nothing.

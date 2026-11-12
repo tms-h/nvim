@@ -12,6 +12,8 @@
 --   vim-wakatime     time tracking, when ~/.wakatime.cfg exists
 --   hardtime.nvim    blocks hjkl/arrow spam, hints better motions (nui.nvim
 --                    draws its :Hardtime report)
+--   flash.nvim       s jumps: type a couple of letters, press the label on
+--                    the match you want
 local gh = function(repo)
   return "https://github.com/" .. repo
 end
@@ -26,6 +28,7 @@ vim.pack.add({
   { src = gh "nvim-treesitter/nvim-treesitter", version = "main" },
   gh "MunifTanjim/nui.nvim",
   gh "m4xshen/hardtime.nvim",
+  gh "folke/flash.nvim",
   later(gh "nvim-orgmode/orgmode"),
   later(gh "mason-org/mason.nvim"),
   later(gh "wakatime/vim-wakatime"),
@@ -173,6 +176,14 @@ require("hardtime").setup {
     ["<Left>"] = { "n", "x" },
     ["<Right>"] = { "n", "x" },
   },
+}
+
+-- ── flash.nvim ─────────────────────────────────────────────────────────────
+-- s (keys.lua): type a couple of letters, every visible match in every pane
+-- gets a label (FlashLabel, theme.lua), press it to jump. Its add-ons to f, t
+-- and / stay off, so those keys work as stock.
+require("flash").setup {
+  modes = { search = { enabled = false }, char = { enabled = false } },
 }
 
 -- ── Tree-sitter ────────────────────────────────────────────────────────────

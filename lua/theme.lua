@@ -122,6 +122,12 @@ local function groups(p, look)
     CurSearch = { fg = bg, bg = c.yellow },
     IncSearch = { link = "CurSearch" },
     Substitute = { fg = bg, bg = c.orange },
+    -- flash.nvim's s: the label is the one filled cell (bold, the accent);
+    -- matches are underlined and the rest of the pane greys out.
+    FlashLabel = { fg = bg, bg = c.accent, bold = true },
+    FlashMatch = { fg = fg, underline = true, sp = c.accent },
+    FlashCurrent = { fg = fg, underline = true, sp = c.accent },
+    FlashBackdrop = { fg = comment },
     MatchParen = { fg = c.accent, bold = true, underline = true },
     WordOccurrence = { underline = true, sp = c.accent },
     -- Bars: words on the surface, the active one bright
@@ -411,6 +417,7 @@ local KEEP_BG = {
   "^PmenuThumb",
   "Search$",
   "^Substitute$",
+  "^FlashLabel$",
   "Cursor$",
   "^CursorIM$",
   "^CursorLine",

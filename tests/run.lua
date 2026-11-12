@@ -2777,6 +2777,56 @@ check("Space f s lists the project's symbols from ocamllsp", function()
   expect(text:find "helper" and text:find "greeting", "symbols listed: " .. text:sub(1, 200))
 end)
 
+-- The label flash shows on a match, read from its extmarks.
+local function flash_labels(buf)
+  local labels = {}
+  for _, ns in pairs(api.nvim_get_namespaces()) do
+    for _, m in ipairs(api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
+      for _, chunk in ipairs(m[4].virt_text or {}) do
+        if chunk[2] == "FlashLabel" then
+          labels[#labels + 1] = { row = m[2], col = m[3], label = chunk[1] }
+        end
+      end
+    end
+  end
+  return labels
+end
+
+check("s jumps with flash: letters, then a label; also after an operator and in OCaml; f and / stay stock", function()
+  vim.cmd "edit! c.ml"
+  local buf = api.nvim_get_current_buf()
+  api.nvim_buf_set_lines(buf, 0, -1, false, { "let alpha = 1", "let beta = 2", "let zeta = alpha + beta" })
+  vim.fn.cursor(1, 1)
+  for _, m in ipairs { "n", "x", "o" } do
+    local s = vim.fn.maparg("s", m, false, true)
+    expect(s.desc and s.desc:find("flash", 1, true), "s in mode " .. m .. ": " .. vim.inspect(s.desc))
+  end
+  press("s", 150)
+  press("ze", 300)
+  local labels = flash_labels(buf)
+  expect(#labels == 1 and labels[1].row == 2, "labels: " .. vim.inspect(labels))
+  press(labels[1].label, 200)
+  local at = api.nvim_win_get_cursor(0)
+  expect(at[1] == 3 and at[2] == 4, "s ze <label> left the cursor at " .. vim.inspect(at))
+  -- After an operator: d s <letters> <label> deletes through the match's
+  -- first letter, as df does.
+  vim.fn.cursor(3, 1)
+  press("ds", 150)
+  press("+ ", 300)
+  labels = flash_labels(buf)
+  press(labels[1] and labels[1].label or "<Esc>", 200)
+  expect(api.nvim_buf_get_lines(buf, 2, 3, false)[1] == " beta", "ds: " .. api.nvim_buf_get_lines(buf, 2, 3, false)[1])
+  vim.cmd "silent! undo 0"
+  vim.cmd "edit! c.ml"
+  expect(vim.fn.maparg("f", "n") == "" and vim.fn.maparg("/", "n") == "", "f or / is mapped")
+  expect(require("flash.config").modes.search.enabled == false, "flash takes over / search")
+  -- The label is the one filled cell: readable, and matches carry no fill.
+  local label = api.nvim_get_hl(0, { name = "FlashLabel", link = false })
+  local r = label.fg and label.bg and contrast(label.fg, label.bg) or 0
+  expect(r >= 4.5, ("FlashLabel contrast %.2f"):format(r))
+  expect(not api.nvim_get_hl(0, { name = "FlashMatch", link = false }).bg, "FlashMatch paints a background")
+end)
+
 check("OCaml gt wraps a motion, a selection or a line in (fun () -> ...)", function()
   vim.cmd "edit! c.ml"
   api.nvim_buf_set_lines(0, 0, -1, false, { "let x = foo bar", "  let y = é 1", "let z = 3" })
