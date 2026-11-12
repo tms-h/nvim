@@ -240,6 +240,16 @@ function M.setup(buf)
     thunk "_",
     vim.tbl_extend("force", wrap, { desc = "OCaml: wrap the line in (fun () -> ...)" })
   )
+  -- `*` typed between the pair mini.pairs made for `(` opens a comment:
+  -- `(|)` becomes `(* | *)`, as VS Code's OCaml Platform does. Without this
+  -- the comment read `(*|)`, closed by a stray `)` (2026-11-13).
+  vim.keymap.set("i", "*", function()
+    local line, col = api.nvim_get_current_line(), api.nvim_win_get_cursor(0)[2]
+    if line:sub(col, col + 1) == "()" then
+      return "*  *<C-g>U<Left><C-g>U<Left>"
+    end
+    return "*"
+  end, { buffer = buf, expr = true, desc = "OCaml: (* opens a comment, closed with *)" })
   -- Neovim's own OCaml plugin adds Space keys with no name, so the key hints
   -- (mini.clue) listed them blank. Same keys, now named.
   for _, mode in ipairs { "n", "x" } do

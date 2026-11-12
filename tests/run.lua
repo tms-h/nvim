@@ -2345,6 +2345,19 @@ check("OCaml snippets expand as you type; auto-brackets after a function", funct
   expect(ocaml == "List.map", "OCaml got brackets: " .. ocaml)
 end)
 
+check("OCaml: typing (* opens a comment closed with *), not a stray )", function()
+  vim.cmd "enew"
+  vim.bo.filetype = "ocaml"
+  press("i(*x<Esc>", 200)
+  local comment = api.nvim_get_current_line()
+  api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  press("ia * b<Esc>", 200)
+  local product = api.nvim_get_current_line()
+  vim.cmd "bwipeout!"
+  expect(comment == "(* x *)", "(* gave: '" .. comment .. "'")
+  expect(product == "a * b", "a * b gave: '" .. product .. "'")
+end)
+
 check("Closing a tab shows the one to its right (Chrome), else the left", function()
   vim.cmd("edit " .. proj .. "/a.ml | edit " .. proj .. "/b.ml | edit " .. proj .. "/c.ml")
   vim.cmd("buffer " .. vim.fn.bufnr(proj .. "/b.ml"))
