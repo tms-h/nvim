@@ -12,8 +12,10 @@
 -- * Stock Vim and Neovim keys keep their meaning (;, -, H, L, gi, ga,
 --   grr, grn, gra, gri, grt, gO, K, gc, [d, ]d). Exceptions, with reasons:
 --   s (flash.nvim's jump, its own default key, in every file: stock s is
---   cl, and in a selection c); c, C, S and Visual p edit as usual but leave
---   the clipboard alone (below);
+--   cl, and in a selection c); Visual S (vim-surround's wrap; stock it is
+--   linewise c); ds, cs, ys (vim-surround: they take over d, c and y
+--   followed by flash's s); c, C, normal S and Visual p edit as usual but
+--   leave the clipboard alone (below);
 --   gd (go to definition: the stock heuristic aims at the same thing and
 --   misses across files); <C-h/j/k/l> (pane focus; most used keys);
 --   <C-Arrows> (move the divider: brief); <C-PageUp/Down> (file tabs, as in
@@ -201,9 +203,10 @@ end, { expr = true, replace_keycodes = false, desc = "Accept completion or new l
 -- The clipboard holds what was last copied or cut (y, d, x, Alt+C, Alt+X), as
 -- in VS Code. Retyping text (c, S) or pasting over a selection does not
 -- replace it, so the same text pastes again and again. A named register
--- ("ac) still gets the old text. (s is flash's jump, below.)
+-- ("ac) still gets the old text. (s is flash's jump and Visual S
+-- vim-surround's wrap, below.)
 for _, key in ipairs { "c", "C", "S" } do
-  map({ "n", "x" }, key, function()
+  map(key == "S" and "n" or { "n", "x" }, key, function()
     return (vim.v.register == "+" or vim.v.register == '"') and '"_' .. key or key
   end, { expr = true, desc = "Change, keep the clipboard" })
 end
@@ -215,6 +218,26 @@ map("x", "p", "P", { desc = "Paste over the selection, keep the clipboard" })
 map({ "n", "x", "o" }, "s", function()
   require("flash").jump()
 end, { desc = "Jump: type letters, press the label (flash)" })
+-- vim-surround's own keys (plugins.lua turns its unnamed ones off), named
+-- for the key hints; vim-repeat makes . repeat them. Its insert-mode Ctrl+S
+-- is left out: Neovim's signature help has it. ds and cs win over d or c
+-- followed by flash's s; dS, cS... nothing else here uses them.
+for _, m in ipairs {
+  { "n", "ds", "<Plug>Dsurround", "Surround: delete ds{char}, e.g. ds( or dst" },
+  { "n", "cs", "<Plug>Csurround", "Surround: change cs{old}{new}, e.g. cs([" },
+  { "n", "cS", "<Plug>CSurround", "Surround: change, new pair on its own lines" },
+  { "n", "ys", "<Plug>Ysurround", "Surround: add ys{motion}{char}, e.g. ysiw)" },
+  { "n", "yS", "<Plug>YSurround", "Surround: add, on their own lines" },
+  { "n", "yss", "<Plug>Yssurround", "Surround: add around the line, yss{char}" },
+  { "n", "ySs", "<Plug>YSsurround", "Surround: add around the line, on their own lines" },
+  { "n", "ySS", "<Plug>YSsurround", "Surround: add around the line, on their own lines" },
+  { "x", "S", "<Plug>VSurround", "Surround: wrap the selection, S{char}" },
+  { "x", "gS", "<Plug>VgSurround", "Surround: wrap the selection, indented" },
+  { "i", "<C-g>s", "<Plug>Isurround", "Surround: type a pair around the cursor" },
+  { "i", "<C-g>S", "<Plug>ISurround", "Surround: type a pair on lines of their own" },
+} do
+  map(m[1], m[2], m[3], { remap = true, desc = m[4] })
+end
 -- Typing over a Select mode selection (a snippet field) sends the old text
 -- nowhere: Select mode's CTRL-R _. Fed in front of any keys already typed; if
 -- a key beats it, it lands in Insert mode, where it inserts nothing.

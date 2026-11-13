@@ -2808,14 +2808,15 @@ check("s jumps with flash: letters, then a label; also after an operator and in 
   press(labels[1].label, 200)
   local at = api.nvim_win_get_cursor(0)
   expect(at[1] == 3 and at[2] == 4, "s ze <label> left the cursor at " .. vim.inspect(at))
-  -- After an operator: d s <letters> <label> deletes through the match's
-  -- first letter, as df does.
+  -- After an operator: gU s <letters> <label> uppercases through the
+  -- match's first letter, as gUf does (ds, cs and ys are vim-surround's).
   vim.fn.cursor(3, 1)
-  press("ds", 150)
+  press("gUs", 150)
   press("+ ", 300)
   labels = flash_labels(buf)
   press(labels[1] and labels[1].label or "<Esc>", 200)
-  expect(api.nvim_buf_get_lines(buf, 2, 3, false)[1] == " beta", "ds: " .. api.nvim_buf_get_lines(buf, 2, 3, false)[1])
+  local upper = api.nvim_buf_get_lines(buf, 2, 3, false)[1]
+  expect(upper == "LET ZETA = ALPHA + beta", "gUs: " .. upper)
   vim.cmd "silent! undo 0"
   vim.cmd "edit! c.ml"
   expect(vim.fn.maparg("f", "n") == "" and vim.fn.maparg("/", "n") == "", "f or / is mapped")
@@ -2825,6 +2826,44 @@ check("s jumps with flash: letters, then a label; also after an operator and in 
   local r = label.fg and label.bg and contrast(label.fg, label.bg) or 0
   expect(r >= 4.5, ("FlashLabel contrast %.2f"):format(r))
   expect(not api.nvim_get_hl(0, { name = "FlashMatch", link = false }).bg, "FlashMatch paints a background")
+end)
+
+check("vim-surround: ys, cs, ds, visual S, and . repeats ys; each key has a name", function()
+  vim.cmd "edit! c.ml"
+  local buf = api.nvim_get_current_buf()
+  local function line()
+    return api.nvim_buf_get_lines(buf, 0, 1, false)[1]
+  end
+  api.nvim_buf_set_lines(buf, 0, -1, false, { "start other", "wrap me" })
+  vim.fn.cursor(1, 1)
+  press("ysiw)", 300)
+  local added = line()
+  vim.fn.cursor(1, 9)
+  press(".", 300)
+  local repeated = line()
+  vim.fn.cursor(1, 2)
+  press("cs)]", 300)
+  local changed = line()
+  press("ds]", 300)
+  local deleted = line()
+  press("ysiw(", 300)
+  local spaced = line()
+  vim.fn.cursor(2, 1)
+  press("viwS\"", 300)
+  local wrapped = api.nvim_buf_get_lines(buf, 1, 2, false)[1]
+  vim.cmd "silent! undo 0"
+  vim.cmd "edit! c.ml"
+  expect(added == "(start) other", "ysiw): " .. added)
+  expect(repeated == "(start) (other)", ". after ysiw): " .. repeated)
+  expect(changed == "[start] (other)", "cs)]: " .. changed)
+  expect(deleted == "start (other)", "ds]: " .. deleted)
+  expect(spaced == "( start ) (other)", "ysiw( (an opening bracket adds spaces): " .. spaced)
+  expect(wrapped == '"wrap" me', 'viwS": ' .. wrapped)
+  for _, k in ipairs { { "n", "ds" }, { "n", "cs" }, { "n", "ys" }, { "n", "yss" }, { "x", "S" } } do
+    local m = vim.fn.maparg(k[2], k[1], false, true)
+    expect(m.desc and m.desc:find("^Surround"), k[1] .. " " .. k[2] .. " desc: " .. vim.inspect(m.desc))
+  end
+  expect(vim.fn.maparg("S", "n", false, true).desc == "Change, keep the clipboard", "normal S changed")
 end)
 
 check("OCaml gt wraps a motion, a selection or a line in (fun () -> ...)", function()

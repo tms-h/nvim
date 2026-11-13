@@ -14,6 +14,11 @@
 --                    draws its :Hardtime report)
 --   flash.nvim       s jumps: type a couple of letters, press the label on
 --                    the match you want
+--   vim-surround     add, change, delete brackets and quotes around text
+--                    (ys, cs, ds, visual S); vim-repeat lets . repeat them
+-- vim-surround's keys are set in keys.lua, with names for the key hints.
+vim.g.surround_no_mappings = 1
+
 local gh = function(repo)
   return "https://github.com/" .. repo
 end
@@ -29,6 +34,8 @@ vim.pack.add({
   gh "MunifTanjim/nui.nvim",
   gh "m4xshen/hardtime.nvim",
   gh "folke/flash.nvim",
+  gh "tpope/vim-surround",
+  gh "tpope/vim-repeat",
   later(gh "nvim-orgmode/orgmode"),
   later(gh "mason-org/mason.nvim"),
   later(gh "wakatime/vim-wakatime"),

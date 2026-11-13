@@ -33,6 +33,14 @@
       "rev": "78c9928c151ff6ec07fd72da74bdf50a8034f0a5",
       "src": "https://github.com/nvim-orgmode/orgmode"
     },
+    "vim-repeat": {
+      "rev": "65846025c15494983dafe5e3b46c8f88ab2e9635",
+      "src": "https://github.com/tpope/vim-repeat"
+    },
+    "vim-surround": {
+      "rev": "3d188ed2113431cf8dac77be61b842acb64433d9",
+      "src": "https://github.com/tpope/vim-surround"
+    },
     "vim-wakatime": {
       "rev": "9f8a1d3b9c6f3a948988a0896b3227c1e1f74a58",
       "src": "https://github.com/wakatime/vim-wakatime"
