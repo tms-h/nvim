@@ -316,17 +316,21 @@ local function restart_after_first_build(root, buf)
   end)
 end
 
--- Two Neovim 0.12 bugs, fixed on Neovim master, behind one error: after
--- a file was rewritten shorter on disk and reloaded (:checktime, autoread),
--- every redraw raised `Decoration provider "win" (ns=nvim.lsp.codelens):
--- ... pos.lua:145: Index out of bounds` (2026-11-12). A reload changes the
--- text but not the buffer's LSP version, so lenses (and other answers) for
--- the old text still counted as current; and the code lens draws the last
--- answer on any row it has not drawn yet, so a lens whose `let` ended past
--- the new last line was drawn there. As on master: a reload sets the
--- version to the new changedtick, and lenses draw only for the current
--- version (marks already drawn stay; the answer asked 200 ms after each
--- change draws the rest).
+-- One error, three causes: every redraw raised `Decoration provider "win"
+-- (ns=nvim.lsp.codelens): ... pos.lua:145: Index out of bounds` whenever a
+-- lens's range ended past the buffer's last line, because the code lens
+-- converts the whole range with strict line reads. Two are Neovim 0.12 bugs
+-- fixed on master, hit after a file was rewritten shorter on disk and
+-- reloaded (:checktime, autoread; 2026-11-12): a reload changes the text but
+-- not the buffer's LSP version, so lenses (and other answers) for the old
+-- text still counted as current; and the code lens draws the last answer on
+-- any row it has not drawn yet. As on master: a reload sets the version to
+-- the new changedtick, and lenses draw only for the current version (marks
+-- already drawn stay; the answer asked 200 ms after each change draws the
+-- rest). The third is a server out of step with the buffer: after binary
+-- text with NULs was pasted and undone (2026-11-13), ocamllsp's copy kept
+-- 190 lines while the buffer had 17, so its lens for the current version
+-- still ran to line 190. Such a lens is skipped until a sane answer comes.
 local reload_tracked = {} -- buf -> true once its reloads bump the version
 
 local function bump_version_on_reload(buf)
@@ -354,9 +358,29 @@ local function codelens_current_text_only()
     return
   end
   Provider.on_win = function(self, toprow, botrow)
-    if self.version == vim.lsp.util.buf_versions[self.bufnr] then
-      return on_win(self, toprow, botrow)
+    if self.version ~= vim.lsp.util.buf_versions[self.bufnr] then
+      return
     end
+    -- Only rows about to be drawn; a range may end at (last + 1, 0).
+    local count = api.nvim_buf_line_count(self.bufnr)
+    for _, state in pairs(self.client_state) do
+      local rows = state.row_lenses
+      for row = toprow, botrow do
+        local lenses = rows[row]
+        if lenses and self.row_version[row] ~= self.version then
+          for i = #lenses, 1, -1 do
+            local e = lenses[i].range["end"]
+            if e.line > count or (e.line == count and e.character > 0) then
+              table.remove(lenses, i)
+            end
+          end
+          if #lenses == 0 then
+            rows[row] = nil
+          end
+        end
+      end
+    end
+    return on_win(self, toprow, botrow)
   end
 end
 

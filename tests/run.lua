@@ -1850,6 +1850,78 @@ check("A plain `nvim file` owns no project", function()
   expect(got == "nil", "got: " .. got)
 end)
 
+check("With only an image copied, p pastes no binary and says one line; y and p still use the clipboard", function()
+  -- 2026-11-13: a screenshot alone on the clipboard; Neovim's own provider
+  -- ran `wl-paste` with no type and `p` pasted the PNG's bytes. Another
+  -- Neovim gets the desktop provider, faked: a made-up display and stub
+  -- wl-copy / wl-paste over a file, never the real clipboard.
+  local dir = proj .. "/clipstub"
+  vim.fn.mkdir(dir .. "/rt", "p")
+  vim.fn.writefile({
+    "#!/bin/sh",
+    "want=",
+    "while [ $# -gt 0 ]; do case $1 in -t|--type) want=$2; shift ;; esac; shift; done",
+    'mime=$(cat "$CLIPSTUB/mime")',
+    'case $want in text|text/*) case $mime in text/*) ;; *) echo "No suitable type of content copied" >&2; exit 1 ;; esac ;; esac',
+    'cat "$CLIPSTUB/data"',
+  }, dir .. "/wl-paste")
+  vim.fn.writefile({
+    "#!/bin/sh",
+    'echo "$*" >> "$CLIPSTUB/copy-args"',
+    "mime=text/plain",
+    "while [ $# -gt 0 ]; do case $1 in -t|--type) mime=$2; shift ;; esac; shift; done",
+    'cat > "$CLIPSTUB/data"; echo "$mime" > "$CLIPSTUB/mime"',
+  }, dir .. "/wl-copy")
+  vim.fn.setfperm(dir .. "/wl-paste", "rwx------")
+  vim.fn.setfperm(dir .. "/wl-copy", "rwx------")
+  local data = assert(io.open(dir .. "/data", "wb"))
+  data:write "\137PNG\r\n\26\n\0\0\0\rIHDR\0\0\1\0"
+  data:close()
+  vim.fn.writefile({ "image/png" }, dir .. "/mime")
+  vim.fn.writefile({
+    "vim.defer_fn(function()",
+    "  local api, out = vim.api, {}",
+    "  local function lines()",
+    "    return (table.concat(api.nvim_buf_get_lines(0, 0, -1, false), '|'):gsub('[%z\\1-\\31\\127-\\255]', '?'))",
+    "  end",
+    "  vim.cmd 'enew'",
+    "  api.nvim_buf_set_lines(0, 0, -1, false, { 'line one' })",
+    "  vim.cmd 'messages clear'",
+    "  local ok, err = pcall(vim.cmd, 'normal p')",
+    "  out.image = lines()",
+    "  out.said = vim.trim(vim.fn.execute 'messages' .. '\\n' .. (ok and '' or tostring(err):gsub('^.-(E%d+)', '%1')))",
+    "  vim.cmd 'normal yy'",
+    "  vim.wait(300)",
+    "  vim.cmd 'normal p'",
+    "  out.text = lines()",
+    "  io.stdout:write(vim.json.encode(out))",
+    "  vim.cmd 'qa!'",
+    "end, 600)",
+  }, dir .. "/paste.lua")
+  local result = vim
+    .system({ "nvim", "--headless", "+luafile " .. dir .. "/paste.lua" }, {
+      cwd = proj,
+      text = true,
+      env = {
+        PATH = dir .. ":" .. vim.env.PATH,
+        WAYLAND_DISPLAY = "nvim-test-no-display",
+        XDG_RUNTIME_DIR = dir .. "/rt",
+        CLIPSTUB = dir,
+      },
+    })
+    :wait(10000)
+  local ok, got = pcall(vim.json.decode, result.stdout or "")
+  local copied = vim.fn.filereadable(dir .. "/copy-args") == 1
+      and table.concat(vim.fn.readfile(dir .. "/copy-args"), ";")
+    or ""
+  vim.fn.delete(dir, "rf")
+  expect(ok, "no answer: " .. tostring(result.stdout) .. tostring(result.stderr))
+  expect(got.image == "line one", "p with an image copied gave: " .. vim.inspect(got.image))
+  expect(#vim.split(got.said, "\n") <= 1, "said: " .. got.said)
+  expect(got.text == "line one|line one", "yy then p gave: " .. vim.inspect(got.text))
+  expect(copied == "--type text/plain", "wl-copy ran with: " .. copied)
+end)
+
 check("Tree - moves only the tree's root; the window keeps its folder", function()
   local cwd = vim.fn.getcwd()
   press(super "b", 300)
@@ -3039,6 +3111,58 @@ check("A code lens whose let now ends past the file's end draws no error after a
   vim.fn.delete(file)
   expect(not messages:find("Decoration provider", 1, true), "messages: " .. messages)
   expect(vim.deep_equal(lens, { 2 }), "lens rows after the reload: " .. vim.inspect(lens))
+end)
+
+check("A code lens running past the file's end (server out of step) is skipped, not an error per redraw", function()
+  -- 2026-11-13: after binary text was pasted and undone, ocamllsp's copy of
+  -- a 17-line file kept 190 lines, and its lens for the current version ran
+  -- to line 190: every redraw raised "Decoration provider "win" ...".
+  local file = proj .. "/lens_desync.ml"
+  vim.fn.writefile({ "let a = 1", "", "let b = 2" }, file)
+  vim.cmd "edit! lens_desync.ml"
+  local buf = api.nvim_get_current_buf()
+  wait_for_lsp(buf)
+  local provider
+  for _ = 1, 40 do
+    provider = require("vim.lsp._capability").all.codelens.active[buf]
+    if provider and provider.version then
+      break
+    end
+    wait(250)
+  end
+  local client = vim.lsp.get_clients({ bufnr = buf, name = "ocamllsp" })[1]
+  expect(provider and provider.version and client, "no code lens answer for lens_desync.ml")
+  local function lens(first, last, col, title)
+    return {
+      range = { start = { line = first, character = 0 }, ["end"] = { line = last, character = col } },
+      command = { title = title, command = "" },
+    }
+  end
+  vim.cmd "messages clear"
+  -- The server's answer for the current version: one sane lens, one past the end.
+  provider:handler(nil, { lens(0, 0, 9, "sane lens"), lens(2, 190, 42, "s\137PNG") }, {
+    client_id = client.id,
+    method = "textDocument/codeLens",
+    bufnr = buf,
+    version = vim.lsp.util.buf_versions[buf],
+  })
+  provider.row_version = {}
+  vim.cmd "redraw"
+  wait(100)
+  local messages = vim.fn.execute "messages"
+  local ns = api.nvim_get_namespaces()["nvim.lsp.codelens:" .. client.id]
+  local drawn = {}
+  for _, m in ipairs(api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
+    for _, chunk in ipairs(m[4].virt_lines and m[4].virt_lines[1] or {}) do
+      if chunk[1]:find "%S" then
+        drawn[#drawn + 1] = m[2] .. ":" .. chunk[1]
+      end
+    end
+  end
+  api.nvim_buf_delete(buf, { force = true })
+  vim.fn.delete(file)
+  expect(not messages:find("Decoration provider", 1, true), "messages: " .. messages)
+  expect(vim.deep_equal(drawn, { "0:sane lens" }), "lenses drawn: " .. vim.inspect(drawn))
 end)
 
 check("A non-exhaustive match names Alt+. Destruct, which on a case's pattern adds only the missing cases", function()

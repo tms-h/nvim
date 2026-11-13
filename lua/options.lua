@@ -13,6 +13,36 @@ o.undofile = true
 -- the undo file plus frequent saves already keep the work.
 o.swapfile = false
 o.clipboard = "unnamedplus"
+-- Paste asks the Wayland clipboard for text only. Neovim's own provider runs
+-- `wl-paste` with no type, which hands over whatever was copied: with only a
+-- screenshot on the clipboard, `p` pasted the PNG's bytes (2026-11-13, 174
+-- lines of binary into a .ml, and the NULs desynced ocamllsp). With no text
+-- copied, `p` now pastes nothing and says only "E353: Nothing in register".
+-- Copying, the cache and every other system (Mac, tmux) stay Neovim's own;
+-- tests set g:clipboard first.
+if
+  vim.g.clipboard == nil
+  and (vim.env.WAYLAND_DISPLAY or "") ~= ""
+  and vim.fn.executable "wl-copy" == 1
+  and vim.fn.executable "wl-paste" == 1
+then
+  local function text_paste(...)
+    local cmd = { "wl-paste", "--no-newline", "--type", "text", ... }
+    return function()
+      local r = vim.system(cmd):wait()
+      return r.code == 0 and vim.split(r.stdout, "\n", { plain = true }) or {}
+    end
+  end
+  vim.g.clipboard = {
+    name = "wl-copy, text-only paste",
+    copy = {
+      ["+"] = { "wl-copy", "--type", "text/plain" },
+      ["*"] = { "wl-copy", "--primary", "--type", "text/plain" },
+    },
+    paste = { ["+"] = text_paste(), ["*"] = text_paste "--primary" },
+    cache_enabled = 1,
+  }
+end
 o.ignorecase = true
 o.smartcase = true
 o.confirm = true
