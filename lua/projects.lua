@@ -11,12 +11,12 @@
 --
 -- Files changed on disk (by agents, git) reload without a keypress.
 --
--- Inside tmux (util.in_mux) tmux keeps the session: the running Neovim
--- lives in its tmux session, and a closed tab comes back through tmux-tabs.
--- So there `nvim folder` just opens the folder and the tree: no session is
--- loaded or saved (Neovide's own session for that folder stays untouched),
--- and the window is not counted as "open", so Neovide and tmux never refuse
--- a folder because the other has it.
+-- Inside tmux or herdr (util.in_mux) the multiplexer keeps the session: the
+-- running Neovim lives in its pane, and in tmux a closed tab comes back
+-- through tmux-tabs. So there `nvim folder` just opens the folder and the
+-- tree: no session is loaded or saved (Neovide's own session for that folder
+-- stays untouched), and the window is not counted as "open", so Neovide and
+-- the multiplexer never refuse a folder because the other has it.
 local M = {}
 
 local api, uv = vim.api, vim.uv
