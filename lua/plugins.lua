@@ -22,8 +22,8 @@ vim.g.surround_no_mappings = 1
 -- command line: their <Plug> keys run `:<C-U>call ...`, which opens it, and
 -- with 'cmdheight' 0 that is a hidden grid. Neovide drew the cursor in the
 -- top-left cell, on the tab bar, so S looked like a jump (2026-11-13). The
--- same calls through <Cmd> never open the command line (a selection is left
--- with <Esc> first, which sets the '< '> marks the plugin reads).
+-- same calls through <Cmd> or Lua never open the command line (a selection
+-- is left with <Esc> first, which sets the '< '> marks the plugin reads).
 vim.api.nvim_create_autocmd("SourcePost", {
   group = vim.api.nvim_create_augroup("SurroundCursor", { clear = true }),
   pattern = "*/vim-surround/plugin/surround.vim",
@@ -33,15 +33,38 @@ vim.api.nvim_create_autocmd("SourcePost", {
       return
     end
     local f = ("<SNR>%d_"):format(info.sid)
-    local function call(mode, plug, body)
-      local lhs = mode == "x" and "<Esc><Cmd>call " or "<Cmd>call "
-      vim.keymap.set(mode, plug, lhs .. f .. body .. "<CR>", { silent = true })
+    local function call(plug, body)
+      vim.keymap.set("n", plug, "<Cmd>call " .. f .. body .. "<CR>", { silent = true })
     end
-    call("n", "<Plug>Dsurround", ("dosurround(%sinputtarget())"):format(f))
-    call("n", "<Plug>Csurround", "changesurround()")
-    call("n", "<Plug>CSurround", "changesurround(1)")
-    call("x", "<Plug>VSurround", "opfunc(visualmode(), visualmode() ==# 'V' ? 1 : 0)")
-    call("x", "<Plug>VgSurround", "opfunc(visualmode(), visualmode() ==# 'V' ? 0 : 1)")
+    call("<Plug>Dsurround", ("dosurround(%sinputtarget())"):format(f))
+    call("<Plug>Csurround", "changesurround()")
+    call("<Plug>CSurround", "changesurround(1)")
+    -- Visual S / gS. A characterwise selection that takes in the line break
+    -- (v$, or ending past the last letter) is cut back to the line's last
+    -- letter, and one that starts on a line break begins on the next line:
+    -- v$S) put the `)` at the start of the next line, before its `|>`
+    -- ("when i S) it makes a new line", 2026-11-13). V + S) keeps vim-
+    -- surround's own block: the pair on lines of their own.
+    local function visual(block_when_linewise)
+      return function()
+        vim.cmd "normal! \27"
+        local mode = vim.fn.visualmode()
+        if mode == "v" then
+          local s, e = vim.fn.getpos "'<", vim.fn.getpos "'>"
+          local last = vim.fn.getline(e[2])
+          if e[3] > #last and #last > 0 then
+            e[3] = #last - #vim.fn.strcharpart(last, vim.fn.strchars(last) - 1) + 1
+            vim.fn.setpos("'>", e)
+          end
+          if s[3] > #vim.fn.getline(s[2]) and s[2] < e[2] then
+            vim.fn.setpos("'<", { 0, s[2] + 1, 1, 0 })
+          end
+        end
+        vim.fn[f .. "opfunc"](mode, (mode == "V") == block_when_linewise and 1 or 0)
+      end
+    end
+    vim.keymap.set("x", "<Plug>VSurround", visual(true), { silent = true })
+    vim.keymap.set("x", "<Plug>VgSurround", visual(false), { silent = true })
   end,
 })
 

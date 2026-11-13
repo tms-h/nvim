@@ -2995,6 +2995,17 @@ check("vim-surround: ys, cs, ds, visual S, and . repeats ys; each key has a name
   vim.fn.cursor(2, 1)
   press("viwS\"", 300)
   local wrapped = api.nvim_buf_get_lines(buf, 1, 2, false)[1]
+  -- v$ takes in the line break: S) still closes on the same line, not at
+  -- the start of the next. V + S) keeps the pair on lines of their own.
+  local pipe = { "  |> List.filter ~f:keep", "  |> List.sort" }
+  api.nvim_buf_set_lines(buf, 0, -1, false, pipe)
+  vim.fn.cursor(1, 6)
+  press("v$S)", 300)
+  local to_eol = api.nvim_buf_get_lines(buf, 0, -1, false)
+  api.nvim_buf_set_lines(buf, 0, -1, false, pipe)
+  vim.fn.cursor(1, 6)
+  press("VS)", 300)
+  local block = #api.nvim_buf_get_lines(buf, 0, -1, false)
   api.nvim_del_autocmd(counter)
   vim.cmd "silent! undo 0"
   vim.cmd "edit! c.ml"
@@ -3004,6 +3015,9 @@ check("vim-surround: ys, cs, ds, visual S, and . repeats ys; each key has a name
   expect(deleted == "start (other)", "ds]: " .. deleted)
   expect(spaced == "( start ) (other)", "ysiw( (an opening bracket adds spaces): " .. spaced)
   expect(wrapped == '"wrap" me', 'viwS": ' .. wrapped)
+  local want = { "  |> (List.filter ~f:keep)", "  |> List.sort" }
+  expect(vim.deep_equal(to_eol, want), "v$S): " .. table.concat(to_eol, " / "))
+  expect(block == 4, "VS) no longer puts the pair on lines of their own")
   expect(#cmdlines == 0, "cs, ds or S opened the command line, at: " .. table.concat(cmdlines, "; "))
   for _, k in ipairs { { "n", "ds" }, { "n", "cs" }, { "n", "ys" }, { "n", "yss" }, { "x", "S" } } do
     local m = vim.fn.maparg(k[2], k[1], false, true)
