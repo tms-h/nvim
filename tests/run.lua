@@ -2963,7 +2963,7 @@ check("s jumps with flash: letters, then a label; also after an operator and in 
   expect(not api.nvim_get_hl(0, { name = "FlashMatch", link = false }).bg, "FlashMatch paints a background")
 end)
 
-check("vim-surround: ys, cs, ds, visual S, and . repeats ys; each key has a name", function()
+check("vim-surround: ys, cs, ds, visual S, and . repeats ys; each key has a name; the cursor stays in the text", function()
   vim.cmd "edit! c.ml"
   local buf = api.nvim_get_current_buf()
   local function line()
@@ -2976,6 +2976,15 @@ check("vim-surround: ys, cs, ds, visual S, and . repeats ys; each key has a name
   vim.fn.cursor(1, 9)
   press(".", 300)
   local repeated = line()
+  -- While cs, ds or S wait for the bracket the cursor stays in the text: the
+  -- plugin's own `:<C-U>call` keys put it on the command line, a hidden grid
+  -- with 'cmdheight' 0, which Neovide drew in the top-left cell.
+  local cmdlines = {}
+  local counter = api.nvim_create_autocmd("CmdlineEnter", {
+    callback = function()
+      cmdlines[#cmdlines + 1] = vim.fn.getline(1)
+    end,
+  })
   vim.fn.cursor(1, 2)
   press("cs)]", 300)
   local changed = line()
@@ -2986,6 +2995,7 @@ check("vim-surround: ys, cs, ds, visual S, and . repeats ys; each key has a name
   vim.fn.cursor(2, 1)
   press("viwS\"", 300)
   local wrapped = api.nvim_buf_get_lines(buf, 1, 2, false)[1]
+  api.nvim_del_autocmd(counter)
   vim.cmd "silent! undo 0"
   vim.cmd "edit! c.ml"
   expect(added == "(start) other", "ysiw): " .. added)
@@ -2994,6 +3004,7 @@ check("vim-surround: ys, cs, ds, visual S, and . repeats ys; each key has a name
   expect(deleted == "start (other)", "ds]: " .. deleted)
   expect(spaced == "( start ) (other)", "ysiw( (an opening bracket adds spaces): " .. spaced)
   expect(wrapped == '"wrap" me', 'viwS": ' .. wrapped)
+  expect(#cmdlines == 0, "cs, ds or S opened the command line, at: " .. table.concat(cmdlines, "; "))
   for _, k in ipairs { { "n", "ds" }, { "n", "cs" }, { "n", "ys" }, { "n", "yss" }, { "x", "S" } } do
     local m = vim.fn.maparg(k[2], k[1], false, true)
     expect(m.desc and m.desc:find("^Surround"), k[1] .. " " .. k[2] .. " desc: " .. vim.inspect(m.desc))

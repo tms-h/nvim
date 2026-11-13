@@ -18,6 +18,32 @@
 --                    (ys, cs, ds, visual S); vim-repeat lets . repeat them
 -- vim-surround's keys are set in keys.lua, with names for the key hints.
 vim.g.surround_no_mappings = 1
+-- While cs, ds or visual S wait for the bracket, the cursor sat on the
+-- command line: their <Plug> keys run `:<C-U>call ...`, which opens it, and
+-- with 'cmdheight' 0 that is a hidden grid. Neovide drew the cursor in the
+-- top-left cell, on the tab bar, so S looked like a jump (2026-11-13). The
+-- same calls through <Cmd> never open the command line (a selection is left
+-- with <Esc> first, which sets the '< '> marks the plugin reads).
+vim.api.nvim_create_autocmd("SourcePost", {
+  group = vim.api.nvim_create_augroup("SurroundCursor", { clear = true }),
+  pattern = "*/vim-surround/plugin/surround.vim",
+  callback = function(args)
+    local info = vim.fn.getscriptinfo({ name = args.match })[1]
+    if not info then
+      return
+    end
+    local f = ("<SNR>%d_"):format(info.sid)
+    local function call(mode, plug, body)
+      local lhs = mode == "x" and "<Esc><Cmd>call " or "<Cmd>call "
+      vim.keymap.set(mode, plug, lhs .. f .. body .. "<CR>", { silent = true })
+    end
+    call("n", "<Plug>Dsurround", ("dosurround(%sinputtarget())"):format(f))
+    call("n", "<Plug>Csurround", "changesurround()")
+    call("n", "<Plug>CSurround", "changesurround(1)")
+    call("x", "<Plug>VSurround", "opfunc(visualmode(), visualmode() ==# 'V' ? 1 : 0)")
+    call("x", "<Plug>VgSurround", "opfunc(visualmode(), visualmode() ==# 'V' ? 0 : 1)")
+  end,
+})
 
 local gh = function(repo)
   return "https://github.com/" .. repo
