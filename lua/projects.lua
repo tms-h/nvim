@@ -11,12 +11,12 @@
 --
 -- Files changed on disk (by agents, git) reload without a keypress.
 --
--- Inside tmux (util.in_mux) tmux keeps the session: the running Neovim
--- lives in its tmux session, and a closed tab comes back through tmux-tabs.
--- So there `nvim folder` just opens the folder and the tree: no session is
--- loaded or saved (Neovide's own session for that folder stays untouched),
--- and the window is not counted as "open", so Neovide and tmux never refuse
--- a folder because the other has it.
+-- Inside tmux or herdr (util.in_mux) the multiplexer keeps the session: the
+-- running Neovim lives in its pane, and in tmux a closed tab comes back
+-- through tmux-tabs. So there `nvim folder` just opens the folder and the
+-- tree: no session is loaded or saved (Neovide's own session for that folder
+-- stays untouched), and the window is not counted as "open", so Neovide and
+-- the multiplexer never refuse a folder because the other has it.
 local M = {}
 
 local api, uv = vim.api, vim.uv
@@ -393,12 +393,13 @@ function M.reload_unedited()
   for _, buf in ipairs(api.nvim_list_bufs()) do
     if
       api.nvim_buf_is_loaded(buf)
-      and api.nvim_get_option_value("buftype", { buf = buf }) == ""
-      and not api.nvim_get_option_value("modified", { buf = buf })
+      and vim.bo[buf].buftype == ""
+      and not vim.bo[buf].modified
       and api.nvim_buf_get_name(buf) ~= ""
     then
-      -- 'autoread' off (it is global-local) would turn a reload into W11.
-      local autoread = api.nvim_get_option_value("autoread", { buf = buf })
+      -- 'autoread' off (it is global-local, nil here when not set for this
+      -- buffer) would turn a reload into W11.
+      local autoread = vim.bo[buf].autoread
       if autoread == nil then
         autoread = vim.go.autoread
       end
@@ -482,7 +483,7 @@ function M.setup()
   if reload_timer then
     reload_timer:stop()
   else
-    reload_timer = vim.uv.new_timer()
+    reload_timer = uv.new_timer()
     reload_timer:unref()
   end
   reload_timer:start(1000, 1000, vim.schedule_wrap(M.reload_unedited))
