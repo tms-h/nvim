@@ -21,6 +21,7 @@
 --               Alt+L asks a question about the code (goose_ask)
 --   seconder    Space r: a reviewer that writes CR comments; ]r / [r jump;
 --               Alt+. applies the fix a CR-soon shows
+--   iron        Space i: mini-iron's fe (Iron code review): todo, review, CR
 --
 -- Loaded on first use: hunks (change keys), run (F5, lazygit), ocaml
 -- (ocp-indent, ocamlformat, dune; from after/ftplugin).
@@ -47,3 +48,4 @@ require("sync").setup()
 require("goose").setup()
 require("goose_ask").setup()
 require("seconder").setup()
+require("iron").setup()

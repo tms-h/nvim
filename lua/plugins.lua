@@ -210,6 +210,7 @@ require("mini.clue").setup {
       end,
     },
     { mode = "n", keys = "<Leader>h", desc = "+Hardtime" },
+    { mode = "n", keys = "<Leader>i", desc = "+Iron" },
   },
   window = { delay = 400, config = { width = "auto", border = "rounded" } },
 }
