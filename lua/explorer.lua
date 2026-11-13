@@ -167,7 +167,8 @@ local function node_letter(node)
     return status.file and M.git_letter(status.file)
   end
   local best = status.file and M.git_letter(status.file)
-  for _, xys in pairs { status.dir and status.dir.direct or {}, status.dir and status.dir.indirect or {} } do
+  local dir = status.dir or {}
+  for _, xys in ipairs { dir.direct or {}, dir.indirect or {} } do
     for _, xy in ipairs(xys) do
       local letter = M.git_letter(xy)
       if (GIT_RANK[letter] or 0) > (GIT_RANK[best] or 0) then
@@ -212,9 +213,8 @@ local tried, pending = {}, false
 
 local function load_new_repo()
   pending = false
-  local explorer = require("nvim-tree.core").get_explorer()
   local git = require "nvim-tree.git"
-  local root = explorer and explorer.absolute_path
+  local root = require("nvim-tree.core").get_cwd()
   if not root or git._toplevels_by_path[root] ~= false then
     return
   end
