@@ -1373,6 +1373,43 @@ check("Sizing panes (Neovide zoom, tree open) leaves no empty rows under the sta
   expect(vim.o.cmdheight == 0, "cmdheight is " .. vim.o.cmdheight .. " after sizing the pane")
 end)
 
+check("A typo'd :w; :w] :w w :up' saves the file and makes no junk file; :w %.bak still writes a copy", function()
+  local dir = proj .. "/typo"
+  vim.fn.mkdir(dir, "p")
+  vim.fn.writefile({ "let x = 1" }, dir .. "/t.ml")
+  vim.cmd("cd " .. dir)
+  vim.cmd "edit! t.ml"
+  local buf, win = api.nvim_get_current_buf(), api.nvim_get_current_win()
+  local junk, saved = {}, {}
+  for i, typed in ipairs { "w;", "w]", "w w", "up'" } do
+    -- Two commands with output in quick succession open ui2's pager and
+    -- move the cursor into it, typo or not: start each one from the file.
+    api.nvim_set_current_win(win)
+    api.nvim_buf_set_lines(buf, 0, -1, false, { "let x = " .. i })
+    vim.cmd "messages clear"
+    press(":" .. typed .. "<CR>", 300)
+    local name = typed:match "[^%a ]+$" or "w"
+    if vim.uv.fs_stat(dir .. "/" .. name) then
+      junk[#junk + 1] = name
+    end
+    if vim.fn.readfile(dir .. "/t.ml")[1] ~= "let x = " .. i then
+      saved[#saved + 1] = typed .. " did not save"
+    end
+    if not vim.fn.execute("messages"):find(":" .. typed .. " read as :", 1, true) then
+      saved[#saved + 1] = typed .. " said nothing"
+    end
+  end
+  api.nvim_set_current_win(win)
+  press(":w %.bak<CR>", 300)
+  local copy = vim.uv.fs_stat(dir .. "/t.ml.bak") ~= nil
+  vim.cmd("cd " .. proj)
+  api.nvim_buf_delete(buf, { force = true })
+  vim.fn.delete(dir, "rf")
+  expect(#junk == 0, "junk files made: " .. table.concat(junk, " "))
+  expect(#saved == 0, table.concat(saved, "; "))
+  expect(copy, ":w %.bak wrote no copy")
+end)
+
 check("Typed commands show in a centred box on the finder's row; long input wraps, all of it in view", function()
   local cols = vim.o.columns
   local function boxed(what)

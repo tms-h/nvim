@@ -19,6 +19,13 @@
 -- Suggestions: typing a `:` command opens the completion menu as you type
 -- (`:e ` lists files), the way the old config's popup did. Nothing is picked
 -- until Tab or an arrow; Up and Down still walk the command history.
+--
+-- Typo'd writes: `:w;`, `:w]`, `:wq'` or `:w w` (a slip while spamming :w)
+-- wrote a copy of the file to a new file named `;`, `]` or `w` (2026-11-13:
+-- a file `;` holding the drill turned up in 001-clock). A write whose only
+-- argument is 1-2 punctuation marks, or w, q or ww, and names no file that
+-- exists, runs as the plain :w (:wq, :x, :update) with one line saying so
+-- instead of the "written" line.
 local M = {}
 
 local api = vim.api
@@ -88,7 +95,52 @@ local function suggest()
   end
 end
 
+local WRITES = { write = "w", wq = "wq", xit = "x", exit = "exit", update = "update" }
+
+---The plain write a typo'd one meant, and the junk name it would have made;
+---nil for any other command line. `:w %.bak`, `:w #`, `:w >>`, `:w !cmd`,
+---a range, a modifier, or a name that exists stay as typed.
+function M.fix_write(line)
+  local ok, cmd = pcall(api.nvim_parse_cmd, line, {})
+  if not ok or not WRITES[cmd.cmd] or #cmd.args ~= 1 or #(cmd.range or {}) > 0 then
+    return nil
+  end
+  for _, v in pairs(cmd.mods or {}) do
+    if v == true or (type(v) == "number" and v > 0) or (type(v) == "string" and v ~= "") then
+      return nil
+    end
+  end
+  local name = cmd.args[1]
+  local punct = #name <= 2 and name:match "^%p+$" and not name:find "[%%#<>!]"
+  if not (punct or name == "w" or name == "q" or name == "ww") or vim.uv.fs_stat(name) then
+    return nil
+  end
+  return WRITES[cmd.cmd] .. (cmd.bang and "!" or ""), name
+end
+
+local function typo_writes()
+  api.nvim_create_autocmd("CmdlineLeave", {
+    group = api.nvim_create_augroup("TypoWrites", { clear = true }),
+    callback = function()
+      if vim.v.event.abort or vim.v.event.cmdtype ~= ":" then
+        return
+      end
+      local typed = vim.fn.getcmdline()
+      local fixed, name = M.fix_write(typed)
+      if fixed then
+        -- Its own "written" line is silenced: a second message here opened
+        -- ui2's pager and moved the cursor into it. Errors still show.
+        vim.fn.setcmdline("silent " .. fixed)
+        vim.schedule(function()
+          vim.notify((":%s read as :%s; no file %q made"):format(typed, fixed, name))
+        end)
+      end
+    end,
+  })
+end
+
 function M.setup()
+  typo_writes()
   suggest()
   local ok, ui = pcall(require, "vim._core.ui2")
   if not ok or not ui.cmd then
