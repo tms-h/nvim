@@ -128,8 +128,8 @@ local function typo_writes()
       local typed = vim.fn.getcmdline()
       local fixed, name = M.fix_write(typed)
       if fixed then
-        -- Its own "written" line is silenced: a second message here opened
-        -- ui2's pager and moved the cursor into it. Errors still show.
+        -- Its own "written" line is silenced, so the note is the one line
+        -- shown (two would read "written [+1]"). Errors still show.
         vim.fn.setcmdline("silent " .. fixed)
         vim.schedule(function()
           vim.notify((":%s read as :%s; no file %q made"):format(typed, fixed, name))
@@ -137,6 +137,24 @@ local function typo_writes()
       end
     end,
   })
+end
+
+-- With 'cmdheight' 0 every message counts as too tall for the command line,
+-- so ui2 shows it "expanded" until the next key. When that key is `:`, ui2
+-- keeps the message and sends the new command's output to its pager and
+-- moves the cursor there, as Vim did below a long message: spamming :w (the
+-- second :w before any other key) landed in [Pager], and the next :w gave
+-- E382 (2026-11-13). Opening the command line now dismisses the shown
+-- message, as every other key does, so the next command's message replaces
+-- it on the bottom line. A long message stays in g< and :messages, and output
+-- too tall for the screen still opens the pager by itself.
+local function dismiss_message(ui)
+  local msg = ui.msg
+  if not msg.cmd_on_key then
+    return
+  end
+  vim.on_key(nil, ui.ns)
+  msg.cmd_on_key, msg.cmd.ids = nil, {}
 end
 
 function M.setup()
@@ -206,6 +224,7 @@ function M.setup()
     state.firstc, state.prompt = firstc or "", prompt or ""
     if cmd.level == 0 then
       active = false
+      dismiss_message(ui)
     end
     return show(content, pos, firstc, prompt, ...)
   end
