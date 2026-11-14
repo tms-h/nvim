@@ -1,5 +1,6 @@
 -- One status line for the whole window (laststatus=3): words on the surface,
--- no blocks. Left: the mode as coloured text, macro recording, the file.
+-- no blocks. Left: the mode as coloured text, macro recording, goose's vibe
+-- level and pending writes, the file (the folder when the tree is focused).
 -- Right: language-server progress, diagnostics, git changes, branch,
 -- WakaTime's time today, position.
 local M = {}
@@ -84,7 +85,7 @@ local function file_part()
   end
   local name = api.nvim_buf_get_name(buf)
   if vim.bo[buf].filetype == "NvimTree" then
-    return "%#StatusLineDim#" .. vim.fn.fnamemodify(vim.fn.getcwd(), ":~") .. "%*"
+    return "%#StatusLineDim#" .. escape(vim.fn.fnamemodify(vim.fn.getcwd(), ":~")) .. "%*"
   end
   if name == "" then
     return "%#StatusLineDim#untitled%*"

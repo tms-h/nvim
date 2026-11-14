@@ -58,9 +58,7 @@ function M.build()
   -- In a terminal Normal has no background (kitty's card shows through):
   -- the surface colour it stands for is the theme's.
   local palette = require("theme").palette
-  local base = api.nvim_get_hl(0, { name = "Normal" }).bg
-    or (palette and tonumber(palette.bg:sub(2), 16))
-    or 0
+  local base = api.nvim_get_hl(0, { name = "Normal" }).bg or (palette and tonumber(palette.bg:sub(2), 16)) or 0
   local STRENGTH = strength()
   local count = 0
   for name in pairs(all) do
