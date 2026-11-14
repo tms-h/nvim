@@ -84,7 +84,7 @@ local function file_part()
   end
   local name = api.nvim_buf_get_name(buf)
   if vim.bo[buf].filetype == "NvimTree" then
-    return "%#StatusLineDim#" .. vim.fn.fnamemodify(vim.fn.getcwd(), ":~") .. "%*"
+    return "%#StatusLineDim#" .. escape(vim.fn.fnamemodify(vim.fn.getcwd(), ":~")) .. "%*"
   end
   if name == "" then
     return "%#StatusLineDim#untitled%*"

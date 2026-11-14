@@ -2377,6 +2377,23 @@ check("A '%' in a file or branch name shows as typed in the title row and status
   expect(ok_status and status.str:find("fix-100%-done", 1, true), "status line: " .. vim.inspect(status))
 end)
 
+check("A '%' in the folder's name shows as typed in the tree's status line", function()
+  -- With the tree focused the status line shows the folder's path; a "%" in
+  -- it started a status line item, and "50%done" threw E539.
+  local dir = vim.fn.tempname() .. "-50%done"
+  vim.fn.mkdir(dir, "p")
+  vim.fn.writefile({ "x" }, dir .. "/f.txt")
+  vim.cmd.cd(vim.fn.fnameescape(dir))
+  require("nvim-tree.api").tree.open()
+  wait(300)
+  local in_tree = vim.bo.filetype == "NvimTree"
+  local ok, status = pcall(api.nvim_eval_statusline, require("statusline").render(), { winid = 0 })
+  reset()
+  vim.fn.delete(dir, "rf")
+  expect(in_tree, "the tree did not take focus")
+  expect(ok and status.str:find("50%done", 1, true), "status line: " .. vim.inspect(status))
+end)
+
 check("TODO in a comment is coloured even before the background syntax parse", function()
   -- Tree-sitter parses in the background; on a busy machine mini.hipatterns
   -- looked first, found no comment, and left TODO plain until the next edit
