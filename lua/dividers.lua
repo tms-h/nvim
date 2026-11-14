@@ -79,12 +79,10 @@ end
 -- Does `win` also draw a divider the other way (which colour would light)?
 local function has_other_edge(win, vertical)
   if vertical then
-    local below = api.nvim_win_get_position(win)[1] + api.nvim_win_get_height(win)
     -- The global status line sits on the last row above the command line.
-    return below < vim.o.lines - vim.o.cmdheight - 1
+    return far_edge(win, false) < vim.o.lines - vim.o.cmdheight - 1
   end
-  local right = api.nvim_win_get_position(win)[2] + api.nvim_win_get_width(win)
-  return right < vim.o.columns
+  return far_edge(win, true) < vim.o.columns
 end
 
 local lit_key
