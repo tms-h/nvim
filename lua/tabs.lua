@@ -18,14 +18,11 @@ end
 ---The tabs, left to right (drops closed ones, adds new ones at the end).
 function M.list()
   local seen, kept = {}, {}
-  for _, buf in ipairs(order) do
-    if listed(buf) and not seen[buf] then
-      kept[#kept + 1], seen[buf] = buf, true
-    end
-  end
-  for _, buf in ipairs(api.nvim_list_bufs()) do
-    if listed(buf) and not seen[buf] then
-      kept[#kept + 1], seen[buf] = buf, true
+  for _, bufs in ipairs { order, api.nvim_list_bufs() } do
+    for _, buf in ipairs(bufs) do
+      if listed(buf) and not seen[buf] then
+        kept[#kept + 1], seen[buf] = buf, true
+      end
     end
   end
   order = kept
