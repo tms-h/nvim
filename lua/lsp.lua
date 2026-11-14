@@ -41,9 +41,9 @@ end
 -- ── Formatting ────────────────────────────────────────────────────────────
 -- OCaml: ocamlformat with the project's .ocamlformat, else the Jane Street
 -- profile; where the project turns ocamlformat off, ocp-indent re-indents.
--- Markdown: prettier. Everything else: the language server's own formatter
--- (ruff, rust-analyzer, lua_ls), if it has one. Which languages format on
--- save: FORMAT_ON_SAVE below.
+-- Markdown: prettier. Dune files: dune format-dune-file. Everything else:
+-- the language server's own formatter (ruff, rust-analyzer, lua_ls), if it
+-- has one. Which languages format on save: FORMAT_ON_SAVE below.
 
 ---The whole buffer as one string, as a formatter reads it on stdin.
 local function buffer_text(buf)
@@ -123,16 +123,29 @@ local function format_markdown(buf)
   end
 end
 
+---dune format-dune-file for dune, dune-project and dune-workspace files.
+local function format_dune(buf)
+  local dune = require("tools").find "dune"
+  if not dune then
+    return
+  end
+  local result = vim.system({ dune, "format-dune-file" }, { stdin = buffer_text(buf), text = true }):wait(5000)
+  -- Unbalanced parentheses: leave the file as typed.
+  if result.code == 0 then
+    apply_output(buf, result.stdout)
+  end
+end
+
 -- ruff formats Python; pyright does not.
 local function not_pyright(client)
   return client.name ~= "pyright"
 end
 
 -- Formatted on every save: OCaml (ocamlformat), Rust (rust-analyzer, which
--- runs rustfmt) and Markdown (prettier, so tables line up). Every other
--- language only on :Format, so a save never restyles a Lua, Python or shell
--- file.
-local FORMAT_ON_SAVE = { ocaml = true, ocaml_interface = true, rust = true, markdown = true }
+-- runs rustfmt), Markdown (prettier, so tables line up) and dune files.
+-- Every other language only on :Format, so a save never restyles a Lua,
+-- Python or shell file.
+local FORMAT_ON_SAVE = { ocaml = true, ocaml_interface = true, rust = true, markdown = true, dune = true }
 
 function M.format(buf)
   buf = (buf == nil or buf == 0) and api.nvim_get_current_buf() or buf
@@ -146,6 +159,10 @@ function M.format(buf)
   end
   if ft == "markdown" then
     format_markdown(buf)
+    return
+  end
+  if ft == "dune" then
+    format_dune(buf)
     return
   end
   local clients = vim.lsp.get_clients { bufnr = buf, method = "textDocument/formatting" }

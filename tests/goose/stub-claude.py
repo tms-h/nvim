@@ -5,7 +5,8 @@ mid-answer; "UGLY" gets an answer ocamlformat would change. A last part
 "Question: ..." gets a Markdown answer, after a preamble and a Read of
 bin/main.ml when the question mentions main; "ELSEWHERE" also changes
 `let target = 1` to 2 (a SEARCH/REPLACE block), "ONLYELSEWHERE" does only
-that. Each log line has the folder the stub runs in (cwd). A question with
+that, "NOOPELSEWHERE" gives only a block that changes nothing (target = 1
+stays 1). Each log line has the folder the stub runs in (cwd). A question with
 "LONG" gets 120 lines, three chunks each, like real token streaming;
 "LONGCODE" gets 120 lines of code the same way. "BADTYPE" gets code with a
 type error, and the compile-error retry gets code that compiles. A question
@@ -57,6 +58,8 @@ for line in sys.stdin:
             chunks = [c for i in range(120) for c in (f"line {i} ", "of a long ", "answer\n")]
     elif "VERDICT" in content:
         chunks = ["Sounds good.", "\n\nMessage: clear.\n"]
+    elif "NOOPELSEWHERE" in content:
+        chunks = ["<<<<<<< SEARCH\n", "let target = 1\n", "=======\n", "let target = 1\n", ">>>>>>> REPLACE\n"]
     elif "ONLYELSEWHERE" in content:
         chunks = block
     elif "ELSEWHERE" in content:

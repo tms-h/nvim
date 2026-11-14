@@ -105,6 +105,21 @@ check(
   vim.inspect(lines(buf))
 )
 
+-- 4b. No region lines and an edit that changes nothing: the typed text stays.
+buf = open { "let target = 1", "let x = 1" }
+notes = {}
+type_at(2, "NOOPELSEWHERE half-written")
+g.send()
+wait_idle(buf)
+check(
+  "no-op edit: typed text kept",
+  vim.deep_equal(lines(buf), { "let target = 1", "NOOPELSEWHERE half-written", "let x = 1" }),
+  vim.inspect(lines(buf))
+)
+check("no-op edit: says why", #vim.tbl_filter(function(m)
+  return m:find("kept your text", 1, true)
+end, notes) == 1, vim.inspect(notes))
+
 -- 5. SEARCH lines not in the file: skipped with a warning, region still lands.
 buf = open { "let x = 1", "let y = 2" }
 notes = {}

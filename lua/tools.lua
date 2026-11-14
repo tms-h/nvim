@@ -1,7 +1,7 @@
 -- Where the toolchains live. A GUI launch (Neovide from a launcher or Finder)
--- does not run the shell's startup files, so opam, cargo, Mason and Homebrew
--- are put on PATH here. Every machine-specific path has a fallback: a missing
--- folder is skipped.
+-- does not run the shell's startup files, so opam, cargo, Mason, Homebrew and
+-- ~/.local/bin (Claude Code) are put on PATH here. Every machine-specific path
+-- has a fallback: a missing folder is skipped.
 local M = {}
 
 local util = require "util"
@@ -42,6 +42,7 @@ local function prepend(dir, first)
 end
 
 function M.setup_path()
+  prepend "~/.local/bin"
   -- Mason's tools: this config's own data folder first, then the default
   -- one (the same folder on a normal start; a scratch test setup borrows it).
   prepend "~/.local/share/nvim/mason/bin"

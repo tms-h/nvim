@@ -527,13 +527,41 @@ end
 local before = {} -- tabpage -> { cols, lines, sizes }
 local resizing = false
 
+-- A window too small for the layout (Neovide's first frames, a tiling window
+-- manager's resize animation on macOS) squeezes panes to a column or two.
+-- That state is never kept as the sizes to scale from: recording it once left
+-- the tree at a few letters wide for good.
+local TREE_WIDTH = 30 -- explorer.lua view.width
+local function squeezed(sizes)
+  for win, size in pairs(sizes) do
+    if api.nvim_win_is_valid(win) and not M.is_tree(win) and (size[1] < 3 or size[2] < 2) then
+      return true
+    end
+  end
+  return false
+end
+
 local function remember()
-  before[api.nvim_get_current_tabpage()] = { cols = vim.o.columns, lines = vim.o.lines, sizes = M.snapshot() }
+  local sizes = M.snapshot()
+  if squeezed(sizes) then
+    return
+  end
+  before[api.nvim_get_current_tabpage()] = { cols = vim.o.columns, lines = vim.o.lines, sizes = sizes }
 end
 
 local function rescale()
   local saved = before[api.nvim_get_current_tabpage()]
   if not saved then
+    -- Nothing good to scale from (the window started too small): give the
+    -- tree its width back and share the rest evenly.
+    for _, win in ipairs(api.nvim_tabpage_list_wins(0)) do
+      if M.is_tree(win) and api.nvim_win_get_width(win) < TREE_WIDTH and vim.o.columns > TREE_WIDTH + 20 then
+        api.nvim_win_set_width(win, TREE_WIDTH)
+      end
+    end
+    if squeezed(M.snapshot()) then
+      vim.cmd "wincmd ="
+    end
     return
   end
   local tree = 0

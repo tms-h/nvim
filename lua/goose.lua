@@ -15,6 +15,26 @@
 --   freely. An edit inside the region throws the answer away. One `u` brings
 --   the pseudocode back.
 --
+--   :GooseVibe hint|step|full|agent  how much Alt+K writes, by who writes
+--     the logic (+ / - step one level, no argument shows it). Global for the
+--     session, `vibe:step` in the statusline, step when Neovim opens. A first
+--     pseudocode line `hint:`, `step:`, `full:` or `agent:` sets it for that
+--     send only (`test:` is not a level: an expect test at every level).
+--       hint   you write all the code: no code, the pseudocode stays with
+--              `(* hint: ... *)` lines under it (Core functions, shape, edge
+--              case), and a CR on a bug you can name an input for nearby.
+--              No compile retry.
+--       step   you write the logic as pseudocode: translated line for line;
+--              anything not spelled out, even a helper you only name, is a
+--              typed `failwith "TODO: ..."` stub. At most one CR.
+--       full   you say what you want: it writes the logic and the obvious
+--              helpers.
+--       agent  a one-line ask: a stronger model (agent_model), one-shot in
+--              the project root with Read, Grep, Glob and the jswiki, writes
+--              a high-quality function and may tidy nearby code in the same
+--              file (one undo step, flashed, a message says where). Slower;
+--              the note on the region shows what it reads.
+--
 -- Each buffer keeps one long-lived claude process (stream-json). The first
 -- message carries the whole file; later ones carry only a diff since the
 -- last message, so a 1000-line file is not resent every Alt+K. A spare
@@ -31,6 +51,37 @@
 -- Every claude goose starts (Alt+K, the Alt+L chat, seconder) gets the
 -- project's AGENTS.md / CLAUDE.md as rules in its system prompt (with_rules).
 --
+-- Your text is never dropped silently. An answer with no lines for the
+-- region removes it only on a first send whose SEARCH/REPLACE edits really
+-- change the file (an instruction about other lines); otherwise the text
+-- stays and a message says why. An answer that kept the pseudocode on
+-- purpose (a CR above it says why it cannot be written) gets no compile
+-- retry: the retry used to "fix" it by deleting the line. A half-written
+-- line of code (`| c when is_digit`, `let add_token`) counts as pseudocode
+-- and is completed in place.
+--
+-- What claude is told, so Alt+K writes what Space r (seconder) accepts:
+--   - The wiki rules seconder reviews with (rubric/wiki-rules.json, this
+--     file's language or "any"), minus the review-process ones (REVIEW_ONLY:
+--     split the feature, which tests to add), as rules to follow while
+--     writing. A missing or broken file means no rules, no error.
+--   - OCaml files that use Core (they open Core, or the folder's dune file
+--     lists core): Jane Street house style (`open! Core`, `~f`, option /
+--     Or_error, print_s / [%message], deriving, variants for closed sets).
+--     A pseudocode line starting `test:` becomes a let%expect_test that
+--     prints with print_s, its [%expect {||}] always empty for dune runtest
+--     to fill.
+--   - Stubs (step, or a large piece full does not get described): typed
+--     `failwith "TODO: name: job"` with `_`-prefixed parameters; the
+--     compile-error retry never fills one in.
+--   - The other modules of the same dune directory the file uses (`Token.x`,
+--     `open Token`): each one's .mli, else its .ml, interfaces_max bytes in
+--     all, plus the directory's dune file. A session sends them in its first
+--     message and again only when their text (or the set used) changed.
+--   No tool calls below agent: everything is in the prompt, so Alt+K stays
+--   fast. hint, step and full share one system prompt (each message names
+--   its level), so switching levels keeps the session.
+--
 -- ask() (one-shot) is shared with seconder.lua.
 local M = {}
 
@@ -42,14 +93,15 @@ local ns = vim.api.nvim_create_namespace "goose"
 -- an API key (OAuth logins fail). The project's own AGENTS.md / CLAUDE.md is
 -- read by goose and put in the system prompt (with_rules), not by claude.
 M.model = "claude-sonnet-5-5"
--- opts (questions and reviews only): tools = built-in tools
+-- opts (questions, reviews and the agent vibe): tools = built-in tools
 -- ("Read,Grep,..."), mcp = an --mcp-config JSON, allow = tools permitted
--- without asking (-p denies the rest), cwd = the project root; see
--- claude_opts. --strict-mcp-config keeps every other MCP server out.
+-- without asking (-p denies the rest), cwd = the project root, model =
+-- instead of M.model; see claude_opts. --strict-mcp-config keeps every
+-- other MCP server out.
 local function cmd(system, opts)
   opts = opts or {}
   local c = {
-    "claude", "-p", "--model", M.model,
+    "claude", "-p", "--model", opts.model or M.model,
     "--setting-sources", "", "--strict-mcp-config", "--tools", opts.tools or "",
     "--no-session-persistence", "--disable-slash-commands",
     "--system-prompt", system,
@@ -600,28 +652,37 @@ function M.sibling(buf)
   end
 end
 
-local SYSTEM = [[You turn the programmer's pseudocode into real code, in place.
+local SYSTEM = [[You turn the programmer's pseudocode into real code, in place. How much
+you write is set by the vibe level each message names (see "Vibe levels").
 Rules:
-- Implement exactly the behaviour written. You may use better idiom or helpers
-  that already exist in the file.
+- Implement the behaviour written. You may use better idiom or helpers that
+  already exist in the file.
 - If a different design would change behaviour (for example the written
   version fails on some input), still write their version, and add ONE comment
   line above it: `(* CR claude: <concrete failing input and what happens> *)`.
   Use CR only when you can name an input that breaks it. Use
   `(* CR-soon claude: ... *)` for "works but there is a clearly better way".
-  Nothing for taste. At most one comment in total.
-- If the pseudocode cannot work as written (contradiction, unknown type or
-  function), output the pseudocode lines unchanged with one CR comment above
-  saying why.
-- Parts you cannot write: `failwith "TODO: ..."`.
+  Nothing for taste. At most one CR comment in total.
+- If the pseudocode cannot work as written (contradiction, unknown type),
+  output the pseudocode lines unchanged with one CR comment above saying why.
+- A stub, where the level calls for one: typed from how the code uses it,
+  each parameter prefixed with `_`, at the top of the region's output:
+  `let scan_token (_source : string) (_pos : int) : token option * int =
+     failwith "TODO: scan_token: <its job in a few words>"`.
+  Other parts you cannot write: `failwith "TODO: ..."`.
+- A half-written line of code (`| c when is_digit`, `let add_token`) is
+  pseudocode too: complete it in place from the code around it (the match it
+  sits in, the types in use). Never answer it with nothing.
 - Write the marked region. Change lines outside it only when the pseudocode
   asks for it ("also add a field to type t", "rename x everywhere", "open Core
   at the top") or the region cannot compile without it (a new record field, a
-  missing `rec`). Never fill `failwith "TODO"` holes elsewhere.
+  missing `rec`). Never fill a `failwith "TODO"` hole outside the region, even
+  one right next to it; the region itself is always yours to write.
 - Keep the region's indentation. Use the file's language and comment syntax.
-- Output the region's replacement lines first: no fences, no prose. If the
-  pseudocode is only an instruction about other lines, output no region lines
-  (the instruction is deleted).
+- Output the region's replacement lines first: no fences, no prose. Output no
+  region lines only when the pseudocode explicitly asks for changes elsewhere
+  and for nothing in place ("add a field x to type t"); the instruction is
+  then deleted.
 - Then one block per change outside the region, nothing for no changes:
 <<<<<<< SEARCH
 exact current lines of the file, enough to be unique
@@ -629,40 +690,258 @@ exact current lines of the file, enough to be unique
 what they become
 >>>>>>> REPLACE]]
 
----The last part of a conversion message: fix errors, follow an instruction
----(Alt+K in the Alt+L chat box), or convert the pseudocode.
-local function task(errors, instruction)
-  if errors then
-    return "Your last answer for the region (shown above) gave these compiler errors; fix them:\n" .. errors
+-- ── Vibe: how much Alt+K writes (:GooseVibe) ───────────────────────────────
+-- One question splits the levels: who writes the logic? hint: you write all
+-- the code; step: you write the logic as pseudocode, goose translates it;
+-- full: you say what you want, goose writes the logic; agent: a one-line
+-- ask, goose writes it well and may tidy nearby code, with tools. hint, step
+-- and full share one system prompt (each message names its level), so the
+-- session survives a switch; agent is a one-shot call of its own.
+M.VIBES = { "hint", "step", "full", "agent" }
+M.vibe = "step" -- the level for every send; :GooseVibe changes it
+M.agent_model = "claude-opus-5-5" -- agent only; the others stay on M.model
+M.agent_tools = "Read,Grep,Glob"
+
+local VIBE = [[Vibe levels: who writes the logic. Each message names one.
+- hint: the programmer writes all the code. Write NO code. Your region
+  lines are only a few comment lines, each starting `(* hint:`: the Core
+  functions to look at, the shape of the code, the edge case to watch for
+  (a `test:` line: how to write that expect test). They go under the
+  region, whose lines stay as they are: do not repeat them. If code near the
+  region has a bug you can name a failing input for, put one CR comment
+  above that code with a SEARCH/REPLACE block that adds only the comment
+  line.
+- step: the programmer writes the logic as pseudocode; translate exactly
+  that, line for line, plus the glue it needs to compile. Keep their logic
+  even where it is wrong: a CR above it names the failing input; do not fix
+  it. Anything it does not spell out, including a function it only names
+  (or marks "stub" or "later"), is a stub. At most one CR, on a concrete bug
+  in what they wrote: the region, or code of theirs it calls (a SEARCH/REPLACE
+  block that adds only the comment line).
+- full: the programmer says what they want; write the logic, including the
+  obvious helpers it needs, as real code. Stub only a large piece that is
+  named but not described.
+At hint, step and full, a bug in code outside the region gets a CR comment,
+never a fix: changing their other code is only for the agent level.
+A first region line `hint:`, `step:` or `full:` only sets the level for this
+message; it is not pseudocode. `test:` is not a level: it is an expect test
+at every level.]]
+
+-- The agent's own section; it replaces VIBE in a one-shot call that can read
+-- the project.
+local AGENT = [[Vibe level: agent. The programmer gives a short ask ("write
+scan_number"; a first line `agent:` is part of the ask). Write a complete,
+high-quality implementation: real helpers, no stubs unless the ask is far
+bigger than one function. At this level you may also tidy code near the
+region in this same file (dead code, duplication, wrong idioms, unclear
+names, a bug you can name an input for) with SEARCH/REPLACE blocks; never
+another file, and never behaviour the ask did not touch.
+You run in the project's root folder with Read, Grep and Glob: read the
+.mli, callers and conventions you need before writing, and only those.]]
+local AGENT_WIKI = [[
+For a Jane Street idiom you are unsure of, check Thomas's wiki (jswiki find,
+then read).]]
+local AGENT_END = [[Your final message is only the answer in the format
+above: region lines, then SEARCH/REPLACE blocks. No prose about what you
+read or why.]]
+
+---The level a send asks for: a first non-blank line `hint:`, `step:`,
+---`full:` or `agent:` overrides M.vibe for that send.
+function M.vibe_of(lines)
+  for _, l in ipairs(lines) do
+    if l:match "%S" then
+      local word = l:match "^%s*(%a+):"
+      return word and vim.tbl_contains(M.VIBES, word) and word or M.vibe
+    end
   end
-  return instruction or "Rewrite the region's pseudocode as code."
+  return M.vibe
 end
 
-local function prompt_for(buf, s, e, lines, errors, instruction)
+---:GooseVibe [hint|step|full|agent|+|-]: set, step or show the level.
+function M.set_vibe(arg)
+  arg = vim.trim(arg or "")
+  local i = vim.fn.index(M.VIBES, M.vibe) + 1
+  if arg == "+" or arg == "-" then
+    M.vibe = M.VIBES[math.max(1, math.min(#M.VIBES, i + (arg == "+" and 1 or -1)))]
+  elseif vim.tbl_contains(M.VIBES, arg) then
+    M.vibe = arg
+  elseif arg ~= "" then
+    return vim.notify("goose: vibe is one of " .. table.concat(M.VIBES, ", ") .. ", + or -", vim.log.levels.ERROR)
+  end
+  vim.cmd.redrawstatus()
+  vim.notify("goose: vibe " .. M.vibe)
+end
+
+-- OCaml files that use Core (uses_core): Jane Street house style and expect
+-- tests. What the wiki rules below already say (poly compare, _exn,
+-- structured errors, illegal states) is not repeated here. Lua decides
+-- whether a file uses Core: asked to, the model explained its choice in
+-- prose at the top of the answer.
+local OCAML = [[OCaml house style (Jane Street, Core); this file uses Core:
+- Keep `open! Core` as the first line; add it if missing.
+- Core's labelled arguments: `List.map xs ~f:(fun x -> ...)`,
+  `List.fold xs ~init ~f`, `String.concat ~sep`.
+- Ordinary failure (not found, bad input) returns an option or `Or_error.t`.
+- Output and error text come from values: `print_s [%sexp (x : t)]`,
+  `Or_error.error_s [%message "unexpected char" (c : char) (line : int)]`,
+  `Error.create`; no Printf or sprintf strings. The type named in [%sexp]
+  needs a sexp_of in scope: name the type that derives sexp, not a plain
+  alias of it.
+- New types get `[@@deriving sexp, compare, equal]` when they are printed,
+  compared or put in maps.
+- A closed set of cases is a variant, never a string or int. Use the types
+  the project already has (shown under "Other modules") over new ones.
+- A pseudocode line starting `test:` is an expect test:
+  `let%expect_test "<short name>" =` then code that runs it and prints with
+  `print_s [%sexp (... : type)]`, then `[%expect {||}]`. Every [%expect] stays
+  empty, exactly `[%expect {||}]`: never write the output you expect;
+  `dune runtest` fills it in.]]
+
+-- Wiki rules about reviewing, not writing (splitting features, which tests a
+-- change needs): seconder raises them, Alt+K does not follow them.
+local REVIEW_ONLY = {
+  ["split-refactor"] = true,
+  ["pin-bug-with-test"] = true,
+  ["test-shows-behaviour"] = true,
+  ["counterfactual-expect"] = true,
+}
+
+---The wiki rules to follow while writing buf, as a system-prompt section:
+---seconder's (rubric/wiki-rules.json, buf's language or "any") minus
+---REVIEW_ONLY. nil when there are none (a missing or broken file).
+local function write_rules(buf)
+  -- seconder requires goose, so it is loaded here, not at the top.
+  local ok, sec = pcall(require, "seconder")
+  local ok2, rules = false, nil
+  if ok then
+    ok2, rules = pcall(sec.rules, buf)
+  end
+  local out = {}
+  for _, r in ipairs(ok2 and rules or {}) do
+    if not REVIEW_ONLY[r.id] then
+      local when = type(r.when) == "string" and r.when ~= "" and (" When: " .. r.when) or ""
+      out[#out + 1] = "- " .. r.rule .. when
+    end
+  end
+  if #out > 0 then
+    return "Jane Street rules (from Thomas's wiki, the ones his reviewer checks). Follow them in the code you write; they never widen which lines you may change:\n"
+      .. table.concat(out, "\n")
+  end
+end
+
+local function is_ocaml(buf)
+  local ft = vim.bo[buf].filetype
+  return ft == "ocaml" or ft == "ocamlinterface" or vim.api.nvim_buf_get_name(buf):match "%.mli?$" ~= nil
+end
+
+-- ── Project interfaces: other modules of the same dune directory ───────────
+M.interfaces_max = 8000 -- bytes of other modules' code per message, at most
+
+---The file's text: the buffer's lines when it is loaded (maybe unsaved),
+---else the file on disk.
+local function file_text(path)
+  local b = vim.fn.bufnr(path)
+  if b > 0 and vim.api.nvim_buf_is_loaded(b) then
+    return table.concat(vim.api.nvim_buf_get_lines(b, 0, -1, false), "\n")
+  end
+  local ok, lines = pcall(vim.fn.readfile, path)
+  return ok and table.concat(lines, "\n") or nil
+end
+
+---Does `text` use module `m` (`M.x`, `open M`, `include M`, `module X = M`)?
+local function uses(text, m)
+  return text:find("%f[%w_']" .. m .. "%s*%.")
+    or text:find("open!?%s+" .. m .. "%f[^%w_']")
+    or text:find("include%s+" .. m .. "%f[^%w_']")
+    or text:find("=%s*" .. m .. "%f[^%w_'.]")
+end
+
+---The other modules of buf's directory (an OCaml file's dune library) that
+---buf uses, each as its .mli or, without one, its .ml, sorted by name and
+---cut at interfaces_max bytes in all; then the directory's dune file. One
+---prompt section, nil when buf uses none.
+function M.interfaces(buf)
+  if not is_ocaml(buf) then
+    return
+  end
+  local name = vim.api.nvim_buf_get_name(buf)
+  local dir, own = vim.fs.dirname(name), vim.fs.basename(name):gsub("%.mli?$", "")
+  local files = {} -- files[module base] = "foo.mli" or "foo.ml"
+  for f, kind in vim.fs.dir(dir) do
+    local base, ext = f:match "^([%w_]+)%.(mli?)$"
+    if kind == "file" and base and base ~= own and (ext == "mli" or not files[base]) then
+      files[base] = f
+    end
+  end
+  local text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+  local bases = vim.tbl_keys(files)
+  table.sort(bases)
+  local parts, left = {}, M.interfaces_max
+  for _, base in ipairs(bases) do
+    if left > 0 and uses(text, base:sub(1, 1):upper() .. base:sub(2)) then
+      local body = file_text(vim.fs.joinpath(dir, files[base]))
+      if body then
+        if #body > left then
+          body = body:sub(1, left) .. "\n(… cut)"
+        end
+        left = left - #body
+        parts[#parts + 1] = files[base] .. ":\n" .. body
+      end
+    end
+  end
+  if #parts == 0 then
+    return
+  end
+  local dune = file_text(vim.fs.joinpath(dir, "dune"))
+  if dune then
+    parts[#parts + 1] = "dune:\n" .. dune:sub(1, 1000)
+  end
+  return "Other modules this file uses (same dune directory; use their real constructors, fields and functions):\n\n"
+    .. table.concat(parts, "\n\n")
+end
+
+---The last part of a conversion message: fix errors, or the vibe level and
+---then an instruction (Alt+K in the Alt+L chat box) or "convert the
+---pseudocode".
+local function task(errors, instruction, level)
+  if errors then
+    return "Your last answer for the region (shown above) gave these compiler errors; fix them without implementing any `failwith \"TODO\"` stub and without deleting the region's code (a missing definition goes in as a stub):\n"
+      .. errors
+  end
+  local default = level == "hint" and "Write no code: output only your hint comments; the region's lines stay."
+    or level == "agent" and "Do what the region asks."
+    or "Rewrite the region's pseudocode as code."
+  return (level and ("Vibe level: " .. level .. ". ") or "") .. (instruction or default)
+end
+
+local function prompt_for(buf, s, e, lines, errors, instruction, level)
   local all = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   local before = table.concat(vim.list_slice(all, 1, s), "\n")
   local after = table.concat(vim.list_slice(all, e + 2), "\n")
-  local parts = {
-    ("File: %s (filetype %s)"):format(vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":~:."), vim.bo[buf].filetype),
-  }
+  local name = vim.api.nvim_buf_get_name(buf)
+  -- The agent reads files from the project root: give it that path.
+  local path = level == "agent" and vim.fs.relpath and vim.fs.relpath(M.root(buf), name) or vim.fn.fnamemodify(name, ":~:.")
+  local parts = { ("File: %s (filetype %s)"):format(path, vim.bo[buf].filetype) }
   local sib, text = M.sibling(buf)
   if sib then
     parts[#parts + 1] = ("Matching %s:\n%s"):format(vim.fn.fnamemodify(sib, ":t"), text)
   end
+  local ifaces = M.interfaces(buf)
+  if ifaces then
+    parts[#parts + 1] = ifaces
+  end
   parts[#parts + 1] = "Whole file, region marked:\n" .. before .. "\n<<<REGION\n" .. table.concat(lines, "\n") .. "\nREGION>>>\n" .. after
-  parts[#parts + 1] = task(errors, instruction)
+  parts[#parts + 1] = task(errors, instruction, level)
   return table.concat(parts, "\n\n")
 end
 
--- The session's system prompt: the same rules plus how later messages look.
-local SESSION_SYSTEM = SYSTEM .. [[
-
-
-This is a running session on one file. The first message gives the whole
+-- How later session messages look; the session's system prompt ends with it.
+local SESSION = [[This is a running session on one file. The first message gives the whole
 file. Each later message gives only a unified diff of the file since the
 previous message (your earlier answers appear in it only if they were
 applied), then the new region with its line numbers. Keep your picture of
-the file up to date from the diffs. Each answer replaces the current region
+the file up to date from the diffs. Other modules the file uses are sent
+again only when they changed. Each answer replaces the current region
 (plus its SEARCH/REPLACE blocks).]]
 
 -- How the project's rules apply to a conversion (with_rules): the answer is
@@ -676,27 +955,59 @@ a comment that only says a rule was followed. If a rule rules out writing
 the region as asked (too big, say), output the region unchanged with one CR
 comment above it, saying why in a few words of your own.]]
 
----Alt+K's system prompt for buf: `base` (SYSTEM, or SESSION_SYSTEM for a
----session), then the project's rules, then the memory file.
-local function convert_system(buf, base)
-  return M.with_memory(M.with_rules(base, M.root(buf), CONVERT_RULES))
+---Does buf's OCaml use Core: it opens Core, or its directory's dune file
+---lists core (a library, a test or an executable)?
+local function uses_core(buf)
+  local text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+  if text:find "open!?%s+Core%f[^%w_']" or text:find "%f[%w_]Core%." then
+    return true
+  end
+  local dune = file_text(vim.fs.joinpath(vim.fs.dirname(vim.api.nvim_buf_get_name(buf)), "dune"))
+  return dune ~= nil and dune:find "%f[%w_]core%f[^%w_]" ~= nil
 end
+
+---Alt+K's system prompt for buf: SYSTEM, the vibe levels (or, for `agent`,
+---the agent's section), the house style (OCaml files that use Core), the
+---wiki rules for buf's language, the project's rules (with_rules), SESSION
+---for a session, then the memory file.
+local function system_for(buf, session, agent)
+  local parts = { SYSTEM, agent and (AGENT .. (M.has_wiki() and AGENT_WIKI or "")) or VIBE }
+  if is_ocaml(buf) and uses_core(buf) then
+    parts[#parts + 1] = OCAML
+  end
+  parts[#parts + 1] = write_rules(buf)
+  parts = { M.with_rules(table.concat(parts, "\n\n"), M.root(buf), CONVERT_RULES) }
+  if session then
+    parts[#parts + 1] = SESSION
+  end
+  if agent then
+    parts[#parts + 1] = AGENT_END
+  end
+  return M.with_memory(table.concat(parts, "\n\n"))
+end
+M.system_for = system_for -- for tests
 
 local text_diff = (vim.text and vim.text.diff) or vim.diff
 
 ---Session message for the region: the whole file the first time, after
 ---that a diff since the last message plus the region. Returns prompt, file.
-local function session_prompt(S, buf, s, e, lines, errors, instruction)
+local function session_prompt(S, buf, s, e, lines, errors, instruction, level)
   local file = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n") .. "\n"
+  -- Other modules go in the first message, then again whenever their text
+  -- (or which ones the file uses) changed.
+  local ifaces, last = M.interfaces(buf) or "", S.ifaces
+  S.ifaces = ifaces
   if not S.sent then
-    return prompt_for(buf, s, e, lines, errors, instruction), file
+    return prompt_for(buf, s, e, lines, errors, instruction, level), file
   end
   local d = text_diff(S.sent, file, { result_type = "unified", ctxlen = 2 })
-  local parts = {
-    d == "" and "The file is unchanged since the last message." or ("File changes since the last message:\n" .. d),
-    ("Region (lines %d-%d):\n<<<REGION\n%s\nREGION>>>"):format(s + 1, e + 1, table.concat(lines, "\n")),
-  }
-  parts[#parts + 1] = task(errors, instruction)
+  local parts = {}
+  if ifaces ~= last and ifaces ~= "" then
+    parts[1] = "These changed since the last message. " .. ifaces
+  end
+  parts[#parts + 1] = d == "" and "The file is unchanged since the last message." or ("File changes since the last message:\n" .. d)
+  parts[#parts + 1] = ("Region (lines %d-%d):\n<<<REGION\n%s\nREGION>>>"):format(s + 1, e + 1, table.concat(lines, "\n"))
+  parts[#parts + 1] = task(errors, instruction, level)
   return table.concat(parts, "\n\n"), file
 end
 
@@ -884,7 +1195,7 @@ end
 
 ---The one buffer change: lines s..e become `new`, formatted, then flash and
 ---maybe retry.
-local function replace(buf, s, e, new, retry)
+local function replace(buf, s, e, new, retry, nocheck)
   local watch
   vim.api.nvim_buf_call(buf, function()
     if retry then
@@ -918,7 +1229,7 @@ local function replace(buf, s, e, new, retry)
   local lines = vim.api.nvim_buf_get_lines(buf, s2, e2 + 1, false)
   flash(buf, s2, lines)
   M.last = { buf = buf, lines = lines, retry = retry } -- for tests
-  if retry or #vim.lsp.get_clients { bufnr = buf } == 0 then
+  if retry or nocheck or #vim.lsp.get_clients { bufnr = buf } == 0 then
     pcall(vim.api.nvim_buf_del_extmark, buf, ns, watch)
     return
   end
@@ -983,8 +1294,11 @@ end
 
 ---Lines s..e become `new` (replace(): flash, compile retry), and each edit
 ---outside them is made in the same undo step. An edit whose lines are not
----in the file is skipped with a warning.
-local function apply(buf, s, e, new, edits, retry)
+---in the file is skipped with a warning; one that changes nothing is
+---dropped. With no region lines the region goes only on a first send whose
+---edits change the file (an instruction about other lines); otherwise the
+---text stays and a message says why.
+local function apply(buf, s, e, new, edits, retry, nocheck)
   local all = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   local marks, missed, taken = {}, {}, {}
   for _, ed in ipairs(edits or {}) do
@@ -995,29 +1309,30 @@ local function apply(buf, s, e, new, edits, retry)
         at = nil -- overlaps an earlier edit
       end
     end
-    if at then
+    if not at then
+      missed[#missed + 1] = vim.trim(ed.search[1] or "(empty SEARCH)")
+    elseif not vim.deep_equal(vim.list_slice(all, at + 1, at + n), ed.replace) then
       taken[#taken + 1] = { at, at + n - 1 }
       local id = vim.api.nvim_buf_set_extmark(buf, edit_ns, at, 0, { end_row = at + n - 1, end_col = #all[at + n], end_right_gravity = true })
       marks[#marks + 1] = { id = id, replace = ed.replace }
-    else
-      missed[#missed + 1] = vim.trim(ed.search[1] or "(empty SEARCH)")
     end
   end
   if #missed > 0 then
     vim.notify("goose: could not find the lines to change: " .. table.concat(missed, " | "), vim.log.levels.WARN)
   end
   if #new == 0 and #marks == 0 then
-    return vim.notify("goose: empty answer; kept your text", vim.log.levels.WARN)
+    local why = #(edits or {}) == 0 and "empty answer" or "the answer had no code for these lines and changed nothing else"
+    return vim.notify("goose: " .. why .. "; kept your text", vim.log.levels.WARN)
   end
   if #new > 0 then
-    replace(buf, s, e, new, retry)
+    replace(buf, s, e, new, retry, nocheck)
+  elseif retry then
+    -- A fix made only elsewhere (a missing definition): the region keeps the
+    -- first answer; the edits below join its undo step.
+    vim.notify("goose: the compile fix changed only other lines; kept the region", vim.log.levels.INFO)
   else -- an instruction about other lines: it goes, they change
     vim.api.nvim_buf_call(buf, function()
-      if retry then
-        pcall(vim.cmd.undojoin)
-      else
-        vim.cmd "let &undolevels = &undolevels"
-      end
+      vim.cmd "let &undolevels = &undolevels"
       vim.api.nvim_buf_set_lines(buf, s, e + 1, false, {})
     end)
   end
@@ -1076,17 +1391,17 @@ local function accept(buf)
   if not s or table.concat(vim.api.nvim_buf_get_lines(buf, s, e + 1, false), "\n") ~= r.text then
     vim.notify("goose: you edited the region; kept your text", vim.log.levels.WARN)
   else
-    apply(buf, s, e, r.new, r.edits, r.retry)
+    apply(buf, s, e, r.new, r.edits, r.retry, r.nocheck)
   end
   settle(buf)
   return true
 end
 M.accept = accept
 
-local function hold(buf, s, e, text, new, edits, retry)
+local function hold(buf, s, e, text, new, edits, retry, nocheck)
   drop_ready(buf)
   local last = vim.api.nvim_buf_get_lines(buf, e, e + 1, false)[1] or ""
-  local r = { text = text, new = new, edits = edits, retry = retry }
+  local r = { text = text, new = new, edits = edits, retry = retry, nocheck = nocheck }
   r.mark = vim.api.nvim_buf_set_extmark(buf, ns, s, 0, {
     end_row = e,
     end_col = #last,
@@ -1117,7 +1432,24 @@ local function hold(buf, s, e, text, new, edits, retry)
   dropper "u"
 end
 
-local function finish(buf, mark, out, err, retry)
+---Does `new` still hold every line of the pseudocode `text` (a CR above it
+---says why it cannot be written)? Then its compile errors are expected.
+local function kept_pseudocode(new, text)
+  local have = {}
+  for _, l in ipairs(new) do
+    have[vim.trim(l)] = true
+  end
+  for _, l in ipairs(vim.split(text, "\n", { plain = true })) do
+    if vim.trim(l) ~= "" and not have[vim.trim(l)] then
+      return false
+    end
+  end
+  return true
+end
+
+---`hint`: the vibe level of the send; its answer is no code, so no compile
+---check either.
+local function finish(buf, mark, out, err, retry, hint)
   local text = (pending[buf] or {})[mark]
   if not text or not vim.api.nvim_buf_is_valid(buf) then
     return
@@ -1138,27 +1470,61 @@ local function finish(buf, mark, out, err, retry)
   if #new == 0 and #edits == 0 then
     return vim.notify("goose: empty answer; kept your text", vim.log.levels.WARN)
   end
-  if M.accept_first and not retry then
-    return hold(buf, s, e, text, new, edits, retry)
+  if hint then
+    -- The answer is only the hints: the pseudocode stays, they go under it.
+    new = vim.list_extend(vim.split(text, "\n", { plain = true }), new)
   end
-  apply(buf, s, e, new, edits, retry)
+  -- Pseudocode the answer kept on purpose does not compile: a retry would
+  -- only "fix" it by dropping the programmer's lines.
+  local nocheck = hint or kept_pseudocode(new, text)
+  if M.accept_first and not retry then
+    return hold(buf, s, e, text, new, edits, retry, nocheck)
+  end
+  apply(buf, s, e, new, edits, retry, nocheck)
 end
 
----Convert lines s..e (0-based, inclusive) of buf. `errors` = a retry;
----`instruction` replaces "turn the pseudocode into code" (the region may then
----be code, or blank).
+---The region's "writing…" note becomes `text` (the agent's tool calls).
+local function set_note(buf, mark, text)
+  local m = vim.api.nvim_buf_get_extmark_by_id(buf, ns, mark, { details = true })
+  if not m[1] then
+    return
+  end
+  local d = m[3]
+  pcall(vim.api.nvim_buf_set_extmark, buf, ns, m[1], m[2], {
+    id = mark,
+    end_row = d.end_row,
+    end_col = d.end_col,
+    hl_group = d.hl_group,
+    hl_eol = d.hl_eol,
+    virt_text = { { "  " .. text, "DiagnosticVirtualTextInfo" } },
+    virt_text_pos = "eol",
+    right_gravity = false,
+    end_right_gravity = true,
+  })
+end
+
+---Convert lines s..e (0-based, inclusive) of buf at the vibe level
+---(M.vibe, or a first line `hint:`/`step:`/`full:`/`agent:`). `errors` = a
+---retry; `instruction` replaces "turn the pseudocode into code" (the region
+---may then be code, or blank).
 run = function(buf, s, e, errors, instruction)
   local lines = vim.api.nvim_buf_get_lines(buf, s, e + 1, false)
   if #lines == 0 or not (instruction or table.concat(lines, ""):match "%S") then
     return
   end
   e = s + #lines - 1 -- a region past the buffer's end is cut to what exists
+  local level = not errors and M.vibe_of(lines) or nil -- a retry only fixes errors
   local mark = vim.api.nvim_buf_set_extmark(buf, ns, s, 0, {
     end_row = e,
     end_col = #lines[#lines],
     hl_group = "Comment",
     hl_eol = true,
-    virt_text = { { errors and "  fixing compile errors…" or "  writing…", "DiagnosticVirtualTextInfo" } },
+    virt_text = {
+      {
+        errors and "  fixing compile errors…" or level == "agent" and "  agent writing…" or "  writing…",
+        "DiagnosticVirtualTextInfo",
+      },
+    },
     virt_text_pos = "eol",
     right_gravity = false,
     end_right_gravity = true,
@@ -1167,11 +1533,21 @@ run = function(buf, s, e, errors, instruction)
   pending[buf][mark] = table.concat(lines, "\n")
   vim.cmd.redrawstatus()
   local function done(out, err)
-    finish(buf, mark, out, err, errors ~= nil)
+    finish(buf, mark, out, err, errors ~= nil, level == "hint")
     settle(buf)
   end
+  if level == "agent" then
+    -- Slower on purpose: a stronger model that reads the project first.
+    local root = M.root(buf)
+    local opts = M.claude_opts(root, { tools = M.agent_tools })
+    opts.model = M.agent_model
+    opts.on_tool = function(name, input)
+      set_note(buf, mark, "agent: " .. M.describe(name, input, root))
+    end
+    return M.ask(system_for(buf, false, true), prompt_for(buf, s, e, lines, nil, instruction, level), done, opts)
+  end
   if not M.use_session then
-    return M.ask(convert_system(buf, SYSTEM), prompt_for(buf, s, e, lines, errors, instruction), done)
+    return M.ask(system_for(buf, false), prompt_for(buf, s, e, lines, errors, instruction, level), done)
   end
   -- The region is read again when the message goes out: an earlier send in
   -- this buffer may still be writing and move it.
@@ -1195,17 +1571,17 @@ run = function(buf, s, e, errors, instruction)
     end
   end
   M.session_send(buf, {
-    system = convert_system(buf, SESSION_SYSTEM),
+    system = system_for(buf, true),
     build = function(S)
       local s2, e2, l2 = now()
       if not s2 then
         return
       end
-      return session_prompt(S, buf, s2, e2, l2, errors, instruction)
+      return session_prompt(S, buf, s2, e2, l2, errors, instruction, level)
     end,
     full = function()
       local s2, e2, l2 = now()
-      return s2 and prompt_for(buf, s2, e2, l2, errors, instruction)
+      return s2 and prompt_for(buf, s2, e2, l2, errors, instruction, level)
     end,
     on_partial = function(text)
       latest = text
@@ -1369,7 +1745,7 @@ function M.setup()
       end
       -- Typing may end in Alt+K: have a process ready if this buffer has none.
       if not sessions[a.buf] then
-        warm(convert_system(a.buf, SESSION_SYSTEM))
+        warm(system_for(a.buf, true))
       end
       start[a.buf] = {
         from = vim.fn.line "." - 1,
@@ -1427,6 +1803,15 @@ function M.setup()
     run(buf, s, e)
   end, { desc = "Goose: selection becomes code" })
   vim.api.nvim_create_user_command("Goose", M.send, { desc = "Goose: send the typed lines" })
+  vim.api.nvim_create_user_command("GooseVibe", function(a)
+    M.set_vibe(a.args)
+  end, {
+    nargs = "?",
+    complete = function()
+      return vim.list_extend(vim.deepcopy(M.VIBES), { "+", "-" })
+    end,
+    desc = "Goose vibe: how much Alt+K writes. hint (no code, hints) | step (your pseudocode, line for line; default) | full (writes the logic) | agent (one-line ask, tools, tidies nearby); + / - step; none shows it",
+  })
 end
 
 return M

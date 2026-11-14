@@ -97,8 +97,11 @@ map(ALL, super "w", call "require('panes').close()", { expr = true, desc = "Clos
 map(ALL, super "q", "<Cmd>confirm qa<CR>", { desc = "Quit Neovim" })
 -- Option+W on the Mac is Super+W (Hyprland's killactive): quit this Neovide
 -- window, like its red close button (asks only about unsaved files).
--- Karabiner passes Option+W through to Neovide unchanged for this.
-if util.is_macos then
+-- Karabiner passes Option+W through to Neovide unchanged for this. Neovide
+-- only: in Ghostty, Karabiner turns the physical Cmd into Alt, so Cmd+W
+-- arrives as Alt+W (via herdr-keys close-pane) and must close the tab, not
+-- quit; the Cmd-to-Alt mirror below gives it panes.close().
+if util.is_macos and vim.g.neovide then
   map(ALL, "<M-w>", "<Cmd>confirm qa<CR>", { desc = "Quit Neovide (Super+W)" })
 end
 

@@ -124,9 +124,12 @@ function M.render()
   if reg ~= "" then
     parts[#parts + 1] = "%#DiagnosticWarn#recording @" .. reg .. "%*"
   end
-  -- Goose (goose.lua): "goose writing N" while any
-  -- conversion is pending.
+  -- Goose (goose.lua): its vibe level (:GooseVibe), and "goose writing N"
+  -- while any conversion is pending.
   local goose = package.loaded.goose
+  if goose and goose.vibe then
+    parts[#parts + 1] = "%#StatusLineDim#vibe:" .. goose.vibe .. "%*"
+  end
   local n = goose and goose.pending_count(0) or 0
   if n > 0 then
     parts[#parts + 1] = "%#DiagnosticWarn#goose writing " .. n .. "%*"
