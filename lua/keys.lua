@@ -1,7 +1,8 @@
 -- Every global key, in one place, except the Claude helpers' own keys: Alt+K
--- (goose.lua), Alt+L (goose_ask.lua) and Space r, ]r, [r (seconder.lua); and
--- Space i (iron.lua, mini-iron's fe). Buffer-local keys
--- live with their feature: OCaml (ocaml.lua, and K in lsp.lua), the tree
+-- (goose.lua), Alt+L (goose_ask.lua) and Space r, ]r, [r, Alt+. (seconder.lua);
+-- Space i (iron.lua, mini-iron's fe); Up/Down on the command line
+-- (cmdline.lua); and the pointer's moves in Neovide (dividers.lua). Buffer-local
+-- keys live with their feature: OCaml (ocaml.lua, and K in lsp.lua), the tree
 -- (explorer.lua), a terminal's click (panes.lua).
 --
 -- Rules:
@@ -217,15 +218,16 @@ end
 -- Visual P is the stock put that keeps the register.
 map("x", "p", "P", { desc = "Paste over the selection, keep the clipboard" })
 -- s jumps (flash.nvim, plugins.lua): type a couple of letters, then press the
--- label on the match you want. After an operator too (ds<label> deletes to
--- it). Stock s is cl, still there.
+-- label on the match you want. After an operator too (gUs<label> uppercases
+-- up to it); after d, c and y, s is vim-surround's (below). Stock s is cl,
+-- still there.
 map({ "n", "x", "o" }, "s", function()
   require("flash").jump()
 end, { desc = "Jump: type letters, press the label (flash)" })
 -- vim-surround's own keys (plugins.lua turns its unnamed ones off), named
 -- for the key hints; vim-repeat makes . repeat them. Its insert-mode Ctrl+S
--- is left out: Neovim's signature help has it. ds and cs win over d or c
--- followed by flash's s; dS, cS... nothing else here uses them.
+-- is left out: Neovim's signature help has it. ds, cs and ys win over d, c
+-- or y followed by flash's s; dS, cS... nothing else here uses them.
 for _, m in ipairs {
   { "n", "ds", "<Plug>Dsurround", "Surround: delete ds{char}, e.g. ds( or dst" },
   { "n", "cs", "<Plug>Csurround", "Surround: change cs{old}{new}, e.g. cs([" },
