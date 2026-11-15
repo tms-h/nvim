@@ -1,7 +1,8 @@
 -- Every global key, in one place, except the Claude helpers' own keys: Alt+K
--- (goose.lua), Alt+L (goose_ask.lua) and Space r, ]r, [r (seconder.lua); and
--- Space i (iron.lua, mini-iron's fe). Buffer-local keys
--- live with their feature: OCaml (ocaml.lua, and K in lsp.lua), the tree
+-- (goose.lua), Alt+L (goose_ask.lua) and Space r, ]r, [r, Alt+. (seconder.lua);
+-- Space i (iron.lua, mini-iron's fe); Up/Down on the command line
+-- (cmdline.lua); and the pointer's moves in Neovide (dividers.lua). Buffer-local
+-- keys live with their feature: OCaml (ocaml.lua, and K in lsp.lua), the tree
 -- (explorer.lua), a terminal's click (panes.lua).
 --
 -- Rules:
