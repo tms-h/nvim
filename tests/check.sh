@@ -10,7 +10,7 @@ export NVNEXT=${NVNEXT:-/tmp/nvnext}
 SOCK=${TMUX_SOCK:-nvnext-test}
 PROJ=$NVNEXT/proj
 OUT=$NVNEXT/results.txt
-rm -f "$NVNEXT/test.sock"; rm -rf "$PROJ" "$OUT" "$NVNEXT/state/nvim/sessions"
+rm -f "$NVNEXT/test.sock"; rm -rf "$PROJ" "$OUT" "$NVNEXT/state/nvim/sessions" "$NVNEXT/state/nvim/projects-used"
 mkdir -p "$PROJ"
 cat >"$PROJ/a.ml" <<'EOF'
 let greeting = "hello"

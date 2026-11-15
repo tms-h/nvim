@@ -1876,6 +1876,40 @@ check("A plain `nvim file` owns no project", function()
   expect(got == "nil", "got: " .. got)
 end)
 
+check("A bare start reopens the project a window last had, not the one it left", function()
+  -- 2026-11-15: bare starts kept reopening ISErepo. Switching away saves the
+  -- folder being left, so its session was the newest file, while the folder
+  -- switched to saved nothing (no file open) or never got to save (killed).
+  local a, b = proj .. "/last-a", proj .. "/last-b"
+  for _, dir in ipairs { a, b } do
+    vim.fn.mkdir(dir, "p")
+    vim.fn.writefile({ "let x = 0" }, dir .. "/x.ml")
+  end
+  a, b = vim.uv.fs_realpath(a), vim.uv.fs_realpath(b)
+  -- Open `from` with a file, switch to `to`, then end the window with `quit`.
+  local function switch(from, to, quit)
+    return string.format(
+      "(function() local P = require('projects') P.open_folder(%q) vim.cmd.edit('x.ml') "
+        .. "P.open_folder(%q) %s return '' end)()",
+      from,
+      to,
+      quit
+    )
+  end
+  -- As Neovide windows: the checks run inside tmux, where no project is
+  -- reopened or recorded.
+  local as_neovide = { "--cmd", "let g:neovide = v:true" }
+  local function bare_start()
+    return other_nvim("/", as_neovide, "tostring(require('projects').current())")
+  end
+  other_nvim("/", as_neovide, switch(a, b, ""))
+  local after_quit = bare_start()
+  other_nvim("/", as_neovide, switch(b, a, "vim.uv.kill(vim.fn.getpid(), 'sigkill')"))
+  local after_kill = bare_start()
+  expect(after_quit == b, "after a switch to last-b and a quit, a bare start opened " .. after_quit)
+  expect(after_kill == a, "after a switch to last-a and a kill, a bare start opened " .. after_kill)
+end)
+
 check("With only an image copied, p pastes no binary and says one line; y and p still use the clipboard", function()
   -- 2026-11-13: a screenshot alone on the clipboard; Neovim's own provider
   -- ran `wl-paste` with no type and `p` pasted the PNG's bytes. Another

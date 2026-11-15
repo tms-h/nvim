@@ -2,8 +2,9 @@
 -- splits), saved on exit and when you switch folders.
 --
 --   nvim / neovide          open the project you started in (its repository
---                           root), else the last project no other window has
---                           open (two windows never show the same project)
+--                           root), else the project a window last opened or
+--                           closed on that no other window has open (two
+--                           windows never show the same project)
 --   nvim some/folder        open that folder: its session and the tree
 --   Alt/Cmd+O, :OpenFolder  switch this window to another folder; in that
 --                           picker Alt/Cmd+N makes the typed folder (a bare
@@ -24,6 +25,13 @@ local is_windows = require("util").is_windows
 local in_mux = require("util").in_mux
 
 local session_dir = vim.fn.stdpath "state" .. "/sessions"
+-- When each project was last in use: one file per project holding its path,
+-- written when a window opens the project and when that window closes. Its
+-- time, not the session's, picks the project to reopen: switching away saves
+-- the folder being left, which made it look newest, and a window closed with
+-- no file open removes its own session (a bare start kept reopening ISErepo
+-- after a switch away from it, 2026-11-15).
+local used_dir = vim.fn.stdpath "state" .. "/projects-used"
 -- Shared with every config generation, so the old and new config see each
 -- other's windows.
 local open_dir = (vim.env.XDG_STATE_HOME or vim.fn.expand "~/.local/state") .. "/nvim/open-projects"
@@ -108,22 +116,44 @@ end
 
 -- ── Sessions ──────────────────────────────────────────────────────────────
 
--- When a file last changed, in seconds (0 when it is gone).
+-- When a file last changed, in seconds (0 when it is gone). Fractions of a
+-- second count: a switch can open two projects within one.
 local function mtime(file)
   local stat = uv.fs_stat(file)
-  return stat and stat.mtime.sec or 0
+  return stat and stat.mtime.sec + stat.mtime.nsec / 1e9 or 0
 end
 
----Session files, newest first.
-function M.sessions()
-  local files, time = vim.fn.glob(session_dir .. "/*.vim", false, true), {}
-  for _, file in ipairs(files) do
-    time[file] = mtime(file)
+-- Marks `dir` (normalized) as this window's project as of now.
+local function mark_used(dir)
+  if in_mux or not dir then
+    return
   end
-  table.sort(files, function(a, b)
-    return time[a] > time[b]
+  vim.fn.mkdir(used_dir, "p")
+  vim.fn.writefile({ dir }, used_dir .. "/" .. dir:gsub("[/\\:]", "%%"))
+end
+
+---Projects by when a window last had them open, newest first, as
+---`{ dir, time }`. A project not opened since these records began goes by
+---its session's time.
+function M.recent()
+  local time = {}
+  for _, file in ipairs(vim.fn.glob(session_dir .. "/*.vim", false, true)) do
+    time[dir_of_session(file)] = mtime(file)
+  end
+  for _, file in ipairs(vim.fn.glob(used_dir .. "/*", false, true)) do
+    local ok, lines = pcall(vim.fn.readfile, file)
+    if ok and lines[1] and lines[1] ~= "" then
+      time[lines[1]] = mtime(file)
+    end
+  end
+  local list = {}
+  for dir, t in pairs(time) do
+    list[#list + 1] = { dir = dir, time = t }
+  end
+  table.sort(list, function(a, b)
+    return a.time > b.time
   end)
-  return files
+  return list
 end
 
 local function has_files()
@@ -180,11 +210,12 @@ local function load_session(dir)
   end
 end
 
----The newest project with a session that no other window has open.
+---The project a window last opened or closed on that no other window has
+---open now.
 function M.last_project()
   local elsewhere = M.open_elsewhere()
-  for _, file in ipairs(M.sessions()) do
-    local dir = dir_of_session(file)
+  for _, used in ipairs(M.recent()) do
+    local dir = used.dir
     if vim.fn.isdirectory(dir) == 1 and not elsewhere[normalize(dir)] and is_project(dir) then
       return dir
     end
@@ -224,6 +255,7 @@ function M.open_folder(path, opts)
   vim.cmd.cd(vim.fn.fnameescape(path))
   project = path
   record_open()
+  mark_used(path)
   load_session(path)
   vim.schedule(require("explorer").show)
 end
@@ -297,14 +329,14 @@ function M.pick_folder()
     end
   end
   local config = normalize(vim.fn.stdpath "config")
-  for _, file in ipairs(M.sessions()) do
-    local dir = normalize(dir_of_session(file))
+  for _, used in ipairs(M.recent()) do
+    local dir = normalize(used.dir)
     -- Left out: home, / and temp folders (never a project) and agents'
     -- scratch folders under ~/.cache. This config stays: it opens, it just
     -- keeps no session.
     local listed = dir and (is_project(dir) or dir == config) and not vim.startswith(dir, scratch .. "/")
     if listed and vim.fn.isdirectory(dir) == 1 then
-      add(dir, ago(mtime(file)))
+      add(dir, ago(used.time))
     end
   end
   local recent = #items
@@ -417,6 +449,9 @@ function M.setup()
     group = group,
     callback = function()
       os.remove(open_file)
+      -- The window closed last on a project reopens it, even when its
+      -- session is removed for having no file open.
+      mark_used(project)
       M.save()
     end,
   })
@@ -429,8 +464,10 @@ function M.setup()
   end, { nargs = "?", complete = "dir", desc = "Open a folder" })
 
   -- Startup: a folder argument opens that folder. No argument opens the
-  -- folder Neovim started in when it is a project, else the last project
-  -- nobody else has open. Files and stdin open as given.
+  -- folder Neovim started in when it is a project, else the project a window
+  -- last opened or closed on (M.recent: the time it was in use, not when its
+  -- session was saved) that nobody else has open. Files and stdin open as
+  -- given.
   -- (Read now: by VimEnter a folder argument's buffer can be replaced.)
   local argv = vim.fn.argv()
   local start_dir = #argv == 1 and vim.fn.isdirectory(argv[1]) == 1 and argv[1] or nil
