@@ -2511,9 +2511,13 @@ check("OCaml der expands to [@@deriving ...]; typing replaces the list", functio
   press("<Esc>", 100)
   press("otype u = int<CR>der ", 300)
   press("sexp<Esc>", 100)
-  press("olet der = 1", 300)
-  press("<Esc>", 100)
+  press("olet der ", 300)
+  press("= 1<Esc>", 100)
   press("otype_price ", 300)
+  press("<Esc>", 100)
+  press("o| Some der ", 300)
+  press("-> ()<Esc>", 100)
+  press("oand y = f der ", 300)
   press("<Esc>", 100)
   local got = api.nvim_buf_get_lines(0, 0, -1, false)
   vim.cmd "bwipeout!"
@@ -2523,6 +2527,29 @@ check("OCaml der expands to [@@deriving ...]; typing replaces the list", functio
   expect(got[3] == "[@@deriving sexp]", "own line, typed over: " .. vim.inspect(got))
   expect(got[4] == "let der = 1", "der in code expanded: " .. vim.inspect(got))
   expect(got[5] == "type price = int [@@deriving sexp, compare, equal]", "type_price: " .. vim.inspect(got))
+  expect(got[6] == "| Some der -> ()", "der in a match arm expanded: " .. vim.inspect(got))
+  expect(got[7] == "and y = f der", "der after and expanded: " .. vim.inspect(got))
+end)
+
+check("Space o s lists the OCaml snippets; Enter types the trigger below", function()
+  local file = proj .. "/snippick.ml"
+  vim.cmd("edit " .. file)
+  press(" os", 800)
+  local active = MiniPick.is_picker_active()
+  local items = active and MiniPick.get_picker_items() or {}
+  local texts = vim.tbl_map(function(it)
+    return it.text
+  end, items)
+  press("rec_walk", 300)
+  press("<CR>", 400)
+  press("walk ", 300)
+  press("<Esc>", 100)
+  local got = vim.tbl_map(vim.trim, api.nvim_buf_get_lines(0, 0, -1, false))
+  vim.cmd "bwipeout!"
+  vim.fn.delete(file)
+  expect(active, "Space o s opened no picker")
+  expect(#items >= 9 and texts[1]:find("[@@deriving", 1, true), "items: " .. vim.inspect(texts))
+  expect(vim.tbl_contains(got, "let rec walk arg ="), "Enter then walk gave: " .. vim.inspect(got))
 end)
 
 check("OCaml snippets expand as you type; auto-brackets after a function", function()

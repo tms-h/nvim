@@ -3,6 +3,7 @@
 --   <leader>oi  switch .ml / .mli        <leader>of  format now
 --   <leader>ob  dune build               <leader>ot  dune test, this folder
 --   <leader>ow  dune test -w, this folder <leader>op  dune promote, this file only
+--   <leader>os  list the snippets (Tab previews, Enter types the trigger)
 --   gt{motion} / gt on a selection / gtt   wrap in (fun () -> ...)
 local M = {}
 
@@ -210,6 +211,9 @@ function M.setup(buf)
   map("<leader>oi", function()
     M.switch(buf)
   end, "switch .ml/.mli")
+  map("<leader>os", function()
+    require("snippets").pick()
+  end, "snippets")
   map("<leader>of", function()
     require("lsp").format_ocaml(buf)
   end, "format")
