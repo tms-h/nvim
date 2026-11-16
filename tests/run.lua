@@ -2504,6 +2504,21 @@ check("A second OCaml snippet expands in the same buffer", function()
   expect(got:find("let rec walk", 1, true), "second snippet stayed as typed: " .. got)
 end)
 
+check("OCaml qc_ types the input type once for the generator and the printer", function()
+  local file = proj .. "/snipqc.ml"
+  vim.cmd("edit " .. file)
+  press("iqc_rev_twice ", 300)
+  press("string list", 200)
+  press("<Tab>", 100)
+  press("<Esc>", 100)
+  local got = table.concat(api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+  vim.cmd "bwipeout!"
+  vim.fn.delete(file)
+  expect(got:find('let%test_unit "rev twice" =', 1, true), "qc_ header: " .. got)
+  expect(got:find("[%quickcheck.generator: string list]", 1, true), "generator type: " .. got)
+  expect(got:find("[%sexp_of: string list]", 1, true), "printer type not mirrored: " .. got)
+end)
+
 check("OCaml der expands to [@@deriving ...]; typing replaces the list", function()
   local file = proj .. "/snipder.ml"
   vim.cmd("edit " .. file)

@@ -1,6 +1,6 @@
 -- OCaml snippets that expand as you type, from the old config: on a line of
 -- its own, `mod_board` then Space becomes `module Board = struct ... end`;
--- likewise rec_, test_, expect_, record_, variant_, type_ and orerror_.
+-- likewise rec_, test_, expect_, qc_, record_, variant_, type_ and orerror_.
 -- `der` then Space, on a line of its own or ending a `type` line, becomes
 -- `[@@deriving sexp, compare, equal]` with the list selected: type to replace
 -- it, Tab to keep it. Tab / Shift+Tab move through the fields (vim.snippet).
@@ -62,6 +62,17 @@ local OCAML = {
       return 'let%expect_test "'
         .. title(n)
         .. '" =\n\t${1:print_endline "TODO"};\n\t[%expect {|\n\t\t${0:TODO}\n\t|\\}]'
+    end,
+  },
+  {
+    -- A property test: type the input type once (the generator and the printer
+    -- share it), then the property.
+    trigger = "qc_",
+    example = "round_trips",
+    body = function(n)
+      return 'let%test_unit "'
+        .. title(n)
+        .. '" =\n\tQuickcheck.test\n\t\t[%quickcheck.generator: ${1:int list}]\n\t\t~sexp_of:[%sexp_of: $1]\n\t\t~f:(fun ${2:x} -> [%test_result: ${3:int list}] ${4:got} ~expect:${0:want})'
     end,
   },
   {
