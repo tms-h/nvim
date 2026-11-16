@@ -2541,6 +2541,13 @@ check("Space o s lists the OCaml snippets; Enter types the trigger below", funct
     return it.text
   end, items)
   press("rec_walk", 300)
+  press("<Tab>", 400)
+  local state = MiniPick.get_picker_state()
+  local preview = state and api.nvim_win_get_buf(state.windows.main)
+  local shown = preview and table.concat(api.nvim_buf_get_lines(preview, 0, -1, false), "\n") or ""
+  local preview_ft = preview and vim.bo[preview].filetype
+  local preview_lsp = preview and #vim.lsp.get_clients { bufnr = preview } or 0
+  press("<Tab>", 200)
   press("<CR>", 400)
   press("walk ", 300)
   press("<Esc>", 100)
@@ -2550,6 +2557,8 @@ check("Space o s lists the OCaml snippets; Enter types the trigger below", funct
   expect(active, "Space o s opened no picker")
   expect(#items >= 9 and texts[1]:find("[@@deriving", 1, true), "items: " .. vim.inspect(texts))
   expect(vim.tbl_contains(got, "let rec walk arg ="), "Enter then walk gave: " .. vim.inspect(got))
+  expect(shown:find("let rec walk", 1, true), "Tab preview showed: " .. shown)
+  expect(preview_ft == "" and preview_lsp == 0, "preview ran OCaml setup: ft=" .. tostring(preview_ft) .. " lsp=" .. preview_lsp)
 end)
 
 check("OCaml snippets expand as you type; auto-brackets after a function", function()

@@ -159,9 +159,11 @@ function M.pick()
     source = {
       name = "OCaml snippets (type the trigger, then Space)",
       items = items,
+      -- Colour only: filetype=ocaml would run the OCaml setup (ocp-indent,
+      -- keys, ruler, ocamllsp) on this scratch buffer and the picker window.
       preview = function(buf, item)
         api.nvim_buf_set_lines(buf, 0, -1, false, item.lines)
-        vim.bo[buf].filetype = "ocaml"
+        pcall(vim.treesitter.start, buf, "ocaml")
       end,
       choose = function(item)
         vim.schedule(function()
