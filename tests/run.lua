@@ -2504,6 +2504,27 @@ check("A second OCaml snippet expands in the same buffer", function()
   expect(got:find("let rec walk", 1, true), "second snippet stayed as typed: " .. got)
 end)
 
+check("OCaml der expands to [@@deriving ...]; typing replaces the list", function()
+  local file = proj .. "/snipder.ml"
+  vim.cmd("edit " .. file)
+  press("itype t = int der ", 300)
+  press("<Esc>", 100)
+  press("otype u = int<CR>der ", 300)
+  press("sexp<Esc>", 100)
+  press("olet der = 1", 300)
+  press("<Esc>", 100)
+  press("otype_price ", 300)
+  press("<Esc>", 100)
+  local got = api.nvim_buf_get_lines(0, 0, -1, false)
+  vim.cmd "bwipeout!"
+  vim.fn.delete(file)
+  got = vim.tbl_map(vim.trim, got)
+  expect(got[1] == "type t = int [@@deriving sexp, compare, equal]", "same line: " .. vim.inspect(got))
+  expect(got[3] == "[@@deriving sexp]", "own line, typed over: " .. vim.inspect(got))
+  expect(got[4] == "let der = 1", "der in code expanded: " .. vim.inspect(got))
+  expect(got[5] == "type price = int [@@deriving sexp, compare, equal]", "type_price: " .. vim.inspect(got))
+end)
+
 check("OCaml snippets expand as you type; auto-brackets after a function", function()
   local file = proj .. "/snip.ml"
   vim.cmd("edit " .. file)
