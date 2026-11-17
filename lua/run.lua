@@ -64,7 +64,7 @@ function M.current_file()
 end
 
 function M.lazygit()
-  if vim.fn.executable "lazygit" == 0 then
+  if not tools.find "lazygit" then
     vim.notify "lazygit is not installed"
     return
   end

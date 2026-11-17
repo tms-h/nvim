@@ -9,6 +9,7 @@
 local M = {}
 
 local api = vim.api
+local tools = require "tools"
 
 -- Started only when the program is installed, so a machine without one is
 -- silent about it.
@@ -66,6 +67,18 @@ local function apply_output(buf, stdout)
   end
 end
 
+---Run a formatter on the buffer's text (stdin) and take its output. When it
+---fails (a syntax error, unbalanced parentheses), the buffer stays as typed
+---and this returns false.
+local function run_formatter(buf, args, cwd)
+  local result = vim.system(args, { stdin = buffer_text(buf), cwd = cwd, text = true }):wait(5000)
+  if result.code ~= 0 then
+    return false
+  end
+  apply_output(buf, result.stdout)
+  return true
+end
+
 ---Re-indent with ocp-indent: leading spaces only, so a project that turns
 ---ocamlformat off still gets Jane Street indentation. `lines` ("X-Y",
 ---1-based) limits it to those lines; nil = the whole buffer.
@@ -80,7 +93,7 @@ end
 ---("X-Y", 1-based): lines a tool just wrote; when the file does not parse
 ---(unfinished code elsewhere), those lines are still re-indented.
 function M.format_ocaml(buf, lines)
-  local ocamlformat = require("tools").find "ocamlformat"
+  local ocamlformat = tools.find "ocamlformat"
   local file = api.nvim_buf_get_name(buf)
   local dir = vim.fs.dirname(file)
   -- The file's folder was moved or deleted on disk: running a formatter there
@@ -98,11 +111,8 @@ function M.format_ocaml(buf, lines)
   if not conf then
     table.insert(args, 2, "--profile=janestreet")
   end
-  local result = vim.system(args, { stdin = buffer_text(buf), cwd = dir, text = true }):wait(5000)
-  -- A syntax error: leave the file as typed; the error is in diagnostics.
-  if result.code == 0 then
-    apply_output(buf, result.stdout)
-  elseif lines then
+  -- A syntax error: the file stays as typed (the error is in diagnostics).
+  if not run_formatter(buf, args, dir) and lines then
     indent_ocaml(buf, dir, lines)
   end
 end
@@ -110,30 +120,21 @@ end
 ---Prettier for Markdown: lines up table pipes and tidies lists. Prose
 ---wrapping is left as typed (`--prose-wrap preserve`).
 local function format_markdown(buf)
-  local prettier = require("tools").find "prettier"
+  local prettier = tools.find "prettier"
   if not prettier then
     return
   end
   local file = api.nvim_buf_get_name(buf)
-  local args = { prettier, "--stdin-filepath", file ~= "" and file or "untitled.md", "--prose-wrap", "preserve" }
-  local result = vim.system(args, { stdin = buffer_text(buf), text = true }):wait(5000)
-  -- Broken Markdown: leave the file as typed.
-  if result.code == 0 then
-    apply_output(buf, result.stdout)
-  end
+  run_formatter(buf, { prettier, "--stdin-filepath", file ~= "" and file or "untitled.md", "--prose-wrap", "preserve" })
 end
 
 ---dune format-dune-file for dune, dune-project and dune-workspace files.
 local function format_dune(buf)
-  local dune = require("tools").find "dune"
+  local dune = tools.find "dune"
   if not dune then
     return
   end
-  local result = vim.system({ dune, "format-dune-file" }, { stdin = buffer_text(buf), text = true }):wait(5000)
-  -- Unbalanced parentheses: leave the file as typed.
-  if result.code == 0 then
-    apply_output(buf, result.stdout)
-  end
+  run_formatter(buf, { dune, "format-dune-file" })
 end
 
 -- ruff formats Python; pyright does not.
@@ -482,7 +483,7 @@ end
 function M.setup()
   codelens_current_text_only()
   for name, cmd in pairs(SERVERS) do
-    if require("tools").find(cmd) then
+    if tools.find(cmd) then
       vim.lsp.enable(name)
     end
   end
