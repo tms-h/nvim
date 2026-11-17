@@ -3229,6 +3229,51 @@ check("A failing expect test from dune -w is an error at its [%expect] with only
   vim.diagnostic.reset(nil, buf)
 end)
 
+check("A failing expect test from a colour terminal's dune -w shows what the test printed", function()
+  -- Captured from ocamllsp 2026-11-17 (dune 3.23, `dune test -w` in a colour
+  -- terminal, so patdiff ran without -ascii): a one-line change comes as a
+  -- single `!|` line, old and new words run together, told apart only by
+  -- colour. Context lines trimmed.
+  local message = table.concat({
+    "(cd _build/default && /x/patdiff -keep-whitespace -location-style omake units/t.ml units/t.ml.corrected)",
+    "------ units/t.ml",
+    "++++++ units/t.ml.corrected",
+    'File "units/t.ml", line 3, characters 0-1:',
+    " |  [%expect",
+    " |    {|",
+    "!|    (proj/readme.md proj/src/main.ml)",
+    " |    (big.iso)",
+    " |    |}]",
+  }, "\n")
+  local zero = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 0 } }
+  local d = { range = zero, source = "dune", message = message }
+  -- Dune 3.23 keeps the .corrected as _build/.promotion-staging/<file>.
+  local root = vim.fn.tempname()
+  vim.fn.mkdir(root .. "/_build/default/units", "p")
+  vim.fn.mkdir(root .. "/_build/.promotion-staging/units", "p")
+  local before = { "  [%expect", "    {|", "    (proj/readme.md proj/src/main.ml)", "    (big.iso)", "    |}]" }
+  local after = vim.deepcopy(before)
+  after[3] = "    (readme.md main.ml)"
+  vim.fn.writefile(before, root .. "/_build/default/units/t.ml")
+  vim.fn.writefile(after, root .. "/_build/.promotion-staging/units/t.ml")
+  local got = require("lsp").expect_diffs({ d }, root)
+  local shown = got[1] and got[1].message or ""
+  expect(
+    #got == 1
+      and got[1].range.start.line == 2
+      and shown:find("\n%-|    %(proj/readme.md proj/src/main.ml%)\n%+|    %(readme.md main.ml%)$"),
+    "from the build files: " .. vim.inspect(got)
+  )
+  -- Without the files, the message's own `!|` line shows, with a note.
+  local text = require("lsp").expect_diffs({ d })[1].message
+  expect(text:find("\n!|    (proj/readme.md proj/src/main.ml)\n(!| is", 1, true), "from the message: " .. text)
+  -- A hunk with no changed line found shows its lines, not the header alone.
+  local bare = message:gsub("!|", " |")
+  text = require("lsp").expect_diffs({ { range = zero, source = "dune", message = bare } })[1].message
+  expect(text:find(" |    (big.iso)", 1, true), "no changed line: " .. text)
+  vim.fn.delete(root, "rf")
+end)
+
 check("OCaml shows each top-level let's type above it (ocamllsp code lens)", function()
   vim.cmd "edit! b.ml"
   local buf = api.nvim_get_current_buf()

@@ -245,31 +245,109 @@ end
 
 local EXPECT_HEAD = ("expect test output differs (- expected, + got); %s Promote accepts it"):format(QUICK_FIX)
 
+---A file's text, or nil when it can't be read.
+local function read_file(path)
+  local f = io.open(path, "rb")
+  if not f then
+    return nil
+  end
+  local text = f:read "*a"
+  f:close()
+  return text
+end
+
+---The changed blocks between dune's two files (`old` the test as built,
+---`news` the places its .corrected may be), each as {line, s, e, lines}
+---with -|/+| lines, or nil when a file is gone or they no longer differ.
+local function hunks_from_files(old, news)
+  local ta, tb = read_file(old), nil
+  for _, new in ipairs(news) do
+    tb = tb or read_file(new)
+  end
+  if not (ta and tb) then
+    return nil
+  end
+  local indices = vim.text.diff(ta, tb, { result_type = "indices", algorithm = "histogram" }) --[[@as integer[][] ]]
+  if #indices == 0 then
+    return nil
+  end
+  local a, b = vim.split(ta, "\n", { plain = true }), vim.split(tb, "\n", { plain = true })
+  local hunks = {}
+  for _, h in ipairs(indices) do
+    local sa, ca, sb, cb = unpack(h)
+    local lines = { EXPECT_HEAD }
+    for i = sa, sa + ca - 1 do
+      lines[#lines + 1] = "-|" .. a[i]
+    end
+    for i = sb, sb + cb - 1 do
+      lines[#lines + 1] = "+|" .. b[i]
+    end
+    -- A pure insertion (ca == 0) comes after line sa, shown on that line.
+    hunks[#hunks + 1] = { line = math.max(sa - 1, 0), s = 0, e = 0, lines = lines }
+  end
+  return hunks
+end
+
+local MIXED_NOTE = "(!| is one changed line, its old and new words run together: colour told them apart)"
+
+---patdiff's hunks from the message text: its `File "...", line N,
+---characters a-b:` lines, then only the changed lines under each. A hunk
+---with no changed line found keeps all its lines, so the float never shows
+---the header alone.
+local function hunks_from_message(rest)
+  local hunks, cur = {}, nil
+  for line in (rest .. "\n"):gmatch "([^\n]*)\n" do
+    local lnum, s, e = line:match '^File "[^"]*", line (%d+), characters (%d+)%-(%d+)'
+    if lnum then
+      cur = { line = tonumber(lnum) - 1, s = tonumber(s), e = tonumber(e), lines = { EXPECT_HEAD }, all = {} }
+      hunks[#hunks + 1] = cur
+    elseif cur then
+      cur.all[#cur.all + 1] = line
+      if line:match "^[-+!]|" then
+        cur.lines[#cur.lines + 1] = line
+        cur.mixed = cur.mixed or line:match "^!|" ~= nil
+      end
+    end
+  end
+  for _, h in ipairs(hunks) do
+    if #h.lines == 1 then
+      vim.list_extend(h.lines, h.all)
+    elseif h.mixed then
+      h.lines[#h.lines + 1] = MIXED_NOTE
+    end
+  end
+  return hunks
+end
+
 ---A failing expect test reaches ocamllsp from `dune test -w` (Dune RPC) as
----one error on line 1 holding the diff's `------ file` / `++++++
----file.corrected` header and a diff that shows the whole file; with `CI` set,
----dune puts its `(cd _build/default && patdiff ...)` command line first.
----Turn it into one error per changed block, on that block's line, reading
----the header above and then only the changed lines. Other diagnostics pass
----as they are. `diagnostics` are LSP ones (0-based ranges).
-function M.expect_diffs(diagnostics)
+---one error on line 1: dune's `(cd _build/default && patdiff ... old new)`
+---command, the diff's `------ old` / `++++++ new` header, then patdiff's
+---hunks with the whole file around them, styles dropped. When dune's
+---terminal has colour, patdiff runs without `-ascii` and shows a one-line
+---change as a single `!|` line holding the old and new words together,
+---told apart only by colour, so the text alone can't say what the test
+---printed. Turn it into one error per changed block, on that block's line,
+---with the header above and then only the changed lines, taken from a diff
+---of the two files under `root`, or from the message's own hunks when
+---those files can't be read. Dune 3.23 keeps `new` (the .corrected) not in
+---_build/default but as `_build/.promotion-staging/<old>`. Other
+---diagnostics pass as they are. `diagnostics` are LSP ones (0-based ranges).
+function M.expect_diffs(diagnostics, root)
   local out = {}
   for _, d in ipairs(diagnostics) do
+    local dir = d.message:match "^%(cd (%S+) &&" or "_build/default"
     local rest = d.message:gsub("^%(cd [^\n]*%)\n", "", 1)
     -- patdiff's header is ------/++++++, diff -u's ---/+++.
-    if d.source ~= "dune" or not rest:find "^%-%-%-[^\n]*\n%+%+%+" then
+    local old, new = rest:match "^%-%-%-+ ([^\n]*)\n%+%+%++ ([^\n]*)"
+    if d.source ~= "dune" or not old then
       out[#out + 1] = d
     else
-      local hunks, cur = {}, nil
-      for line in (rest .. "\n"):gmatch "([^\n]*)\n" do
-        local lnum, s, e = line:match '^File "[^"]*", line (%d+), characters (%d+)%-(%d+)'
-        if lnum then
-          cur = { line = tonumber(lnum) - 1, s = tonumber(s), e = tonumber(e), lines = { EXPECT_HEAD } }
-          hunks[#hunks + 1] = cur
-        elseif cur and line:match "^[-+]|" then
-          cur.lines[#cur.lines + 1] = line
-        end
-      end
+      local hunks = root
+          and hunks_from_files(vim.fs.joinpath(root, dir, old), {
+            vim.fs.joinpath(root, dir, new),
+            vim.fs.joinpath(root, dir:match "^[^/]+", ".promotion-staging", old),
+          })
+        or hunks_from_message(rest)
       if #hunks == 0 then
         -- Plain diff (no patdiff): no locations, so line 1 with the diff.
         out[#out + 1] = vim.tbl_extend("force", d, { message = EXPECT_HEAD .. "\n" .. rest })
@@ -437,7 +515,8 @@ function M.setup()
   vim.lsp.handlers["textDocument/publishDiagnostics"] = function(err, result, ctx, ...)
     local client = vim.lsp.get_client_by_id(ctx.client_id)
     if result and client and client.name == "ocamllsp" then
-      result = vim.tbl_extend("force", result, { diagnostics = M.destruct_hint(M.expect_diffs(result.diagnostics)) })
+      local diagnostics = M.destruct_hint(M.expect_diffs(result.diagnostics, client.root_dir))
+      result = vim.tbl_extend("force", result, { diagnostics = diagnostics })
     end
     return publish(err, result, ctx, ...)
   end
