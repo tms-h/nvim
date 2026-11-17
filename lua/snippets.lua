@@ -56,12 +56,14 @@ local OCAML = {
     end,
   },
   {
+    -- Prints with print_s, the Jane Street default, so the test reads the value
+    -- as a sexp; the [%expect] block starts empty for Space o p to promote.
     trigger = "expect_",
     example = "prints_book",
     body = function(n)
       return 'let%expect_test "'
         .. title(n)
-        .. '" =\n\t${1:print_endline "TODO"};\n\t[%expect {|\n\t\t${0:TODO}\n\t|\\}]'
+        .. '" =\n\tprint_s [%sexp (${1:value} : ${2:t})];\n\t[%expect {|$0|\\}]'
     end,
   },
   {
