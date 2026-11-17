@@ -9,6 +9,7 @@
 local M = {}
 
 local api = vim.api
+local tools = require "tools"
 
 -- Started only when the program is installed, so a machine without one is
 -- silent about it.
@@ -92,7 +93,7 @@ end
 ---("X-Y", 1-based): lines a tool just wrote; when the file does not parse
 ---(unfinished code elsewhere), those lines are still re-indented.
 function M.format_ocaml(buf, lines)
-  local ocamlformat = require("tools").find "ocamlformat"
+  local ocamlformat = tools.find "ocamlformat"
   local file = api.nvim_buf_get_name(buf)
   local dir = vim.fs.dirname(file)
   -- The file's folder was moved or deleted on disk: running a formatter there
@@ -119,7 +120,7 @@ end
 ---Prettier for Markdown: lines up table pipes and tidies lists. Prose
 ---wrapping is left as typed (`--prose-wrap preserve`).
 local function format_markdown(buf)
-  local prettier = require("tools").find "prettier"
+  local prettier = tools.find "prettier"
   if not prettier then
     return
   end
@@ -129,7 +130,7 @@ end
 
 ---dune format-dune-file for dune, dune-project and dune-workspace files.
 local function format_dune(buf)
-  local dune = require("tools").find "dune"
+  local dune = tools.find "dune"
   if not dune then
     return
   end
@@ -482,7 +483,7 @@ end
 function M.setup()
   codelens_current_text_only()
   for name, cmd in pairs(SERVERS) do
-    if require("tools").find(cmd) then
+    if tools.find(cmd) then
       vim.lsp.enable(name)
     end
   end
