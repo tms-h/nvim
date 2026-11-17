@@ -66,6 +66,18 @@ local function apply_output(buf, stdout)
   end
 end
 
+---Run a formatter on the buffer's text (stdin) and take its output. When it
+---fails (a syntax error, unbalanced parentheses), the buffer stays as typed
+---and this returns false.
+local function run_formatter(buf, args, cwd)
+  local result = vim.system(args, { stdin = buffer_text(buf), cwd = cwd, text = true }):wait(5000)
+  if result.code ~= 0 then
+    return false
+  end
+  apply_output(buf, result.stdout)
+  return true
+end
+
 ---Re-indent with ocp-indent: leading spaces only, so a project that turns
 ---ocamlformat off still gets Jane Street indentation. `lines` ("X-Y",
 ---1-based) limits it to those lines; nil = the whole buffer.
@@ -98,11 +110,8 @@ function M.format_ocaml(buf, lines)
   if not conf then
     table.insert(args, 2, "--profile=janestreet")
   end
-  local result = vim.system(args, { stdin = buffer_text(buf), cwd = dir, text = true }):wait(5000)
-  -- A syntax error: leave the file as typed; the error is in diagnostics.
-  if result.code == 0 then
-    apply_output(buf, result.stdout)
-  elseif lines then
+  -- A syntax error: the file stays as typed (the error is in diagnostics).
+  if not run_formatter(buf, args, dir) and lines then
     indent_ocaml(buf, dir, lines)
   end
 end
@@ -115,12 +124,7 @@ local function format_markdown(buf)
     return
   end
   local file = api.nvim_buf_get_name(buf)
-  local args = { prettier, "--stdin-filepath", file ~= "" and file or "untitled.md", "--prose-wrap", "preserve" }
-  local result = vim.system(args, { stdin = buffer_text(buf), text = true }):wait(5000)
-  -- Broken Markdown: leave the file as typed.
-  if result.code == 0 then
-    apply_output(buf, result.stdout)
-  end
+  run_formatter(buf, { prettier, "--stdin-filepath", file ~= "" and file or "untitled.md", "--prose-wrap", "preserve" })
 end
 
 ---dune format-dune-file for dune, dune-project and dune-workspace files.
@@ -129,11 +133,7 @@ local function format_dune(buf)
   if not dune then
     return
   end
-  local result = vim.system({ dune, "format-dune-file" }, { stdin = buffer_text(buf), text = true }):wait(5000)
-  -- Unbalanced parentheses: leave the file as typed.
-  if result.code == 0 then
-    apply_output(buf, result.stdout)
-  end
+  run_formatter(buf, { dune, "format-dune-file" })
 end
 
 -- ruff formats Python; pyright does not.
