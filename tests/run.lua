@@ -33,6 +33,22 @@ local function press(keys, ms)
   wait(ms or 150)
 end
 
+---Wait, 50 ms at a time, until cond() holds or ms (default 3000) pass. For
+---work whose length depends on the machine's load, where a fixed wait loses
+---the race: in a full run at load 16 the tree was not yet focused 300 ms
+---after the first Alt+B (2026-11-19); run alone, the same check passed.
+local function wait_until(cond, ms)
+  local waited = 0
+  while not cond() and waited < (ms or 3000) do
+    wait(50)
+    waited = waited + 50
+  end
+end
+
+local function tree_focused()
+  return vim.bo.filetype == "NvimTree"
+end
+
 local function mode()
   return api.nvim_get_mode().mode
 end
@@ -177,7 +193,8 @@ end)
 
 check("stray keys in the tree: no popups, at most one short line each", function()
   press(super "b", 300)
-  expect(vim.bo.filetype == "NvimTree", "tree not focused")
+  wait_until(tree_focused)
+  expect(tree_focused(), "tree not focused")
   local before = floats()
   local stray = {
     "i",
@@ -343,7 +360,8 @@ end)
 
 check("Alt/Cmd+W closes the focused thing: the tree, a split, a float, help", function()
   press(super "b", 300)
-  expect(vim.bo.filetype == "NvimTree", "tree not focused")
+  wait_until(tree_focused)
+  expect(tree_focused(), "tree not focused")
   press(super "w", 200)
   expect(not require("nvim-tree.api").tree.is_visible(), "tree still visible")
   vim.cmd "vsplit b.ml"
@@ -627,7 +645,8 @@ check("the tree shows the folder name and opens files in the last editor, no pro
   -- Focus the terminal last, then open a file from the tree.
   api.nvim_set_current_win(term)
   press(super "b", 400)
-  expect(vim.bo.filetype == "NvimTree", "tree not focused")
+  wait_until(tree_focused)
+  expect(tree_focused(), "tree not focused")
   local first = api.nvim_buf_get_lines(0, 0, 1, false)[1] or ""
   local folder = vim.fn.fnamemodify(proj, ":t")
   expect(vim.trim(first):find(folder, 1, true) and #vim.trim(first) <= #folder + 4, "top line is '" .. first .. "'")
