@@ -307,7 +307,7 @@ local function missing_parsers()
 end
 vim.schedule(function()
   local missing = missing_parsers()
-  if #missing > 0 and vim.fn.executable "tree-sitter" == 1 then
+  if #missing > 0 and require("tools").find "tree-sitter" then
     -- force: a parser already in place still gets its query link redone.
     require("nvim-treesitter").install(missing, { force = true })
   end
