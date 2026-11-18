@@ -232,14 +232,19 @@ local QUICK_FIX = require("util").is_macos and "Cmd+." or "Alt+."
 ---ocamllsp's "this pattern-matching is not exhaustive" (warning 8) gets the
 ---key that writes the missing cases at the end of its first line. Destruct
 ---needs the cursor on a case's pattern: on the `match` keyword, where ]d
----lands, it wraps the whole match in a new one.
+---lands, it wraps the whole match in a new one. When every case has a
+---`when` guard the compiler can't see the guards cover everything, and
+---Destruct has no constructors to add (an int match), so that message gets
+---the real fix instead: make the last case unguarded.
 function M.destruct_hint(diagnostics)
   return vim.tbl_map(function(d)
     if not d.message:find("pattern-matching is not exhaustive", 1, true) then
       return d
     end
     local first, rest = d.message:match "^([^\n]*)(.*)$"
-    local hint = (" %s on a case's pattern (after a |): Destruct adds the missing cases"):format(QUICK_FIX)
+    local hint = rest:find("All clauses in this pattern-matching are guarded", 1, true)
+        and " guards are never checked for coverage: drop the `when` on the last case"
+      or (" %s on a case's pattern (after a |): Destruct adds the missing cases"):format(QUICK_FIX)
     return vim.tbl_extend("force", d, { message = first .. hint .. rest })
   end, diagnostics)
 end
