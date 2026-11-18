@@ -3149,6 +3149,18 @@ check("vim-surround: ys, cs, ds, visual S, and . repeats ys; each key has a name
   expect(vim.fn.maparg("S", "n", false, true).desc == "Change, keep the clipboard", "normal S changed")
 end)
 
+check("vim-surround's <Plug> keys say what they do (tools/lookup check)", function()
+  -- plugins.lua remaps these five; lookup.py check counts a desc that is
+  -- empty or only the keys it runs ("<Cmd>call ...") as none.
+  local plugs = { { "n", "Dsurround" }, { "n", "Csurround" }, { "n", "CSurround" } }
+  vim.list_extend(plugs, { { "x", "VSurround" }, { "x", "VgSurround" } })
+  for _, k in ipairs(plugs) do
+    local m = vim.fn.maparg("<Plug>" .. k[2], k[1], false, true)
+    local named = m.desc and m.desc ~= "" and not m.desc:find "^<"
+    expect(named, k[1] .. " <Plug>" .. k[2] .. " desc: " .. vim.inspect(m.desc))
+  end
+end)
+
 check("OCaml gt wraps a motion, a selection or a line in (fun () -> ...)", function()
   vim.cmd "edit! c.ml"
   api.nvim_buf_set_lines(0, 0, -1, false, { "let x = foo bar", "  let y = é 1", "let z = 3" })

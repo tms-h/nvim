@@ -33,12 +33,12 @@ vim.api.nvim_create_autocmd("SourcePost", {
       return
     end
     local f = ("<SNR>%d_"):format(info.sid)
-    local function call(plug, body)
-      vim.keymap.set("n", plug, "<Cmd>call " .. f .. body .. "<CR>", { silent = true })
+    local function call(plug, body, desc)
+      vim.keymap.set("n", plug, "<Cmd>call " .. f .. body .. "<CR>", { silent = true, desc = desc })
     end
-    call("<Plug>Dsurround", ("dosurround(%sinputtarget())"):format(f))
-    call("<Plug>Csurround", "changesurround()")
-    call("<Plug>CSurround", "changesurround(1)")
+    call("<Plug>Dsurround", ("dosurround(%sinputtarget())"):format(f), "Surround: delete (ds)")
+    call("<Plug>Csurround", "changesurround()", "Surround: change (cs)")
+    call("<Plug>CSurround", "changesurround(1)", "Surround: change, new pair on its own lines (cS)")
     -- Visual S / gS. A characterwise selection that takes in the line break
     -- (v$, or ending past the last letter) is cut back to the line's last
     -- letter, and one that starts on a line break begins on the next line:
@@ -63,8 +63,13 @@ vim.api.nvim_create_autocmd("SourcePost", {
         vim.fn[f .. "opfunc"](mode, (mode == "V") == block_when_linewise and 1 or 0)
       end
     end
-    vim.keymap.set("x", "<Plug>VSurround", visual(true), { silent = true })
-    vim.keymap.set("x", "<Plug>VgSurround", visual(false), { silent = true })
+    vim.keymap.set("x", "<Plug>VSurround", visual(true), { silent = true, desc = "Surround: wrap the selection (S)" })
+    vim.keymap.set(
+      "x",
+      "<Plug>VgSurround",
+      visual(false),
+      { silent = true, desc = "Surround: wrap the selection, indented (gS)" }
+    )
   end,
 })
 
