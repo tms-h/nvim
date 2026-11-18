@@ -61,9 +61,7 @@ local OCAML = {
     trigger = "expect_",
     example = "prints_book",
     body = function(n)
-      return 'let%expect_test "'
-        .. title(n)
-        .. '" =\n\tprint_s [%sexp (${1:value} : ${2:t})];\n\t[%expect {|$0|\\}]'
+      return 'let%expect_test "' .. title(n) .. '" =\n\tprint_s [%sexp (${1:value} : ${2:t})];\n\t[%expect {|$0|\\}]'
     end,
   },
   {
