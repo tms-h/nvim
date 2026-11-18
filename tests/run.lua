@@ -3424,6 +3424,31 @@ check("A non-exhaustive match names Alt+. Destruct, which on a case's pattern ad
   expect(new:find("Banana | Cherry", 1, true) and not new:find("Apple", 1, true), "Destruct on | Apple: " .. new)
 end)
 
+check("A non-exhaustive match whose cases are all guarded says to drop the last when, not Destruct", function()
+  local file = proj .. "/guarded.ml"
+  vim.fn.writefile({ "let f n =", "  match n with", "  | n when n > 0 -> 1", "  | n when n <= 0 -> 2", ";;" }, file)
+  vim.cmd "edit! guarded.ml"
+  local buf = api.nvim_get_current_buf()
+  wait_for_lsp(buf)
+  local warn
+  for _ = 1, 40 do
+    for _, d in ipairs(vim.diagnostic.get(buf)) do
+      warn = d.message:find("not exhaustive", 1, true) and d or warn
+    end
+    if warn then
+      break
+    end
+    wait(250)
+  end
+  api.nvim_buf_delete(buf, { force = true })
+  vim.fn.delete(file)
+  expect(warn, "no non-exhaustive warning")
+  local first = warn.message:match "^[^\n]*"
+  local msg = vim.inspect(warn.message)
+  expect(first:find("drop the `when` on the last case", 1, true), "warning: " .. msg)
+  expect(not first:find("Destruct", 1, true), "warning: " .. msg)
+end)
+
 check("Saving a file whose folder was moved away shows E212 alone, no formatter stack trace", function()
   local dir = proj .. "/gone"
   vim.fn.mkdir(dir, "p")
