@@ -1,6 +1,7 @@
 -- Shared by the goose test files (tests/goose/run.sh): one "pass"/"FAIL" line
--- per check, keys typed as a keyboard would, the stub claude, and the summary
--- line with the exit status. Load with dofile(<this folder> .. "/lib.lua").
+-- per check, keys typed as a keyboard would, the stub claude, waiting for
+-- goose to go idle, the Alt+L box's text, and the summary line with the exit
+-- status. Load with dofile(<this folder> .. "/lib.lua").
 local M = { pass = 0, fail = 0 }
 M.here = vim.fs.dirname(debug.getinfo(1, "S").source:sub(2))
 
@@ -24,6 +25,21 @@ function M.stub(g, log, delay)
   vim.env.GOOSE_STUB_LOG = log
   vim.env.GOOSE_STUB_DELAY = delay
   g.session_argv = { "python3", "-I", M.here .. "/stub-claude.py" }
+end
+
+---Wait until goose `g` has no pending edit left in `buf`: 100 ms for the
+---edit to start, then up to 5 s. True if it finished in time.
+function M.wait_idle(g, buf)
+  vim.wait(100)
+  return vim.wait(5000, function()
+    return g.pending_count(buf) == 0
+  end, 20)
+end
+
+---The text of `buf`'s Alt+L chat box (goose_ask `ask`), "" when it has none.
+function M.chat_text(ask, buf)
+  local c = ask.chat(buf)
+  return c and c.buf and table.concat(vim.api.nvim_buf_get_lines(c.buf, 0, -1, false), "\n") or ""
 end
 
 ---Print "<label>: N pass, M fail" and quit; exit status 1 when any check failed.

@@ -35,13 +35,9 @@ vim.fn.writefile({ "let a = 1", "let trades = Int.Map.empty", "let c = 3" }, pro
 vim.cmd.edit(proj .. "/lib/x.ml")
 local buf = vim.api.nvim_get_current_buf()
 vim.api.nvim_win_set_cursor(0, { 2, 0 })
-local function text()
-  local c = ask.chat(buf)
-  return c and c.buf and table.concat(vim.api.nvim_buf_get_lines(c.buf, 0, -1, false), "\n") or ""
-end
 local function settle(want)
   vim.wait(4000, function()
-    return text():find(want, 1, true) ~= nil and not ask.chat(buf).busy
+    return lib.chat_text(ask, buf):find(want, 1, true) ~= nil and not ask.chat(buf).busy
   end, 20)
 end
 
@@ -49,7 +45,7 @@ end
 keys "<M-l>/mentor VERDICT I'm going to key trades by order id because corrections come by id. Any reason not to?<CR>"
 settle "Message: clear."
 local c = ask.chat(buf)
-local T = text()
+local T = lib.chat_text(ask, buf)
 check(
   "/mentor: the verdict shows in the box under a grey mentor-check line",
   T:find(
@@ -155,7 +151,7 @@ ask.slash.mentor.prompt = dir .. "/missing/prompt.md"
 local before = #sent()
 keys "i/mentor VERDICT anything<CR>"
 settle "isn't on this machine"
-T = text()
+T = lib.chat_text(ask, buf)
 local tail = vim.split(T:sub((T:find("› /mentor VERDICT anything", 1, true) or 0)), "\n")
 check(
   "missing prompt file: one clear line in the box",
