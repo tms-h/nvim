@@ -30,7 +30,7 @@ check() { # name, expected, actual
   fi
 }
 
-run() { # extra --cmd, label
+run() { # extra --cmd (may be empty), label
   local sock=$NVNEXT/n.sock
   rm -f "$sock"
   tmux -L "$SOCK" kill-server 2>/dev/null
@@ -97,6 +97,6 @@ run() { # extra --cmd, label
   tmux -L "$SOCK" kill-server 2>/dev/null
 }
 
-run 'let g:tmux_test = 1' tmux
+run '' tmux
 run 'let g:neovide = v:true' neovide
 echo "pass $pass fail $fail"

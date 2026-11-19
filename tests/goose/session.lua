@@ -38,12 +38,6 @@ vim.cmd.edit(file)
 local buf = vim.api.nvim_get_current_buf()
 local filesize = #table.concat(body, "\n")
 
-local function wait_idle()
-  vim.wait(100)
-  return vim.wait(5000, function()
-    return g.pending_count(buf) == 0
-  end, 20)
-end
 local function send_at(row, text)
   vim.api.nvim_win_set_cursor(0, { row, 0 })
   keys("O" .. text .. "<Esc>")
@@ -52,13 +46,13 @@ end
 
 -- 1. Session reused across 3 sends, diff-only after the first.
 send_at(10, "pseudo one")
-wait_idle()
+lib.wait_idle(g, buf)
 local S1 = g.session(buf)
 local pid1 = S1 and S1.pid
 send_at(100, "pseudo two")
-wait_idle()
+lib.wait_idle(g, buf)
 send_at(200, "pseudo three")
-wait_idle()
+lib.wait_idle(g, buf)
 local E = entries()
 check("3 sends reach the stub", #E == 3, #E)
 check(
@@ -116,7 +110,7 @@ check(
   vim.deep_equal(vim.api.nvim_buf_get_lines(buf, 0, -1, false), before) and edits == 0,
   edits
 )
-wait_idle()
+lib.wait_idle(g, buf)
 check("one buffer change for the whole answer", edits == 1, edits)
 check("ghost lines gone after the swap", ghost() == nil)
 check("new lines flash", #vim.api.nvim_buf_get_extmarks(buf, vim.api.nvim_get_namespaces().goose_flash, 0, -1, {}) == 1)
@@ -138,7 +132,7 @@ keys "Opseudo five<Esc>"
 keys "<M-k>"
 vim.wait(100)
 vim.api.nvim_buf_set_lines(buf, 59, 60, false, { "pseudo five edited" })
-wait_idle()
+lib.wait_idle(g, buf)
 check("edited region keeps your text", vim.api.nvim_buf_get_lines(buf, 59, 60, false)[1] == "pseudo five edited")
 
 -- 4. Restart after the threshold (lowered to 2 messages here).
@@ -146,9 +140,9 @@ local n0 = #entries()
 g.session_max_msgs = 2
 local pidA = g.session(buf) and g.session(buf).pid
 send_at(70, "pseudo six")
-wait_idle()
+lib.wait_idle(g, buf)
 send_at(80, "pseudo seven")
-wait_idle()
+lib.wait_idle(g, buf)
 E = entries()
 local last = E[#E]
 check(
@@ -178,7 +172,7 @@ vim.notify = function(m, ...)
   return notify(m, ...)
 end
 send_at(90, "CRASH please")
-wait_idle()
+lib.wait_idle(g, buf)
 check("fallback: one-shot call made", oneshot == 1, oneshot)
 check(
   "fallback: its answer lands",
@@ -186,7 +180,7 @@ check(
   vim.api.nvim_buf_get_lines(buf, 89, 90, false)[1]
 )
 send_at(95, "CRASH again")
-wait_idle()
+lib.wait_idle(g, buf)
 local warns = #vim.tbl_filter(function(m)
   return m:find("session failed", 1, true)
 end, notes)
@@ -196,7 +190,7 @@ check(
   warns .. " notes, " .. oneshot .. " calls"
 )
 send_at(97, "pseudo eight")
-wait_idle()
+lib.wait_idle(g, buf)
 check(
   "after a failure the next send gets a fresh session",
   vim.api.nvim_buf_get_lines(buf, 96, 97, false)[1] == "let a1 = 1",
@@ -208,7 +202,7 @@ vim.notify = notify
 g.accept_first = true
 send_at(120, "pseudo nine")
 local tick1 = vim.api.nvim_buf_get_changedtick(buf)
-wait_idle()
+lib.wait_idle(g, buf)
 check(
   "accept_first: buffer unchanged when done",
   vim.api.nvim_buf_get_changedtick(buf) == tick1
@@ -222,11 +216,11 @@ check(
   vim.api.nvim_buf_get_lines(buf, 119, 120, false)[1]
 )
 send_at(130, "pseudo ten")
-wait_idle()
+lib.wait_idle(g, buf)
 keys "<Esc>"
 check("accept_first: Esc drops", vim.api.nvim_buf_get_lines(buf, 129, 130, false)[1] == "pseudo ten" and ghost() == nil)
 send_at(140, "pseudo eleven")
-wait_idle()
+lib.wait_idle(g, buf)
 keys "u"
 check(
   "accept_first: u drops, pseudocode stays",
@@ -257,18 +251,12 @@ vim.fn.writefile({ "let x = 1" }, fmt)
 vim.cmd.edit(fmt)
 local buf2 = vim.api.nvim_get_current_buf()
 vim.bo[buf2].filetype = "ocaml" -- -u NONE: no filetype detection
-local function wait_idle2()
-  vim.wait(100)
-  return vim.wait(5000, function()
-    return g.pending_count(buf2) == 0
-  end, 20)
-end
 vim.api.nvim_win_set_cursor(0, { 1, 0 })
 keys "oUGLY pseudo<Esc>"
 local spare = g.spare()
 check("spare: a process is up before Alt+K", spare and alive(spare.pid))
 keys "<M-k>"
-wait_idle2()
+lib.wait_idle(g, buf2)
 check("spare: the send runs on it", spare and g.session(buf2) == spare and g.spare() ~= spare)
 local got = vim.api.nvim_buf_get_lines(buf2, 0, -1, false)
 check("format: the answer is formatted", got[2] == "let u = 1 + 2", vim.inspect(got))
@@ -291,7 +279,7 @@ keys "oUGLY one<Esc>"
 keys "<M-k>"
 keys "GoUGLY two<Esc>"
 keys "<M-k>"
-wait_idle2()
+lib.wait_idle(g, buf2)
 vim.notify = notify2
 got = vim.api.nvim_buf_get_lines(buf2, 0, -1, false)
 local answers = #vim.tbl_filter(function(l)

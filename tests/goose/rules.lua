@@ -34,12 +34,6 @@ end
 local function once(s)
   return count(s, "RULELINE") == 1 and count(s, "\n<project-rules>\n") == 1 and count(s, "\n</project-rules>") == 1
 end
-local function wait_idle(buf)
-  vim.wait(100)
-  return vim.wait(5000, function()
-    return g.pending_count(buf) == 0
-  end, 20)
-end
 local function project(name, files)
   local p = dir .. "/" .. name
   vim.fn.mkdir(p .. "/lib", "p")
@@ -119,7 +113,7 @@ local buf = vim.api.nvim_get_current_buf()
 vim.api.nvim_win_set_cursor(0, { 2, 0 })
 keys "Opseudo q<Esc>"
 keys "<M-k>"
-wait_idle(buf)
+lib.wait_idle(g, buf)
 local S = g.session(buf)
 local sys = S and S.system or ""
 check("Alt+K session: the rules are in its system prompt once", once(sys), sys)
@@ -161,7 +155,7 @@ end
 vim.api.nvim_win_set_cursor(0, { 1, 0 })
 keys "Opseudo r<Esc>"
 keys "<M-k>"
-wait_idle(buf)
+lib.wait_idle(g, buf)
 check("Alt+K one-shot: the rules are in its system prompt once", seen and once(seen.system), seen and seen.system)
 check("Alt+K one-shot: not in the prompt", seen and not seen.prompt:find("RULELINE", 1, true))
 
@@ -170,7 +164,7 @@ vim.cmd.edit(bare .. "/lib/x.ml")
 local bbuf = vim.api.nvim_get_current_buf()
 keys "Opseudo s<Esc>"
 keys "<M-k>"
-wait_idle(bbuf)
+lib.wait_idle(g, bbuf)
 check(
   "no rules file: Alt+K's system prompt has no block",
   seen and not seen.system:find("project-rules", 1, true),
@@ -186,20 +180,16 @@ local prompt = dir .. "/prompt.md"
 vim.fn.writefile({ "MENTORPROMPT You are a Jane Street mentor." }, prompt)
 ask.slash.mentor.prompt = prompt
 vim.cmd.edit(proj .. "/lib/x.ml")
-local function chat_text()
-  local c = ask.chat(buf)
-  return c and c.buf and table.concat(vim.api.nvim_buf_get_lines(c.buf, 0, -1, false), "\n") or ""
-end
 keys "<M-l>what is b<CR>"
 vim.wait(3000, function()
-  return chat_text():find("second line", 1, true) ~= nil
+  return lib.chat_text(ask, buf):find("second line", 1, true) ~= nil
 end, 20)
 local c = ask.chat(buf)
 local C = c and g.session(c.buf)
 check("Alt+L chat: the rules are in its system prompt once", C and once(C.system), C and C.system)
 keys "i/mentor VERDICT plan<CR>"
 vim.wait(3000, function()
-  return chat_text():find("Message: clear.", 1, true) ~= nil
+  return lib.chat_text(ask, buf):find("Message: clear.", 1, true) ~= nil
 end, 20)
 local key = c and ask.slash_key(c, "mentor")
 local Mt = key and g.session(key)

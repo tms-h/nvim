@@ -1201,8 +1201,7 @@ check("Tree keys: - goes up a folder, q closes the tree", function()
   expect(not visible, "q left the tree open")
 end)
 
--- Git in a scratch folder beside the test project (author set here, so no
--- global git config is needed).
+-- Git in `dir`, with an author set here, so no global git config is needed.
 local function git(dir, ...)
   local cmd = { "git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", "-C", dir }
   return vim.system(vim.list_extend(cmd, { ... }), { text = true }):wait()
@@ -2982,13 +2981,10 @@ check("Every Space key and Space group has a name (OCaml, org, Python; normal an
 end)
 
 check("Change keys: Alt+F5 jumps to the next change, Space g s stages it, Space g r undoes one", function()
-  local function git(...)
-    return vim.system(vim.list_extend({ "git", "-C", proj }, { ... })):wait()
-  end
   local f = proj .. "/hunk.ml"
   vim.fn.writefile({ "let a = 1", "let b = 2", "let c = 3", "let d = 4", "let e = 5", "let f = 6" }, f)
-  git("add", "hunk.ml")
-  git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "hunk base")
+  git(proj, "add", "hunk.ml")
+  git(proj, "commit", "-qm", "hunk base")
   vim.cmd("edit! " .. f)
   api.nvim_buf_set_lines(0, 1, 2, false, { "let b = 20" })
   api.nvim_buf_set_lines(0, 4, 5, false, { "let e = 50" })
@@ -3013,7 +3009,7 @@ check("Change keys: Alt+F5 jumps to the next change, Space g s stages it, Space 
   press("<M-S-F5>", 200)
   expect(vim.fn.line "." == 2, "Alt+Shift+F5 went to line " .. vim.fn.line ".")
   press(" gs", 400)
-  local staged = git("diff", "--cached", "--", "hunk.ml").stdout or ""
+  local staged = git(proj, "diff", "--cached", "--", "hunk.ml").stdout or ""
   expect(staged:find "let b = 20" and not staged:find "let e = 50", "staged: " .. staged)
   vim.fn.cursor(5, 1)
   press(" gr", 300)
@@ -3022,7 +3018,7 @@ check("Change keys: Alt+F5 jumps to the next change, Space g s stages it, Space 
   expect(MiniDiff.get_buf_data(0).overlay == true, "Space g p showed no old lines")
   press(" gp", 200)
   vim.cmd "silent! write"
-  git("reset", "-q")
+  git(proj, "reset", "-q")
   vim.cmd "bwipeout!"
   vim.fn.delete(f)
 end)
