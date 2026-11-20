@@ -122,6 +122,13 @@ local function bin(name)
   return vim.fn.expand "~/.local/bin/" .. name
 end
 
+-- `herdr-keys <args...> <this pane>`: the herdr side of a hand-back.
+local function herdr_keys(...)
+  local argv = { bin "herdr-keys", ... }
+  table.insert(argv, vim.env.HERDR_PANE_ID or "")
+  return argv
+end
+
 -- Zoom or unzoom the tmux or herdr pane Neovim runs in.
 local function zoom_mux_pane()
   hand_back({ "tmux", "resize-pane", "-Z" }, { "herdr", "pane", "zoom", "--current", "--toggle" })
@@ -480,7 +487,7 @@ function M.resize(how)
   end
   hand_back(
     { "tmux", "if", "-F", "-t", t, at_far, tmux_resize(grow and near or far), tmux_resize(grow and far or near) },
-    { bin "herdr-keys", "resize", how, vim.env.HERDR_PANE_ID or "" }
+    herdr_keys("resize", how)
   )
 end
 
@@ -703,7 +710,7 @@ function M.close()
   if util.in_mux and M.nothing_open() then
     return hand_back(
       { "tmux", "run-shell", "-b", bin "tmux-tabs" .. " close-pane " .. (vim.env.TMUX_PANE or "") },
-      { bin "herdr-keys", "close-pane", vim.env.HERDR_PANE_ID or "" }
+      herdr_keys "close-pane"
     )
   end
   if M.is_float(win) then
@@ -784,7 +791,7 @@ function M.cycle(step)
   local tabs = require "tabs"
   if util.in_mux and #tabs.list() < 2 then
     local dir = step > 0 and "next" or "previous"
-    return hand_back({ "tmux", dir .. "-window" }, { bin "herdr-keys", "tab", dir, vim.env.HERDR_PANE_ID or "" })
+    return hand_back({ "tmux", dir .. "-window" }, herdr_keys("tab", dir))
   end
   M.in_editor(function()
     tabs.next(step)
