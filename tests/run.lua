@@ -4255,6 +4255,102 @@ check("Test tools: old-copy.sh makes the old config, without its WakaTime plugin
   expect(not waka, "the copy still has its WakaTime plugin")
 end)
 
+-- ── Speed budgets ─────────────────────────────────────────────────────────
+-- Thomas's bar: an action answers within 50 ms, never over 100 ms. Each
+-- budget is checked on the best of several tries, so a busy machine (these
+-- checks run at nice 19) does not fail them, while a real slowdown, which
+-- every try pays, does. Measured 2026-11-21 at normal priority: start to
+-- the first key ~40 ms without a file, ~140 ms with an OCaml file (~50 ms of
+-- it tree-sitter compiling OCaml's highlight query, Neovim's own cost);
+-- every key below 1-15 ms.
+
+---Best of `n` wall times (ms) of a child Neovim in this scratch world that
+---quits as soon as it would take its first key.
+local function start_ms(n, file)
+  local best = math.huge
+  for _ = 1, n do
+    local argv = { tests_dir .. "/env.sh", "nvim", "--headless", "--cmd", "let g:no_restore = 1" }
+    vim.list_extend(argv, { "-c", "lua vim.defer_fn(function() os.exit(0) end, 0)" })
+    if file then
+      argv[#argv + 1] = file
+    end
+    local t = vim.uv.hrtime()
+    vim.system(argv, { cwd = proj }):wait(10000)
+    best = math.min(best, (vim.uv.hrtime() - t) / 1e6)
+  end
+  return best
+end
+
+check("Speed: start to the first key within budget (no file 150 ms, OCaml file 250 ms)", function()
+  local none, ml = start_ms(3), start_ms(3, "a.ml")
+  expect(none <= 150, ("no file: %.0f ms (budget 150)"):format(none))
+  expect(ml <= 250, ("a.ml: %.0f ms (budget 250)"):format(ml))
+end)
+
+---Best of `n` times (ms) from typing `keys` until Neovim has run them and
+---redrawn; `setup` runs before each try.
+local function key_ms(keys, n, setup)
+  local best = math.huge
+  for _ = 1, n do
+    if setup then
+      setup()
+    end
+    wait(150)
+    local t0, took = vim.uv.hrtime(), nil
+    _G.__speed_done = function()
+      vim.cmd "redraw"
+      took = (vim.uv.hrtime() - t0) / 1e6
+    end
+    api.nvim_input(keys .. "<Cmd>lua __speed_done()<CR>")
+    wait_until(function()
+      return took ~= nil
+    end, 2000)
+    best = math.min(best, took or math.huge)
+  end
+  return best
+end
+
+check("Speed: hot keys within budget (typing 16 ms, pane and tab keys 50 ms, saves 100 ms)", function()
+  local slow = {}
+  local function budget(name, ms, limit)
+    if ms > limit then
+      slow[#slow + 1] = ("%s %.0f ms (budget %d)"):format(name, ms, limit)
+    end
+  end
+  vim.cmd "edit! a.ml"
+  budget("Esc", key_ms("<Esc>", 5), 16)
+  budget("j", key_ms("ggj", 5), 16)
+  budget("typing a letter", key_ms("x", 5, function()
+    vim.cmd "startinsert"
+  end), 16)
+  vim.cmd "stopinsert"
+  vim.cmd "silent! edit! a.ml"
+  vim.cmd "vsplit b.ml"
+  budget("Alt+Left", key_ms(super "Left", 5, function()
+    vim.cmd "wincmd l"
+  end), 50)
+  budget("Ctrl+Tab", key_ms("<C-Tab>", 5), 50)
+  budget(":", key_ms(":", 5, function()
+    api.nvim_input "<Esc>"
+  end), 50)
+  api.nvim_input "<Esc>"
+  wait(100)
+  budget("Alt+B", key_ms(super "b", 3, function()
+    pcall(function()
+      require("nvim-tree.api").tree.close()
+    end)
+  end), 50)
+  reset()
+  budget(":w a.ml", key_ms(":w<CR>", 3, function()
+    vim.cmd "normal! Go"
+  end), 100)
+  vim.cmd "silent! edit README.md"
+  budget(":w README.md", key_ms(":w<CR>", 3, function()
+    vim.cmd "normal! Go"
+  end), 100)
+  expect(#slow == 0, table.concat(slow, "; "))
+end)
+
 -- ── Runner ────────────────────────────────────────────────────────────────
 
 co = coroutine.create(function()

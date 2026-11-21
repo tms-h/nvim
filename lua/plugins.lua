@@ -113,9 +113,11 @@ require("mini.pairs").setup {
   modes = { insert = true, command = false, terminal = false },
 }
 -- Completion as you type: language server items, else words in the buffer.
--- Docs and signatures show in small floats.
+-- Docs and signatures show in small floats. The menu waits 30 ms after the
+-- last key, then asks the server: it showed ~100 ms after typing stopped
+-- with 80 ms (2026-11-21, ocamllsp), now ~50 ms.
 require("mini.completion").setup {
-  delay = { completion = 80, info = 200, signature = 80 },
+  delay = { completion = 30, info = 200, signature = 30 },
   window = {
     info = { height = 20, width = 70, border = "rounded" },
     signature = { height = 10, width = 80, border = "rounded" },

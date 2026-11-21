@@ -168,7 +168,10 @@ map("n", "<leader>d", function()
 end, { desc = "Line diagnostics" })
 map("n", "<leader>ht", "<Cmd>Hardtime toggle<CR>", { desc = "Hardtime toggle" })
 map("n", "<leader>hr", "<Cmd>Hardtime report<CR>", { desc = "Hardtime report" })
-map("n", "gd", vim.lsp.buf.definition, { desc = "Go to definition" })
+-- (Wrapped, so vim.lsp.buf loads on the first gd, not at every start.)
+map("n", "gd", function()
+  vim.lsp.buf.definition()
+end, { desc = "Go to definition" })
 
 -- Double-click selects the word and marks its other occurrences (words.lua).
 map("n", "<2-LeftMouse>", "<LeftMouse><Cmd>lua require('words').select_word()<CR>", { desc = "Select word" })
@@ -320,12 +323,24 @@ end, { desc = "Show old lines (toggle)" })
 local chars = "abcdefghijklmnopqrstuvwxyz0123456789,./;'[]\\`=-!@#$%^&*()_+{}:\"<>?~|"
 -- macOS keeps Cmd+Q/H/M/N/` for the app and the system.
 local system_keys = util.is_macos and { q = true, h = true, m = true, n = true, ["`"] = true } or {}
+local MODES = { "n", "i", "x", "s", "o" }
+-- The keys each mode already maps, read once: asking maparg per key and mode
+-- (470 calls) took ~1.5 ms of every start. nvim_get_keymap spells a key the
+-- way keytrans does.
+local taken = {}
+for _, m in ipairs(MODES) do
+  taken[m] = {}
+  for _, km in ipairs(vim.api.nvim_get_keymap(m)) do
+    taken[m][km.lhs] = true
+  end
+end
 for i = 1, #chars do
   local c = chars:sub(i, i)
   local name = ({ ["<"] = "lt", ["|"] = "Bar" })[c] or c
   for _, k in ipairs(system_keys[c] and {} or { super(name), c:match "%a" and super("S-" .. c) or nil }) do
-    for _, m in ipairs { "n", "i", "x", "s", "o" } do
-      if vim.fn.maparg(k, m) == "" then
+    local lhs = vim.fn.keytrans(vim.keycode(k))
+    for _, m in ipairs(MODES) do
+      if not taken[m][lhs] then
         -- (A no-op after an operator would count as an empty motion.)
         map(m, k, m == "o" and "<Esc>" or "<Nop>", { desc = "Stray Alt/Cmd key: nothing" })
       end

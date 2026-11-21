@@ -26,6 +26,11 @@
 -- Loaded on first use: hunks (change keys), run (F5, lazygit), ocaml
 -- (ocp-indent, ocamlformat, dune; from after/ftplugin).
 
+-- Lua modules load from a byte-code cache (stdpath("cache")/luac), checked
+-- against each file's size and time: the same code, ~20 ms sooner on every
+-- start (52 -> 30 ms to the first screen with no file, 2026-11-21).
+vim.loader.enable()
+
 vim.g.mapleader = " "
 vim.g.maplocalleader = " "
 

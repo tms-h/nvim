@@ -117,15 +117,97 @@ function M.format_ocaml(buf, lines)
   end
 end
 
+-- Prettier stays loaded between saves (tools/prettier/server.cjs, one per
+-- Neovim). A fresh `prettier` spends ~170 ms starting node and loading itself
+-- before it formats: a Markdown save took ~210 ms. The loaded one formats
+-- in a few ms for a note, ~45 ms for a 375-line file, with the same options
+-- and ignore files as the command. It starts in the background when a
+-- Markdown file opens, and quits after 10 idle minutes.
+local prettier = { answers = {}, next_id = 0 }
+
+---The running prettier server, started if needed; nil where node or
+---prettier's package folder can't be found (the command runs then).
+local function prettier_server()
+  if prettier.proc then
+    return prettier.proc
+  end
+  local bin, node = tools.find "prettier", tools.find "node"
+  -- The command is the package's bin/prettier.cjs, through links (Mason,
+  -- Homebrew, npm).
+  local pkg = bin and vim.fs.dirname(vim.fs.dirname(vim.uv.fs_realpath(bin) or bin))
+  if not (node and pkg and vim.uv.fs_stat(pkg .. "/package.json")) then
+    return nil
+  end
+  local partial = ""
+  local proc
+  local ok, started = pcall(vim.system, { node, vim.fn.stdpath "config" .. "/tools/prettier/server.cjs", pkg }, {
+    stdin = true,
+    -- One answer per line; a long one can come in pieces. (Not
+    -- partial:match "[^\n]*$" for the rest: on a 26 KB answer that pattern
+    -- backtracks from every position and took 1.2 s.)
+    stdout = function(_, data)
+      partial = partial .. (data or "")
+      local from = 1
+      for nl in partial:gmatch "()\n" do
+        local decoded, answer = pcall(vim.json.decode, partial:sub(from, nl - 1))
+        if decoded and type(answer) == "table" and answer.id then
+          prettier.answers[answer.id] = answer
+        end
+        from = nl + 1
+      end
+      partial = partial:sub(from)
+    end,
+  }, function()
+    if prettier.proc == proc then
+      prettier.proc = nil
+    end
+  end)
+  if not ok then
+    return nil
+  end
+  proc = started
+  prettier.proc = proc
+  return proc
+end
+
 ---Prettier for Markdown: lines up table pipes and tidies lists. Prose
 ---wrapping is left as typed (`--prose-wrap preserve`).
 local function format_markdown(buf)
-  local prettier = tools.find "prettier"
-  if not prettier then
-    return
-  end
   local file = api.nvim_buf_get_name(buf)
-  run_formatter(buf, { prettier, "--stdin-filepath", file ~= "" and file or "untitled.md", "--prose-wrap", "preserve" })
+  file = file ~= "" and file or "untitled.md"
+  local server = prettier_server()
+  if server then
+    prettier.next_id = prettier.next_id + 1
+    local id = prettier.next_id
+    local request = { id = id, text = buffer_text(buf), filepath = file, cwd = vim.fn.getcwd() }
+    local sent = pcall(server.write, server, vim.json.encode(request) .. "\n")
+    -- Done when it answers, or when it has quit (idle, crashed).
+    local answered = sent
+      and vim.wait(5000, function()
+        return prettier.answers[id] ~= nil or prettier.proc ~= server
+      end)
+    local answer = prettier.answers[id]
+    prettier.answers[id] = nil
+    if answer then
+      -- Not ok: a syntax error or a bad config; the file stays as typed.
+      if answer.ok then
+        apply_output(buf, answer.text)
+      end
+      return
+    elseif answered or not sent then
+      prettier.proc = nil -- it quit first: the command does this one
+    else
+      -- Stuck for 5 s, as long as the command was allowed: the file stays
+      -- as typed, and the next save starts a fresh one.
+      pcall(server.kill, server, 15)
+      prettier.proc = nil
+      return
+    end
+  end
+  local command = tools.find "prettier"
+  if command then
+    run_formatter(buf, { command, "--stdin-filepath", file, "--prose-wrap", "preserve" })
+  end
 end
 
 ---dune format-dune-file for dune, dune-project and dune-workspace files.
@@ -566,6 +648,22 @@ function M.setup()
         and FORMAT_ON_SAVE[vim.bo[args.buf].filetype]
       then
         M.format(args.buf)
+      end
+    end,
+  })
+  -- Prettier loads while a Markdown file is open, not on its first save;
+  -- half a second later, so its start (~2 ms here) stays out of the file's
+  -- opening. (Hover popups are Markdown too, but not files.)
+  api.nvim_create_autocmd("FileType", {
+    group = group,
+    pattern = "markdown",
+    callback = function(args)
+      if
+        vim.g.format_on_save ~= false
+        and vim.bo[args.buf].buftype == ""
+        and not require("library").is_library(args.buf)
+      then
+        vim.defer_fn(prettier_server, 500)
       end
     end,
   })
