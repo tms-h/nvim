@@ -2753,6 +2753,55 @@ check("Reopen puts a closed tab back in its place (Chrome)", function()
   expect(after == before, ("back at %s, was %s"):format(tostring(after), tostring(before)))
 end)
 
+-- fe-nvim jumps from a review diff with `tcd DIR | edit +N FILE` (2026-11-21).
+-- Inside tmux the second file brings the bar in, a row shorter for every
+-- pane; with 'splitkeep' "topline" the cursor at the 'scrolloff' edge was
+-- pushed up (N 47 -> 46, N 196 -> 191). This Neovim fakes Neovide, so the
+-- tmux bar is switched on here.
+check("Tab bar: appearing for a second file keeps `tcd DIR | edit +N` on line N, tree open", function()
+  local util, tabs = require "util", require "tabs"
+  local dir = vim.fn.tempname()
+  vim.fn.mkdir(dir, "p")
+  local file, lines = dir .. "/long.txt", {}
+  for i = 1, 200 do
+    lines[i] = "line " .. i
+  end
+  vim.fn.writefile(lines, file)
+  local in_mux = util.in_mux
+  util.in_mux = true
+  tabs.setup()
+  local ok, err = pcall(function()
+    require("explorer").show()
+    wait_until(function()
+      return tree_win() ~= nil
+    end)
+    expect(tree_win(), "the tree did not open")
+    expect(vim.bo.filetype ~= "NvimTree", "focus went to the tree")
+    -- The screen's last line the cursor may sit on, and a line near the end.
+    for _, n in ipairs { vim.fn.winheight(0) - 1, 196 } do
+      wait_until(function()
+        return vim.o.showtabline == 0
+      end)
+      expect(vim.o.showtabline == 0, "the bar shows with one file")
+      press((":tcd %s | edit +%d %s<CR>"):format(dir, n, file), 400)
+      wait_until(function()
+        return vim.o.showtabline == 2
+      end)
+      wait(200)
+      expect(vim.o.showtabline == 2, "the bar did not come in for a second file")
+      local at, top, bot = vim.fn.line ".", vim.fn.line "w0", vim.fn.line "w$"
+      expect(at == n, ("edit +%d left the cursor on line %d (lines %d-%d on screen)"):format(n, at, top, bot))
+      expect(top <= n and n <= bot, ("line %d is off screen (%d-%d)"):format(n, top, bot))
+      vim.cmd("tcd " .. proj .. " | edit " .. proj .. "/a.ml | bwipeout! " .. vim.fn.bufnr(file))
+    end
+  end)
+  util.in_mux = in_mux
+  tabs.setup()
+  vim.cmd("tcd " .. proj)
+  vim.fn.delete(dir, "rf")
+  expect(ok, err)
+end)
+
 -- ── Friction notes, 2026-10-25 ───────────────────────────────────────────
 
 check("A window resize scales every pane; the terminal is never squeezed to a strip", function()

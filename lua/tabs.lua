@@ -297,9 +297,22 @@ function M.setup()
       -- BufDelete fires while the buffer is still listed: count after it.
       vim.schedule(function()
         local show = #M.list() > 1 and 2 or 0
-        if vim.o.showtabline ~= show then
-          vim.o.showtabline = show
+        if vim.o.showtabline == show then
+          return
         end
+        -- The bar takes a row from every pane. That is no split, so it
+        -- scrolls as in plain Neovim ('splitkeep' "cursor"): with
+        -- options.lua's "topline" each pane kept its first line and Neovim
+        -- moved the cursor up to stay 'scrolloff' clear of the new bottom,
+        -- so `:edit +N` of a second file left the cursor up to 8 lines above
+        -- N (fe-nvim's jump from a review diff, 2026-11-21). A hiding bar
+        -- only adds a row: "topline" then moves nothing, so it stays.
+        local keep = vim.o.splitkeep
+        if show > 0 then
+          vim.o.splitkeep = "cursor"
+        end
+        vim.o.showtabline = show
+        vim.o.splitkeep = keep
       end)
     end,
   })
