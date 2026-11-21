@@ -87,7 +87,7 @@ function M.setup()
   local map = vim.keymap.set
   map("n", "<Leader>it", call "todo", { desc = "Iron todo: features to review, then yours" })
   map("n", "<Leader>ir", call "review", { desc = "Iron review this file's feature" })
-  map("n", "<Leader>ic", call "insert-cr", { desc = "Iron CR comment above this line" })
+  map("n", "<Leader>ic", call "insert-cr", { desc = "Iron CR above this line; on a CR, reply (CR <-> XCR)" })
 end
 
 return M
