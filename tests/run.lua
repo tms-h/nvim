@@ -984,6 +984,32 @@ check("OCaml: <leader>oi switches .ml/.mli; ocp-indent indents; format on save",
   expect(vim.fn.getline(1) == "let f x = x + 1", "formatted to '" .. vim.fn.getline(1) .. "'")
 end)
 
+check("OCaml: <leader>ot jumps between a module and its test file, both namings", function()
+  for path, lines in pairs {
+    ["lib/feed.ml"] = { "let x = 1" },
+    ["lib/feed.mli"] = { "val x : int" },
+    ["test/feed_test.ml"] = { "let y = 2" },
+    ["lib/book.ml"] = { "let x = 1" },
+    ["test/test_book.ml"] = { "let y = 2" },
+    ["lib/lonely.ml"] = { "let x = 1" },
+  } do
+    vim.fn.mkdir(vim.fs.dirname(proj .. "/" .. path), "p")
+    vim.fn.writefile(lines, proj .. "/" .. path)
+  end
+  for _, case in ipairs {
+    { "lib/feed.ml", "feed_test.ml" },
+    { "lib/feed.mli", "feed_test.ml" },
+    { "test/feed_test.ml", "feed.ml" },
+    { "lib/book.ml", "test_book.ml" },
+    { "test/test_book.ml", "book.ml" },
+    { "lib/lonely.ml", "lonely.ml" },
+  } do
+    vim.cmd("edit! " .. case[1])
+    press " ot"
+    expect(name_of(0) == case[2], case[1] .. " went to " .. name_of(0))
+  end
+end)
+
 check("OCaml: :w re-indents (Jane Street) where .ocamlformat says disable", function()
   vim.cmd "edit! noformat/indent_me.ml"
   vim.cmd "write"

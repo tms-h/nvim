@@ -1,7 +1,7 @@
 -- OCaml: ocp-indent while typing, ocamlformat on save (lsp.lua), ocamllsp,
 -- and dune in a terminal pane. Keys (OCaml files only):
 --   <leader>oi  switch .ml / .mli        <leader>of  format now
---   <leader>ob  dune build               <leader>ot  dune test, this folder
+--   <leader>ot  switch module / its test <leader>ob  dune build
 --   <leader>ow  dune test -w, this folder <leader>op  dune promote, this file only
 --   <leader>os  list the snippets (Tab previews, Enter types the trigger)
 --   gt{motion} / gt on a selection / gtt   wrap in (fun () -> ...)
@@ -152,13 +152,13 @@ function M.promote(buf)
   end
 end
 
----`dune test` on this buffer's folder only (with `-w`, rerun on every save).
+---`dune test -w` on this buffer's folder only: rerun on every save.
 ---From the root, runtest also ran sibling folders, such as the drills'
 ---hidden edge-case tests, and showed their diffs (2026-11-12).
-function M.test(buf, watch)
+function M.test(buf)
   local dir = in_project(buf, vim.fs.dirname(api.nvim_buf_get_name(buf)))
   if dir then
-    M.dune(buf, watch and { "test", dir, "-w" } or { "test", dir })
+    M.dune(buf, { "test", dir, "-w" })
   end
 end
 
@@ -170,6 +170,55 @@ function M.switch(buf)
     vim.cmd.edit(vim.fn.fnameescape(other))
   else
     vim.notify("No " .. (other and vim.fn.fnamemodify(other, ":t") or ".ml/.mli pair"))
+  end
+end
+
+---The module a test file in `test_dir` is for: `module`.ml in the folder
+---above, or in a folder beside `test_dir`.
+local function module_of_test(test_dir, module)
+  local up = vim.fs.dirname(test_dir)
+  local file = module .. ".ml"
+  if vim.uv.fs_stat(up .. "/" .. file) then
+    return up .. "/" .. file
+  end
+  for entry, kind in vim.fs.dir(up) do
+    local path = up .. "/" .. entry .. "/" .. file
+    if kind == "directory" and vim.uv.fs_stat(path) then
+      return path
+    end
+  end
+end
+
+---The test file for module `base` in `dir`: `base`_test.ml or test_`base`.ml,
+---in a `test` folder beside `dir` or inside it.
+local function test_of_module(dir, base)
+  for _, test_dir in ipairs { vim.fs.dirname(dir) .. "/test", dir .. "/test" } do
+    for _, file in ipairs { base .. "_test.ml", "test_" .. base .. ".ml" } do
+      if vim.uv.fs_stat(test_dir .. "/" .. file) then
+        return test_dir .. "/" .. file
+      end
+    end
+  end
+end
+
+---Jump between a module and its test file: lib/foo.ml (or .mli) and
+---test/foo_test.ml or test/test_foo.ml. Took over <leader>ot from "dune test
+---once", which <leader>ow covers (2026-11-21).
+function M.switch_test(buf)
+  local name = api.nvim_buf_get_name(buf)
+  local dir = vim.fs.dirname(name)
+  local base = vim.fn.fnamemodify(name, ":t"):gsub("%.mli?$", "")
+  local module = vim.fs.basename(dir) == "test" and (base:match "^test_(.+)$" or base:match "^(.+)_test$")
+  local other
+  if module then
+    other = module_of_test(dir, module)
+  else
+    other = test_of_module(dir, base)
+  end
+  if other then
+    vim.cmd.edit(vim.fn.fnameescape(other))
+  else
+    vim.notify("No " .. (module and module .. ".ml for this test" or "test file for " .. base))
   end
 end
 
@@ -221,10 +270,10 @@ function M.setup(buf)
     M.dune(buf, { "build" })
   end, "dune build")
   map("<leader>ot", function()
-    M.test(buf, false)
-  end, "dune test this folder")
+    M.switch_test(buf)
+  end, "switch module/test file")
   map("<leader>ow", function()
-    M.test(buf, true)
+    M.test(buf)
   end, "dune test this folder on every save")
   map("<leader>op", function()
     M.promote(buf)
