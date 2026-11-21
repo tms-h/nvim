@@ -4310,7 +4310,7 @@ local function key_ms(keys, n, setup)
   return best
 end
 
-check("Speed: hot keys within budget (typing 16 ms, pane and tab keys 50 ms, saves 100 ms)", function()
+check("Speed: hot keys within budget (typing 16 ms, pane and tab keys 50 ms, saves 50-100 ms)", function()
   local slow = {}
   local function budget(name, ms, limit)
     if ms > limit then
@@ -4341,7 +4341,19 @@ check("Speed: hot keys within budget (typing 16 ms, pane and tab keys 50 ms, sav
     end)
   end), 50)
   reset()
+  -- OCaml saves go through the loaded ocamlformat-rpc: a small file in a few
+  -- ms (the command took ~10 ms to start), a 600-line one in ~40 ms of
+  -- formatting work.
   budget(":w a.ml", key_ms(":w<CR>", 3, function()
+    vim.cmd "normal! Go"
+  end), 50)
+  local long = {}
+  for i = 1, 150 do
+    vim.list_extend(long, { ("let f%d x ="):format(i), ("  let y = x + %d in"):format(i), "  if y > 10 then y * 2 else y - 1", ";;" })
+  end
+  vim.fn.writefile(long, proj .. "/long.ml")
+  vim.cmd "silent! edit long.ml"
+  budget(":w long.ml (600 lines)", key_ms(":w<CR>", 3, function()
     vim.cmd "normal! Go"
   end), 100)
   vim.cmd "silent! edit README.md"
@@ -4349,6 +4361,24 @@ check("Speed: hot keys within budget (typing 16 ms, pane and tab keys 50 ms, sav
     vim.cmd "normal! Go"
   end), 100)
   expect(#slow == 0, table.concat(slow, "; "))
+end)
+
+check("Format: OCaml saves go through a loaded ocamlformat, same text as the command", function()
+  local messy = { "let f x =   x+1", "let  g = f   2" }
+  vim.fn.writefile(messy, proj .. "/messy.ml")
+  vim.cmd "silent! edit! messy.ml"
+  wait(700) -- the server starts 0.5 s after an OCaml file opens
+  local running = vim.system({ "pgrep", "-P", tostring(vim.fn.getpid()), "-x", "ocamlformat-rpc" }):wait()
+  expect(running.code == 0, "no ocamlformat-rpc under this Neovim")
+  local ocamlformat = require("tools").find "ocamlformat"
+  local want = vim.system({ ocamlformat, "--profile=janestreet", "--name=" .. proj .. "/messy.ml", "--enable-outside-detected-project", "-" }, {
+    stdin = table.concat(messy, "\n") .. "\n",
+    cwd = proj,
+    text = true,
+  }):wait().stdout
+  vim.cmd "write"
+  local got = table.concat(api.nvim_buf_get_lines(0, 0, -1, false), "\n") .. "\n"
+  expect(got == want, ("saved %s, the command gives %s"):format(vim.inspect(got), vim.inspect(want)))
 end)
 
 -- ── Runner ────────────────────────────────────────────────────────────────

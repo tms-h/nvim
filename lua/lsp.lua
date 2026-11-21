@@ -89,6 +89,168 @@ local function indent_ocaml(buf, dir, lines)
   end
 end
 
+-- ocamlformat stays loaded between saves too (ocamlformat-rpc, from the same
+-- install as ocamlformat). The command spends ~8 ms starting and reading its
+-- config before it formats: a small file's save went from ~16 ms to ~5, a
+-- 600-line one from ~45 to ~31 (the rest is formatting work). Its output
+-- matched the command's byte for byte on 14 files, with and without a
+-- .ocamlformat, and it fails where the command fails (syntax errors, a
+-- version= mismatch) (2026-11-21). Started when an OCaml file opens; quits
+-- after 10 idle minutes.
+local rpc = { answers = {} }
+
+---A canonical s-expression: strings are atoms, tables are lists.
+local function csexp(x)
+  if type(x) == "table" then
+    local parts = {}
+    for i, v in ipairs(x) do
+      parts[i] = csexp(v)
+    end
+    return "(" .. table.concat(parts) .. ")"
+  end
+  return #x .. ":" .. x
+end
+
+---One whole s-expression in s from i: value and the index after it; nil
+---while the rest has not arrived.
+local function read_csexp(s, i)
+  local c = s:sub(i, i)
+  if c == "(" then
+    local list = {}
+    i = i + 1
+    while s:sub(i, i) ~= ")" do
+      local value
+      value, i = read_csexp(s, i)
+      if value == nil then
+        return nil
+      end
+      list[#list + 1] = value
+    end
+    return list, i + 1
+  end
+  local colon = s:find(":", i, true)
+  local n = colon and tonumber(s:sub(i, colon - 1))
+  if not n or colon + n > #s then
+    return nil
+  end
+  return s:sub(colon + 1, colon + n), colon + n + 1
+end
+
+---(Re)start the 10-minute idle countdown; at its end the server quits.
+local function rpc_rest()
+  rpc.idle = rpc.idle or vim.uv.new_timer()
+  rpc.idle:start(600000, 0, function()
+    local idle = rpc.proc
+    rpc.proc = nil
+    if idle then
+      pcall(idle.kill, idle, 15)
+    end
+  end)
+end
+
+---The running ocamlformat-rpc for this ocamlformat, started if needed; nil
+---where there is none next to it (the command runs then).
+local function ocamlformat_server(ocamlformat)
+  local exe = ocamlformat and vim.fs.dirname(ocamlformat) .. "/ocamlformat-rpc"
+  if rpc.proc and rpc.exe == exe then
+    return rpc.proc
+  end
+  if rpc.proc then
+    -- Another opam switch's ocamlformat now (the project changed).
+    pcall(rpc.proc.kill, rpc.proc, 15)
+    rpc.proc = nil
+  end
+  if not (exe and vim.fn.executable(exe) == 1) then
+    return nil
+  end
+  local pending = ""
+  local proc
+  local ok, started = pcall(vim.system, { exe }, {
+    stdin = true,
+    stdout = function(_, data)
+      pending = pending .. (data or "")
+      local value, next_i = read_csexp(pending, 1)
+      while value ~= nil do
+        rpc.answers[#rpc.answers + 1] = value
+        pending = pending:sub(next_i)
+        value, next_i = read_csexp(pending, 1)
+      end
+    end,
+  }, function()
+    if rpc.proc == proc then
+      rpc.proc = nil
+    end
+  end)
+  if not ok then
+    return nil
+  end
+  proc = started
+  rpc.proc, rpc.exe, rpc.answers, rpc.agreed = proc, exe, {}, false
+  pcall(proc.write, proc, csexp { "Version", "v2" })
+  rpc_rest()
+  return proc
+end
+
+---The server's next answer, or nil when it quit or took over 5 s (then
+---it is stopped; the next save starts a fresh one).
+local function rpc_answer(server)
+  -- Fast events only (its output, its exit), as vim.system():wait(): other
+  -- queued work runs after the save, not inside it (a scheduled note
+  -- inside `:silent w` was swallowed).
+  vim.wait(5000, function()
+    return #rpc.answers > 0 or rpc.proc ~= server
+  end, nil, true)
+  if #rpc.answers == 0 then
+    pcall(server.kill, server, 15)
+    rpc.proc = nil
+    return nil
+  end
+  return table.remove(rpc.answers, 1)
+end
+
+---Format through the loaded ocamlformat: true when it formatted, false on a
+---syntax error or a bad config (as the command's non-zero exit), nil when
+---it could not answer or might answer differently (the command runs).
+local function rpc_format(buf, ocamlformat, file, conf)
+  -- The server skips .ocamlformat-ignore/-enable lists under "disable
+  -- false", and reads no global ~/.config/ocamlformat: the command does both.
+  local dir = vim.fs.dirname(file)
+  local global = (vim.env.XDG_CONFIG_HOME or vim.fn.expand "~/.config") .. "/ocamlformat"
+  if vim.uv.fs_stat(global) or vim.fs.find({ ".ocamlformat-ignore", ".ocamlformat-enable" }, { path = dir, upward = true })[1] then
+    return nil
+  end
+  local server = ocamlformat_server(ocamlformat)
+  if not server then
+    return nil
+  end
+  if not rpc.agreed then
+    local version = rpc_answer(server)
+    if not (version and version[1] == "Version" and version[2] == "v2") then
+      pcall(server.kill, server, 15)
+      rpc.proc = nil
+      return nil
+    end
+    rpc.agreed = true
+  end
+  -- As the command's flags: --enable-outside-detected-project (the server
+  -- has no such flag; "disable false" does the same), and the Jane Street
+  -- profile where there is no .ocamlformat.
+  local config = { { "disable", "false" } }
+  if not conf then
+    table.insert(config, 1, { "profile", "janestreet" })
+  end
+  local sent = pcall(server.write, server, csexp { "Format", buffer_text(buf), { "Path", file }, { "Config", config } })
+  local answer = sent and rpc_answer(server)
+  rpc_rest()
+  if not answer then
+    return nil
+  elseif answer[1] == "Format" and type(answer[2]) == "string" then
+    apply_output(buf, answer[2])
+    return true
+  end
+  return false
+end
+
 ---ocamlformat on the whole buffer, or ocp-indent where it is off. `lines`
 ---("X-Y", 1-based): lines a tool just wrote; when the file does not parse
 ---(unfinished code elsewhere), those lines are still re-indented.
@@ -107,14 +269,23 @@ function M.format_ocaml(buf, lines)
     indent_ocaml(buf, dir, lines)
     return
   end
-  local args = { ocamlformat, "--name=" .. file, "--enable-outside-detected-project", "-" }
-  if not conf then
-    table.insert(args, 2, "--profile=janestreet")
+  local formatted = rpc_format(buf, ocamlformat, file, conf)
+  if formatted == nil then
+    local args = { ocamlformat, "--name=" .. file, "--enable-outside-detected-project", "-" }
+    if not conf then
+      table.insert(args, 2, "--profile=janestreet")
+    end
+    formatted = run_formatter(buf, args, dir)
   end
   -- A syntax error: the file stays as typed (the error is in diagnostics).
-  if not run_formatter(buf, args, dir) and lines then
+  if not formatted and lines then
     indent_ocaml(buf, dir, lines)
   end
+end
+
+---ocamlformat-rpc loads while an OCaml file is open (lsp.setup).
+function M.warm_ocamlformat()
+  ocamlformat_server(tools.find "ocamlformat")
 end
 
 -- Prettier stays loaded between saves (tools/prettier/server.cjs, one per
@@ -181,11 +352,12 @@ local function format_markdown(buf)
     local id = prettier.next_id
     local request = { id = id, text = buffer_text(buf), filepath = file, cwd = vim.fn.getcwd() }
     local sent = pcall(server.write, server, vim.json.encode(request) .. "\n")
-    -- Done when it answers, or when it has quit (idle, crashed).
+    -- Done when it answers, or when it has quit (idle, crashed). Fast
+    -- events only, as rpc_answer.
     local answered = sent
       and vim.wait(5000, function()
         return prettier.answers[id] ~= nil or prettier.proc ~= server
-      end)
+      end, nil, true)
     local answer = prettier.answers[id]
     prettier.answers[id] = nil
     if answer then
@@ -651,19 +823,20 @@ function M.setup()
       end
     end,
   })
-  -- Prettier loads while a Markdown file is open, not on its first save;
-  -- half a second later, so its start (~2 ms here) stays out of the file's
-  -- opening. (Hover popups are Markdown too, but not files.)
+  -- Prettier and ocamlformat load while a file of theirs is open, not on
+  -- its first save; half a second later, so their start (~2 ms here) stays
+  -- out of the file's opening. (Hover popups are Markdown too, but not
+  -- files.)
   api.nvim_create_autocmd("FileType", {
     group = group,
-    pattern = "markdown",
+    pattern = { "markdown", "ocaml", "ocaml_interface" },
     callback = function(args)
       if
         vim.g.format_on_save ~= false
         and vim.bo[args.buf].buftype == ""
         and not require("library").is_library(args.buf)
       then
-        vim.defer_fn(prettier_server, 500)
+        vim.defer_fn(args.match == "markdown" and prettier_server or M.warm_ocamlformat, 500)
       end
     end,
   })
