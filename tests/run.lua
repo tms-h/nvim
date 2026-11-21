@@ -2491,6 +2491,16 @@ check("Key hints pop up after a Space pause (mini.clue)", function()
   expect(vim.tbl_contains(groups, "<Leader>f"), "no +Find group")
 end)
 
+check("Key hints pop up after Space in unlisted scratch buffers too (fe todo)", function()
+  local buf = api.nvim_create_buf(false, true)
+  api.nvim_win_set_buf(0, buf)
+  vim.bo[buf].modifiable = false
+  wait(200)
+  local m = vim.fn.maparg(" ", "n", false, true)
+  vim.cmd "bwipeout!"
+  expect(m.buffer == 1 and (m.desc or ""):find("Query keys", 1, true), "Space is not a hint trigger in an unlisted buffer")
+end)
+
 check("Finder keys: C-x / C-v split, C-q sends the matches to quickfix", function()
   local maps = require("finder").load().config.mappings
   expect(maps.choose_in_split == "<C-x>", "split is " .. tostring(maps.choose_in_split))

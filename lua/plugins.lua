@@ -262,6 +262,18 @@ require("mini.clue").setup {
   },
   window = { delay = 400, config = { width = "auto", border = "rounded" } },
 }
+-- mini.clue only adds its Space trigger to listed buffers. Scratch buffers
+-- (fe-nvim's todo and review, the tree, Goose) are unlisted, so there Space
+-- hit the global <Nop> and the next key ran as a plain command: Space o gave
+-- E21 in the read-only todo. Add the trigger when such a buffer is shown.
+vim.api.nvim_create_autocmd("BufWinEnter", {
+  group = vim.api.nvim_create_augroup("ClueUnlisted", { clear = true }),
+  callback = vim.schedule_wrap(function(args)
+    if vim.api.nvim_buf_is_valid(args.buf) and not vim.bo[args.buf].buflisted then
+      MiniClue.ensure_buf_triggers(args.buf)
+    end
+  end),
+})
 
 -- The finder: set up on first use (finder.lua).
 require("finder").setup()
