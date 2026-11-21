@@ -1,17 +1,19 @@
 -- Every colour, built from the desktop's palette (Omarchy colors.toml) with a
 -- built-in copy for machines without one (the Mac). One surface: no group
--- paints a background of its own except the selection, search hits, the
--- cursor line, the ruler, diff hunks, the completion choice and your
--- questions in the Alt+L chat box. Words get colour; boxes do not.
+-- paints a background of its own except where the fill is the meaning
+-- (KEEP_BG below): the cursor, the selection, search hits and jump labels,
+-- the cursor line, the ruler, diff hunks, the current row of a list, the
+-- scrollbar thumb and your questions in the Alt+L chat box. Words get
+-- colour; boxes do not.
 --
 -- Two looks, each designed for its own setting:
 --   glass  see-through card over wallpaper + blur (Linux). Background, text
 --          and opacity come from shell.toml [menu] through the surface-recipe
 --          hook, so Neovide matches kitty, Files and the shell popups. In a
---          terminal (kitty, also inside tmux) Neovim paints no background at
---          all: kitty's own card (the same [menu] colour and opacity, Hyprland
---          blur) shows through every pane and float, and the [menu] colour is
---          only what dims and tints are mixed toward.
+--          terminal (kitty, also inside tmux or herdr) Neovim paints no
+--          background at all: kitty's own card (the same [menu] colour and
+--          opacity, Hyprland blur) shows through every pane and float, and
+--          the [menu] colour is only what dims and tints are mixed toward.
 --   flat   opaque (the Mac, or transparency off). The theme's dark editor
 --          background (dark_background) under its own text, so body
 --          text, comments and the dim are at least as clear as the old
@@ -444,7 +446,7 @@ local function keeps_bg(name)
 end
 
 ---Safety net for groups a plugin defines on its own: drop any background
----that KEEP_BG does not allow.
+---or reverse fill that KEEP_BG does not allow.
 function M.one_surface()
   for name, hl in pairs(api.nvim_get_hl(0, {})) do
     -- A link takes its fill from its target, which is judged on its own
@@ -456,7 +458,8 @@ function M.one_surface()
   end
 end
 
--- Set by apply(): the palette with the surface's bg/fg, and "glass" or "flat".
+-- Set by apply(): the palette with the look's bg/fg (shell.toml [menu] on
+-- glass, the theme's dark editor colours on flat), and "glass" or "flat".
 M.palette, M.look = nil, nil
 
 ---Build and set every group for the current look.
