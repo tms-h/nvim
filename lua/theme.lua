@@ -77,7 +77,7 @@ local function rgb(hex)
 end
 
 ---Colour `t` of the way from `a` to `b`.
-function M.mix(a, b, t)
+local function mix(a, b, t)
   local r1, g1, b1 = rgb(a)
   local r2, g2, b2 = rgb(b)
   local function c(x, y)
@@ -88,7 +88,6 @@ end
 
 local function groups(p, look)
   local bg, fg = p.bg, p.fg
-  local mix = M.mix
   local comment = p.light_foreground
   local faint = mix(bg, fg, 0.32)
   local line = mix(bg, fg, 0.24)
@@ -497,7 +496,7 @@ function M.apply()
   }
   for i, colour in ipairs(term) do
     vim.g["terminal_color_" .. (i - 1)] = colour
-    vim.g["terminal_color_" .. (i + 7)] = bright[i] or M.mix(colour, p.foreground, 0.25)
+    vim.g["terminal_color_" .. (i + 7)] = bright[i] or mix(colour, p.foreground, 0.25)
   end
 
   -- Glass: only the line number marks the cursor line (a filled band would be
