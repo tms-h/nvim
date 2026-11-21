@@ -517,10 +517,22 @@ function M.setup()
     },
   }
 
+  -- Every ocamllsp whose root holds a dune project hears that project's
+  -- `dune build -w` (Dune RPC) and re-checks its own open copies after each
+  -- build. One rooted above the project (a file outside any project) or one
+  -- already restarted thus put errors on a buffer it doesn't track: errors of
+  -- text long since fixed, back on every :w, or left forever when that
+  -- server exits, since Neovim clears a server's marks only on its own
+  -- buffers (2026-11-22). The server attached to the buffer reports the same
+  -- build, so a loaded buffer takes ocamllsp's reports only from its own.
   local publish = vim.lsp.handlers["textDocument/publishDiagnostics"]
   vim.lsp.handlers["textDocument/publishDiagnostics"] = function(err, result, ctx, ...)
     local client = vim.lsp.get_client_by_id(ctx.client_id)
     if result and client and client.name == "ocamllsp" then
+      local buf = vim.uri_to_bufnr(result.uri)
+      if api.nvim_buf_is_loaded(buf) and not client.attached_buffers[buf] then
+        return
+      end
       local diagnostics = M.destruct_hint(M.expect_diffs(result.diagnostics, client.root_dir))
       result = vim.tbl_extend("force", result, { diagnostics = diagnostics })
     end

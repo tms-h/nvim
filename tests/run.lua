@@ -3386,6 +3386,57 @@ check("A failing expect test from a colour terminal's dune -w shows what the tes
   vim.fn.delete(root, "rf")
 end)
 
+check("OCaml errors fixed and saved leave the buffer: a server not attached to it adds none", function()
+  -- 2026-11-22: a second ocamllsp, rooted above the project, heard the
+  -- project's dune -w too and put its own errors on the file; they stayed
+  -- after the fix.
+  local dir = proj .. "/stale"
+  vim.fn.mkdir(dir, "p")
+  vim.fn.writefile({ "(library (name stale))" }, dir .. "/dune")
+  vim.fn.writefile({ 'let n : int = "not an int"' }, dir .. "/stale.ml")
+  -- Built once first, so the first-build restart (lsp.lua) stays out of it.
+  vim.system({ "dune", "build", "@stale/check" }, { cwd = proj }):wait(60000)
+  vim.cmd("edit! " .. dir .. "/stale.ml")
+  local buf = api.nvim_get_current_buf()
+  wait_for_lsp(buf)
+  local own = vim.lsp.get_clients({ bufnr = buf, name = "ocamllsp" })[1]
+  local other = vim.lsp.start(
+    { name = "ocamllsp", cmd = { "ocamllsp" }, root_dir = vim.fs.dirname(proj) },
+    { attach = false }
+  )
+  local dune = vim.system({ "dune", "build", "-w", "@stale/check" }, { cwd = proj })
+  local function errors(client_id)
+    local ns = vim.lsp.diagnostic.get_namespace(client_id)
+    return vim.diagnostic.get(buf, { namespace = ns, severity = vim.diagnostic.severity.ERROR })
+  end
+  local ok, err = pcall(function()
+    expect(own and other and own.id ~= other, "two servers: " .. vim.inspect { own and own.id, other })
+    wait_until(function()
+      return vim.iter(errors(own.id)):any(function(d)
+        return d.source == "dune"
+      end)
+    end, 30000)
+    expect(#errors(own.id) > 0, "no error from the build")
+    wait(4000) -- the other server hears the same build
+    expect(#errors(other) == 0, "errors from the server not attached: " .. vim.inspect(errors(other)))
+    api.nvim_buf_set_lines(buf, 0, -1, false, { "let n : int = 1" })
+    vim.cmd "write"
+    wait_until(function()
+      return #vim.diagnostic.get(buf, { severity = vim.diagnostic.severity.ERROR }) == 0
+    end, 30000)
+    local left = vim.diagnostic.get(buf, { severity = vim.diagnostic.severity.ERROR })
+    expect(#left == 0, "errors left after the fix: " .. vim.inspect(left))
+  end)
+  dune:kill(15)
+  dune:wait(5000)
+  if other then
+    vim.lsp.get_client_by_id(other):stop(true)
+  end
+  vim.cmd("bwipeout! " .. buf)
+  vim.fn.delete(dir, "rf")
+  expect(ok, err)
+end)
+
 check("OCaml shows each top-level let's type above it (ocamllsp code lens)", function()
   vim.cmd "edit! b.ml"
   local buf = api.nvim_get_current_buf()
