@@ -1,9 +1,14 @@
 -- The tab bar: one tab per open file, in the order you opened them, like
 -- Chrome. Each tab: icon, name, its error count, a close button (×). Left
 -- click shows the file in the editor pane; right or middle click, or ×,
--- closes it. When the tabs do not fit, they shrink in steps (shorter names,
--- no extension, icon only; the current tab keeps its name), and only past
--- the last step does the bar scroll around the current tab (‹ ›).
+-- closes it. When the tabs do not fit, the other tabs' names shrink evenly
+-- to the longest that fit, the cells left over go back to the names, and
+-- short names stay short (the current tab keeps its name). Names this short
+-- drop the other tabs' ×; when no name fits every tab, the current tab's
+-- nearest neighbours keep names and the rest show icons only; only past
+-- that does the bar scroll around the current tab (‹ ›).
+-- fe-nvim's pages read like their file's tab under their own icon, with
+-- their kind in front ("review bin/dune") when every page has room for it.
 -- Reopen (Alt/Cmd+Shift+T) puts a tab back where it was.
 local M = {}
 
@@ -106,6 +111,7 @@ local function errors(buf)
   return n and n > 0 and n or nil
 end
 
+-- `text` in `cells` cells, the last one an ellipsis when it is cut.
 local function cut(text, cells)
   if vim.fn.strdisplaywidth(text) <= cells then
     return text
@@ -113,80 +119,140 @@ local function cut(text, cells)
   return vim.fn.strcharpart(text, 0, cells - 1) .. "…"
 end
 
--- Names, with the parent folder when two tabs share a name.
-local function names(list)
-  local full, tails, count = {}, {}, {}
-  for _, buf in ipairs(list) do
-    full[buf] = api.nvim_buf_get_name(buf)
-    local tail = full[buf] == "" and "untitled" or vim.fn.fnamemodify(full[buf], ":t")
-    tails[buf] = tail
-    count[tail] = (count[tail] or 0) + 1
+-- fe-nvim names its pages fe://KIND/FEATURE[ -- FILE] (mini-iron's
+-- Page.name): { kind, path } for a file's page, { kind, name } for the
+-- feature's (its last part), { name } for fe://todo.
+local function fe_page(full)
+  local rest = full:match "^fe://(.+)$"
+  if not rest then
+    return nil
   end
-  for _, buf in ipairs(list) do
-    if count[tails[buf]] > 1 and full[buf] ~= "" then
-      tails[buf] = vim.fn.fnamemodify(full[buf], ":h:t") .. "/" .. tails[buf]
-    end
+  local kind, feature = rest:match "^(%l+)/(.+)$"
+  if not kind then
+    return { name = rest }
   end
-  return tails
+  local file = feature:match " %-%- (.+)$"
+  return file and { kind = kind, path = file } or { kind = kind, name = feature:match "[^/]+$" }
 end
 
--- Shrink steps: the most a name may take, and what is left of a tab.
-local STEPS = {
-  { name = 40 },
-  { name = 20 },
-  { name = 12 },
-  { name = 8, no_ext = true },
-  { name = 0, no_close = true },
-}
+-- Each tab's names, longest first, and their widths. A file reads its name,
+-- with the parent folder when two files share it ("bin/dune"), then the
+-- folder's first letter ("b/dune"), then the name alone. An fe page reads
+-- its kind, then what a file's tab would ("review bin/dune").
+local function names(list)
+  local out, count = {}, { files = {}, pages = {} }
+  for _, buf in ipairs(list) do
+    local full = api.nvim_buf_get_name(buf)
+    local page = fe_page(full)
+    local n = page or { path = full ~= "" and full or nil, name = "untitled" }
+    n.fe = page ~= nil
+    if n.path then
+      n.tail = vim.fs.basename(n.path)
+      local seen = count[n.fe and "pages" or "files"]
+      seen[n.tail] = (seen[n.tail] or 0) + 1
+    end
+    out[buf] = n
+  end
+  for _, buf in ipairs(list) do
+    local n = out[buf]
+    if n.path then
+      local dir = vim.fs.basename(vim.fs.dirname(n.path))
+      n.forms = { n.tail }
+      if count[n.fe and "pages" or "files"][n.tail] > 1 and dir ~= "." and dir ~= "" then
+        local short = vim.fn.strcharpart(dir, 0, 1)
+        n.forms = { dir .. "/" .. n.tail, short .. "/" .. n.tail, n.tail }
+        if short == dir then
+          table.remove(n.forms, 2)
+        end
+      end
+    else
+      n.forms = { n.name }
+    end
+    n.plain = 1 -- the first name without the kind
+    if n.kind then
+      table.insert(n.forms, 1, n.kind .. " " .. n.forms[1])
+      n.plain = 2
+    end
+    n.widths = {}
+    for k, f in ipairs(n.forms) do
+      n.widths[k] = vim.fn.strdisplaywidth(f)
+    end
+  end
+  return out
+end
 
----One tab as { s = statusline string, width = its width in cells }.
-local function tab(buf, name, step, current)
+local NAME_MAX = 40 -- the most cells a name takes, the current tab's too
+local NAME_MIN = 4 -- the fewest cells a cut name gets, else icons only
+local NEAR_MIN = 6 -- the fewest when only the current tab's neighbours get names
+local CLOSE_MIN = 12 -- names shorter than this: the other tabs drop ×
+
+-- The longest of a tab's names from the `from`-th on that fits in `cap`
+-- cells, else its shortest cut to `cap` (or none under NAME_MIN): which
+-- name, and its width.
+local function fit(n, cap, from)
+  for k = from or 1, #n.widths do
+    if n.widths[k] <= cap then
+      return k, n.widths[k]
+    end
+  end
+  return #n.widths, cap >= NAME_MIN and cap or 0
+end
+
+-- One tab's parts, looked up once per draw. `width`: its cells without the
+-- name and ×: " icon", " ●N" and the gap after it. fe pages share one
+-- colour: a diff icon for a file's page, git's for the feature's.
+local function parts(buf, n, current)
   local icon, icon_hl = "", nil
   if MiniIcons then
-    icon, icon_hl = MiniIcons.get("file", name)
-  end
-  if not current then
-    if step.no_ext then
-      name = name:gsub("(.)%.[^.]+$", "%1")
+    if n.fe then
+      icon, icon_hl = MiniIcons.get("filetype", n.path and "diff" or "git"), "MiniIconsAzure"
+    else
+      icon, icon_hl = MiniIcons.get("file", n.forms[1])
     end
-    name = step.name > 0 and cut(name, step.name) or ""
-  else
-    name = cut(name, 40)
   end
   local visible = #vim.fn.win_findbuf(buf) > 0
-  local modified = vim.bo[buf].modified
   local kind = current and "Current" or visible and "Visible" or "Hidden"
-  local hl = "Tabs" .. (modified and "Modified" or "") .. kind
   local err = errors(buf)
-  local close = current or not step.no_close
-  -- The same tab as plain text, to measure it.
-  local text = " "
-    .. icon
-    .. (name ~= "" and " " .. name or "")
-    .. (err and " ●" .. err or "")
-    .. (close and " ×" or "")
-    .. " "
-  local s = { "%" .. buf .. "@v:lua.Tabs_click@%#" .. hl .. "# " }
-  if icon ~= "" then
-    s[#s + 1] = "%#" .. (icon_hl or hl) .. "#" .. icon .. "%#" .. hl .. "#"
+  return {
+    buf = buf,
+    n = n,
+    current = current,
+    icon = icon,
+    icon_hl = icon_hl,
+    hl = "Tabs" .. (vim.bo[buf].modified and "Modified" or "") .. kind,
+    err = err,
+    width = 1 + vim.fn.strdisplaywidth(icon) + (err and 2 + #tostring(err) or 0) + 1,
+  }
+end
+
+-- Draw tab `t` with its name `k` in `w` cells (0: none), × if `close`.
+local function draw(t, k, w, close)
+  local name = w == 0 and "" or cut(t.n.forms[k], w)
+  t.name, t.width = name, t.width + (w > 0 and w + 1 or 0) + (close and 2 or 0)
+  local s = { "%" .. t.buf .. "@v:lua.Tabs_click@%#" .. t.hl .. "# " }
+  if t.icon ~= "" then
+    s[#s + 1] = "%#" .. (t.icon_hl or t.hl) .. "#" .. t.icon .. "%#" .. t.hl .. "#"
   end
   if name ~= "" then
     s[#s + 1] = " " .. name:gsub("%%", "%%%%")
   end
-  if err then
-    s[#s + 1] = " %#TabsError#●" .. err .. "%#" .. hl .. "#"
+  if t.err then
+    s[#s + 1] = " %#TabsError#●" .. t.err .. "%#" .. t.hl .. "#"
   end
   s[#s + 1] = "%T"
   if close then
-    s[#s + 1] = " %" .. buf .. "@v:lua.Tabs_close@%#TabsClose#×%T"
+    s[#s + 1] = " %" .. t.buf .. "@v:lua.Tabs_close@%#TabsClose#×%T"
   end
   -- The gap after a tab is never underlined with it.
   s[#s + 1] = "%#TabsFill# "
-  return { s = table.concat(s), width = vim.fn.strdisplaywidth(text) }
+  t.s = table.concat(s)
 end
 
----The step the bar is drawn at now (1 = full names), for checks.
-M.step = 1
+---How the bar was drawn last, for checks: `cap`, the most cells another
+---tab's name may take (0 = icons only); `named`, how many of the tabs
+---nearest the current one have names; `close`, whether the other tabs keep
+---×; `scroll`, whether it scrolls; `names`, each tab's name by buffer.
+M.fit = {}
 
 function M.render()
   local list = M.list()
@@ -196,29 +262,134 @@ function M.render()
     local win = require("panes").last_editor()
     cur = win and api.nvim_win_get_buf(win) or cur
   end
-  local tail = names(list)
+  local n = names(list)
   local pages = #api.nvim_list_tabpages()
   local right = pages > 1 and ("%#TabsTabpage# " .. vim.fn.tabpagenr() .. "/" .. pages .. " ") or ""
   local room = vim.o.columns - (pages > 1 and #tostring(pages) * 2 + 3 or 0)
-  local tabs, total
-  local ci = 1 -- the current tab's place (the first if it has none)
-  for i, step in ipairs(STEPS) do
-    tabs, total = {}, 0
-    for j, buf in ipairs(list) do
-      local t = tab(buf, tail[buf], step, buf == cur)
-      tabs[j], total = t, total + t.width
-      if buf == cur then
-        ci = j
-      end
-    end
-    M.step = i
-    if total <= room then
-      break
+  local tabs, ci = {}, nil -- ci: the current tab's place
+  local budget = room -- cells left for the other tabs
+  for j, buf in ipairs(list) do
+    local t = parts(buf, n[buf], buf == cur)
+    tabs[j] = t
+    if t.current then
+      ci = j
+      -- Never wider than the bar with ‹ › beside it.
+      t.k, t.w = fit(t.n, math.min(NAME_MAX, room - t.width - 5), t.n.plain)
+      budget = budget - (t.width + (t.w > 0 and t.w + 1 or 0) + 2)
     end
   end
-  -- Past the last step: a window of tabs around the current one.
-  local first, last = 1, #tabs
-  if total > room then
+  -- The other tabs by nearness to the current one, the right side first
+  -- (Ctrl+Tab's next), as `t.near`; without a current tab, left to right.
+  local others = 0
+  for d = 1, #tabs do
+    for _, j in ipairs(ci and { ci + d, ci - d } or { d }) do
+      if tabs[j] then
+        others = others + 1
+        tabs[j].near = others
+      end
+    end
+  end
+  -- The other tabs' cells when the `named` nearest have names of at most
+  -- `cap` cells, without their kind, and the rest icons only.
+  local function total(cap, close, named)
+    local sum = 0
+    for _, t in ipairs(tabs) do
+      if not t.current then
+        local w = t.near <= named and select(2, fit(t.n, cap, t.n.plain)) or 0
+        sum = sum + t.width + (w > 0 and w + 1 or 0) + (close and 2 or 0)
+      end
+    end
+    return sum
+  end
+  -- The largest cap from `low` up to NAME_MAX that fits, or nil.
+  local function largest(low, close, named)
+    if total(low, close, named) > budget then
+      return nil
+    end
+    local high = NAME_MAX
+    while low < high do
+      local mid = math.ceil((low + high) / 2)
+      if total(mid, close, named) <= budget then
+        low = mid
+      else
+        high = mid - 1
+      end
+    end
+    return low
+  end
+  -- × stays on the other tabs while their names are CLOSE_MIN or more, but
+  -- not when dropping it is what saves every name from a cut.
+  local whole = 0 -- the cap no name is cut at
+  for _, t in ipairs(tabs) do
+    if not t.current then
+      whole = math.max(whole, t.n.widths[#t.n.widths])
+    end
+  end
+  local named = others
+  local with, without = largest(CLOSE_MIN, true, named), largest(NAME_MIN, false, named)
+  local close = with ~= nil and (with >= whole or not without or without < whole)
+  local cap = close and with or without
+  -- Names for every tab do not fit: readable names for as many of the
+  -- current tab's neighbours as fit, icons only for the rest.
+  while not cap and named > 1 do
+    named = named - 1
+    cap = largest(NEAR_MIN, false, named)
+  end
+  if not cap then
+    cap, named = 0, 0
+  end
+  -- Hand the cells left over back, a cell of cap at a time: to cut names
+  -- first (left to right), then to names a folder fits back in; last, when
+  -- every fe page has room for it, their kinds.
+  local spare = budget - total(cap, close, named)
+  local named_tabs = {}
+  for _, t in ipairs(tabs) do
+    if not t.current then
+      t.k, t.w = 1, 0
+      if t.near <= named then
+        t.k, t.w = fit(t.n, cap, t.n.plain)
+        named_tabs[#named_tabs + 1] = t
+      end
+    end
+  end
+  local more = cap
+  while spare > 0 and more < NAME_MAX and #named_tabs > 0 do
+    more = more + 1
+    for pass = 1, 2 do
+      for _, t in ipairs(named_tabs) do
+        if (pass == 1) == (t.w < t.n.widths[#t.n.widths]) then
+          local k, w = fit(t.n, more, t.n.plain)
+          if w > t.w and w - t.w <= spare then
+            spare, t.k, t.w = spare - (w - t.w), k, w
+          end
+        end
+      end
+    end
+  end
+  -- The current tab follows the same rule, so every fe page reads alike.
+  local kinded = { tabs[ci or 0], unpack(named_tabs) }
+  local kinds = 0 -- the cells every kind takes, or nil
+  for _, t in pairs(kinded) do
+    if kinds and t.n.plain > 1 then
+      local fits = t.k == t.n.plain and t.n.widths[1] <= NAME_MAX
+      kinds = fits and kinds + t.n.widths[1] - t.w or nil
+    end
+  end
+  if kinds and kinds <= spare then
+    spare = spare - kinds
+    for _, t in pairs(kinded) do
+      if t.n.plain > 1 then
+        t.k, t.w = 1, t.n.widths[1]
+      end
+    end
+  end
+  for _, t in ipairs(tabs) do
+    draw(t, t.k, t.w, close or t.current)
+  end
+  ci = ci or 1
+  -- Past icons only: a window of tabs around the current one.
+  local first, last, total_cells = 1, #tabs, room - spare
+  if total_cells > room then
     first, last = ci, ci
     local used = tabs[ci] and tabs[ci].width or 0
     local grew = true
@@ -232,6 +403,11 @@ function M.render()
       end
     end
   end
+  local drawn = {}
+  for _, t in ipairs(tabs) do
+    drawn[t.buf] = t.name
+  end
+  M.fit = { cap = cap, close = close, named = named, scroll = first > 1 or last < #tabs, names = drawn }
   local out = {}
   if first > 1 then
     out[#out + 1] = "%#TabsTrunc#‹"

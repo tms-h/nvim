@@ -2710,6 +2710,13 @@ local function tabline()
   return r.str, r.width
 end
 
+-- Cells the tabs themselves take (render() before the fill to the right),
+-- measured past the window's width so an overflow shows.
+local function tabs_width()
+  local tabs = require("tabs").render():gsub("%%=.*$", "")
+  return api.nvim_eval_statusline(tabs, { use_tabline = true, maxwidth = 1000 }).width
+end
+
 check("Tab bar: close button, error count per tab, right-click and x close", function()
   vim.cmd("edit " .. proj .. "/a.ml | edit " .. proj .. "/b.ml | edit " .. proj .. "/c.ml")
   local b = vim.fn.bufnr(proj .. "/b.ml")
@@ -2756,16 +2763,72 @@ check("Tab bar: 14 tabs shrink like Chrome (current keeps its name), never wider
   end
   vim.cmd("edit " .. made[7])
   local text = tabline()
-  local step = require("tabs").step
-  -- Room the tabs themselves take (render() before the fill to the right).
-  local used = api.nvim_eval_statusline(require("tabs").render():gsub("%%=.*$", ""), { use_tabline = true }).width
+  local cap = require("tabs").fit.cap
+  local used = tabs_width()
   for _, f in ipairs(made) do
     pcall(vim.cmd, "bwipeout! " .. vim.fn.bufnr(f))
     vim.fn.delete(f)
   end
-  expect(step > 1, "tabs did not shrink (step " .. step .. ")")
+  expect(cap < #"a_rather_long_module_name_01.ml", "tabs did not shrink (names up to " .. cap .. " cells)")
   expect(text:find("a_rather_long_module_name_07.ml", 1, true), "the current tab lost its name: " .. text)
   expect(used <= vim.o.columns, ("tabs take %d cells, window %d: %s"):format(used, vim.o.columns, text))
+end)
+
+-- Thomas's bar of 2026-11-22, "why are the buffers like this when i have so
+-- much real estate space": ten tabs (fe-nvim's review pages beside the files
+-- they show), two tabpages, about 159 columns. Every other tab was an icon
+-- with 90 cells empty, because one shrink step a few cells short of fitting
+-- fell to icons only; and each review page's name cut to the same
+-- "send-su…", from its feature in "fe://review/FEATURE -- bin/dune".
+check("Tab bar: fe review pages and their files fill a 159-column bar with names, fit 77", function()
+  local tabs, feature = require "tabs", "janus/send-subscriptions"
+  local function page(name)
+    local b = api.nvim_create_buf(true, false)
+    api.nvim_buf_set_name(b, name)
+    vim.bo[b].buftype = "nofile"
+    return b
+  end
+  local bufs = { page("fe://diff/" .. feature .. " -- dune-project"), page("fe://feature/" .. feature) }
+  local pages = { bufs[2] }
+  for _, file in ipairs { "bin/dune", "bin/main.ml", "lib/dune", "lib/hyperliquid.mli" } do
+    bufs[#bufs + 1] = vim.fn.bufadd(proj .. "/" .. file)
+    vim.bo[bufs[#bufs]].buflisted = true
+    bufs[#bufs + 1] = page("fe://review/" .. feature .. " -- " .. file)
+    pages[#pages + 1] = bufs[#bufs]
+  end
+  local a = api.nvim_get_current_buf()
+  api.nvim_win_set_buf(0, bufs[1])
+  api.nvim_buf_delete(a, { force = true })
+  vim.cmd "tab split | tabprevious"
+  local wide, wide_text, wide_names, narrow, narrow_text, narrow_names
+  local ok, err = pcall(function()
+    screen(159)
+    wide, wide_text = tabs_width(), tabline()
+    wide_names = vim.deepcopy(tabs.fit and tabs.fit.names or {})
+    screen(77)
+    narrow, narrow_text = tabs_width(), tabline()
+    narrow_names = vim.deepcopy(tabs.fit and tabs.fit.names or {})
+  end)
+  screen(200)
+  expect(ok, err)
+  -- The tabpage counter " 1/2 " takes the last 5 cells.
+  for _, name in ipairs { "main.ml", "lib/dune", "hyperliquid" } do
+    expect(wide_text:find(name, 1, true), "no " .. name .. " at 159 columns: " .. wide_text)
+  end
+  expect(wide + 5 <= 159, ("tabs take %d + 5 cells of 159: %s"):format(wide, wide_text))
+  expect(wide + 5 >= 0.9 * 159, ("tabs take only %d + 5 cells of 159: %s"):format(wide, wide_text))
+  local seen = {}
+  for _, b in ipairs(pages) do
+    local name = wide_names[b]
+    expect(name and name ~= "" and not seen[name], ("fe pages not told apart: %s"):format(vim.inspect(wide_names)))
+    seen[name] = true
+  end
+  expect(narrow + 5 <= 77, ("tabs take %d + 5 cells of 77: %s"):format(narrow, narrow_text))
+  -- Ten names do not fit in 77: the tabs next to the current one keep theirs.
+  expect(
+    narrow_names[bufs[2]] ~= "" and narrow_names[bufs[3]] ~= "",
+    "no names next to the current tab at 77: " .. narrow_text
+  )
 end)
 
 check("Reopen puts a closed tab back in its place (Chrome)", function()
