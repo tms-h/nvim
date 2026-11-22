@@ -1,6 +1,8 @@
 -- OCaml: ocp-indent while typing, ocamlformat on save (lsp.lua), ocamllsp,
 -- and dune in a terminal pane. Keys (OCaml files only):
---   <leader>oi  switch .ml / .mli        <leader>of  format now
+--   <leader>oi  switch .ml / .mli; in a test without its own .mli, go to the
+--               tested module's .mli (its .ml when it has none)
+--   <leader>of  format now
 --   <leader>ot  switch module / its test <leader>ob  dune build
 --   <leader>ow  dune test -w, this folder <leader>op  dune promote, this file only
 --   <leader>os  list the snippets (Tab previews, Enter types the trigger)
@@ -162,10 +164,110 @@ function M.test(buf)
   end
 end
 
----Jump between foo.ml and foo.mli.
+-- Test file names, `%s` standing for the module: foo_test.ml, test_foo.ml,
+-- and Iron's common/foo_unit_tests.ml. Longer endings come first so a
+-- file's first match names its module.
+local TEST_NAMES = { "%s_test", "test_%s", "%s_unit_tests", "%s_tests" }
+local TEST_DIRS = { "test", "tests" }
+
+---`dir` and the folders above it, up to and including `top` (the whole way
+---up when `top` is not above it), nearest first.
+local function up_to(dir, top)
+  local dirs = { dir }
+  for parent in vim.fs.parents(dir) do
+    if dir == top then
+      break
+    end
+    table.insert(dirs, parent)
+    dir = parent
+  end
+  return dirs
+end
+
+---The module a test file at `path` is for, looking no higher than the
+---project root `top`: for units/foo_test.ml (or test_foo, foo_unit_tests,
+---foo_tests), foo.ml beside it (ocaml-drills), else foo.ml at the same
+---place under the test folder's parent or under a folder beside it:
+---test/foo_test.ml → lib/foo.ml, test/server/foo_test.ml → src/server/foo.ml
+---(royalecode). Returns its .ml, or nil and the module the name gives.
+local function module_of_test(path, top)
+  local base = vim.fn.fnamemodify(path, ":t:r")
+  local modules = {}
+  for _, name in ipairs(TEST_NAMES) do
+    modules[#modules + 1] = base:match("^" .. name:gsub("%%s", "(.+)") .. "$")
+  end
+  if #modules == 0 then
+    return nil
+  end
+  local dir = vim.fs.dirname(path)
+  local dirs = { dir }
+  for _, test_dir in ipairs(up_to(dir, top)) do
+    if test_dir ~= top and vim.tbl_contains(TEST_DIRS, vim.fs.basename(test_dir)) then
+      local rel = vim.fs.relpath(test_dir, dir)
+      rel = rel == "." and "" or "/" .. rel
+      local up = vim.fs.dirname(test_dir)
+      table.insert(dirs, up .. rel)
+      for entry, kind in vim.fs.dir(up) do
+        if kind == "directory" and up .. "/" .. entry ~= test_dir then
+          table.insert(dirs, up .. "/" .. entry .. rel)
+        end
+      end
+      break
+    end
+  end
+  for _, d in ipairs(dirs) do
+    for _, module in ipairs(modules) do
+      if vim.uv.fs_stat(d .. "/" .. module .. ".ml") then
+        return d .. "/" .. module .. ".ml"
+      end
+    end
+  end
+  return nil, modules[1]
+end
+
+---The test file for the module at `path`, the other way round from
+---module_of_test: in a test or tests folder in or above the module's folder
+---(lib/foo.ml → test/foo_test.ml, src/server/foo.ml → test/server/foo_test.ml),
+---else beside it.
+local function test_of_module(path, top)
+  local dir = vim.fs.dirname(path)
+  local base = vim.fn.fnamemodify(path, ":t:r")
+  local dirs = {}
+  for _, up in ipairs(up_to(dir, top)) do
+    local rel = vim.fs.relpath(up, dir)
+    for _, test in ipairs(TEST_DIRS) do
+      if rel == "." then
+        table.insert(dirs, up .. "/" .. test)
+      else
+        table.insert(dirs, up .. "/" .. test .. "/" .. rel)
+        table.insert(dirs, up .. "/" .. test .. (rel:match "^[^/]+(/.+)$" or ""))
+      end
+    end
+  end
+  table.insert(dirs, dir)
+  for _, d in ipairs(dirs) do
+    for _, name in ipairs(TEST_NAMES) do
+      local file = d .. "/" .. name:format(base) .. ".ml"
+      if vim.uv.fs_stat(file) then
+        return file
+      end
+    end
+  end
+end
+
+---Jump between foo.ml and foo.mli. From a test file without its own .mli,
+---go to the tested module's .mli, or its .ml when it has none ("space o i
+---should go from test to mli", 2026-11-22): it used to stop at "No
+---foo_test.mli".
 function M.switch(buf)
   local name = api.nvim_buf_get_name(buf)
   local other = name:match "%.mli$" and name:sub(1, -2) or name:match "%.ml$" and name .. "i"
+  if other and not vim.uv.fs_stat(other) then
+    local ml = module_of_test(name, root(buf))
+    if ml then
+      other = vim.uv.fs_stat(ml .. "i") and ml .. "i" or ml
+    end
+  end
   if other and vim.uv.fs_stat(other) then
     vim.cmd.edit(vim.fn.fnameescape(other))
   else
@@ -173,51 +275,19 @@ function M.switch(buf)
   end
 end
 
----The module a test file in `test_dir` is for: `module`.ml in the folder
----above, or in a folder beside `test_dir`.
-local function module_of_test(test_dir, module)
-  local up = vim.fs.dirname(test_dir)
-  local file = module .. ".ml"
-  if vim.uv.fs_stat(up .. "/" .. file) then
-    return up .. "/" .. file
-  end
-  for entry, kind in vim.fs.dir(up) do
-    local path = up .. "/" .. entry .. "/" .. file
-    if kind == "directory" and vim.uv.fs_stat(path) then
-      return path
-    end
-  end
-end
-
----The test file for module `base` in `dir`: `base`_test.ml or test_`base`.ml,
----in a `test` folder beside `dir` or inside it.
-local function test_of_module(dir, base)
-  for _, test_dir in ipairs { vim.fs.dirname(dir) .. "/test", dir .. "/test" } do
-    for _, file in ipairs { base .. "_test.ml", "test_" .. base .. ".ml" } do
-      if vim.uv.fs_stat(test_dir .. "/" .. file) then
-        return test_dir .. "/" .. file
-      end
-    end
-  end
-end
-
 ---Jump between a module and its test file: lib/foo.ml (or .mli) and
----test/foo_test.ml or test/test_foo.ml. Took over <leader>ot from "dune test
----once", which <leader>ow covers (2026-11-21).
+---test/foo_test.ml or test/test_foo.ml, and the other layouts in
+---module_of_test. Took over <leader>ot from "dune test once", which
+---<leader>ow covers (2026-11-21).
 function M.switch_test(buf)
   local name = api.nvim_buf_get_name(buf)
-  local dir = vim.fs.dirname(name)
-  local base = vim.fn.fnamemodify(name, ":t"):gsub("%.mli?$", "")
-  local module = vim.fs.basename(dir) == "test" and (base:match "^test_(.+)$" or base:match "^(.+)_test$")
-  local other
-  if module then
-    other = module_of_test(dir, module)
-  else
-    other = test_of_module(dir, base)
-  end
+  local top = root(buf)
+  local other, module = module_of_test(name, top)
+  other = other or test_of_module(name, top)
   if other then
     vim.cmd.edit(vim.fn.fnameescape(other))
   else
+    local base = vim.fn.fnamemodify(name, ":t:r")
     vim.notify("No " .. (module and module .. ".ml for this test" or "test file for " .. base))
   end
 end
@@ -259,7 +329,7 @@ function M.setup(buf)
   end
   map("<leader>oi", function()
     M.switch(buf)
-  end, "switch .ml/.mli")
+  end, "switch .ml/.mli; from a test, its module's .mli")
   map("<leader>os", function()
     require("snippets").pick()
   end, "snippets")

@@ -984,30 +984,89 @@ check("OCaml: <leader>oi switches .ml/.mli; ocp-indent indents; format on save",
   expect(vim.fn.getline(1) == "let f x = x + 1", "formatted to '" .. vim.fn.getline(1) .. "'")
 end)
 
-check("OCaml: <leader>ot jumps between a module and its test file, both namings", function()
-  for path, lines in pairs {
+-- Files under proj, made fresh: path → lines.
+local function make_files(files)
+  for path, lines in pairs(files) do
+    vim.fn.mkdir(vim.fs.dirname(proj .. "/" .. path), "p")
+    vim.fn.writefile(lines, proj .. "/" .. path)
+  end
+end
+
+-- `key` pressed in each case's first file lands on its second (paths under proj).
+local function lands(key, cases)
+  for _, case in ipairs(cases) do
+    vim.cmd("edit! " .. case[1])
+    press(key)
+    local at = vim.fs.relpath(proj, api.nvim_buf_get_name(0)) or api.nvim_buf_get_name(0)
+    expect(at == case[2], key .. " in " .. case[1] .. " went to " .. at)
+  end
+end
+
+check("OCaml: <leader>ot jumps between a module and its test file, in each test layout", function()
+  make_files {
     ["lib/feed.ml"] = { "let x = 1" },
     ["lib/feed.mli"] = { "val x : int" },
     ["test/feed_test.ml"] = { "let y = 2" },
     ["lib/book.ml"] = { "let x = 1" },
     ["test/test_book.ml"] = { "let y = 2" },
     ["lib/lonely.ml"] = { "let x = 1" },
-  } do
-    vim.fn.mkdir(vim.fs.dirname(proj .. "/" .. path), "p")
-    vim.fn.writefile(lines, proj .. "/" .. path)
-  end
-  for _, case in ipairs {
-    { "lib/feed.ml", "feed_test.ml" },
-    { "lib/feed.mli", "feed_test.ml" },
-    { "test/feed_test.ml", "feed.ml" },
-    { "lib/book.ml", "test_book.ml" },
-    { "test/test_book.ml", "book.ml" },
-    { "lib/lonely.ml", "lonely.ml" },
-  } do
-    vim.cmd("edit! " .. case[1])
-    press " ot"
-    expect(name_of(0) == case[2], case[1] .. " went to " .. name_of(0))
-  end
+    -- ocaml-drills: the test beside its module.
+    ["units/u001_clock.ml"] = { "let x = 1" },
+    ["units/u001_clock_test.ml"] = { "let y = 2" },
+    -- royalecode: test/<dir>/ mirrors src/<dir>/.
+    ["src/server/analysis.ml"] = { "let x = 1" },
+    ["test/server/analysis_test.ml"] = { "let y = 2" },
+    -- Iron (mini-iron): common/foo_unit_tests.ml beside common/foo.ml.
+    ["common/serializer.ml"] = { "let x = 1" },
+    ["common/serializer_unit_tests.ml"] = { "let y = 2" },
+    ["lib/ledger.ml"] = { "let x = 1" },
+    ["tests/ledger_test.ml"] = { "let y = 2" },
+  }
+  lands(" ot", {
+    { "lib/feed.ml", "test/feed_test.ml" },
+    { "lib/feed.mli", "test/feed_test.ml" },
+    { "test/feed_test.ml", "lib/feed.ml" },
+    { "lib/book.ml", "test/test_book.ml" },
+    { "test/test_book.ml", "lib/book.ml" },
+    { "lib/lonely.ml", "lib/lonely.ml" },
+    { "units/u001_clock.ml", "units/u001_clock_test.ml" },
+    { "units/u001_clock_test.ml", "units/u001_clock.ml" },
+    { "src/server/analysis.ml", "test/server/analysis_test.ml" },
+    { "test/server/analysis_test.ml", "src/server/analysis.ml" },
+    { "common/serializer.ml", "common/serializer_unit_tests.ml" },
+    { "common/serializer_unit_tests.ml", "common/serializer.ml" },
+    { "lib/ledger.ml", "tests/ledger_test.ml" },
+    { "tests/ledger_test.ml", "lib/ledger.ml" },
+  })
+end)
+
+-- "space o i should go from test to mli its very annoying its not the
+-- default" (2026-11-22): it stopped at "No quote_test.mli".
+check("OCaml: <leader>oi in a test file goes to its module's .mli, else its .ml", function()
+  make_files {
+    ["lib/quote.ml"] = { "let x = 1" },
+    ["lib/quote.mli"] = { "val x : int" },
+    ["test/quote_test.ml"] = { "let y = 2" },
+    ["lib/fill.ml"] = { "let x = 1" },
+    ["test/test_fill.ml"] = { "let y = 2" },
+    ["lib/order.ml"] = { "let x = 1" },
+    ["lib/order.mli"] = { "val x : int" },
+    ["test/order_test.ml"] = { "let y = 2" },
+    ["test/order_test.mli"] = { "" },
+    ["units/u002_pace.ml"] = { "let x = 1" },
+    ["units/u002_pace.mli"] = { "val x : int" },
+    ["units/u002_pace_test.ml"] = { "let y = 2" },
+    ["test/server/route_test.ml"] = { "let y = 2" },
+    ["src/server/route.ml"] = { "let x = 1" },
+  }
+  lands(" oi", {
+    { "test/quote_test.ml", "lib/quote.mli" },
+    { "test/test_fill.ml", "lib/fill.ml" },
+    { "test/order_test.ml", "test/order_test.mli" },
+    { "units/u002_pace_test.ml", "units/u002_pace.mli" },
+    { "test/server/route_test.ml", "src/server/route.ml" },
+    { "lib/fill.ml", "lib/fill.ml" },
+  })
 end)
 
 check("OCaml: :w re-indents (Jane Street) where .ocamlformat says disable", function()
