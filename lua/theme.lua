@@ -327,6 +327,13 @@ local function groups(p, look)
     TabsFill = {},
     TabsTabpage = { fg = c.accent, bold = true },
     TabsTrunc = { fg = comment, bold = true },
+    -- fe-nvim's pages (review, diff, feature) beside their files: brackets
+    -- round the tab and the name in italics in the diff colour, so a review
+    -- page reads apart from its file without the icon's colour alone.
+    TabsPageMark = { fg = c.blue, bold = true },
+    TabsPageCurrent = { fg = c.blue, bold = true, italic = true, underline = true, sp = c.accent },
+    TabsPageVisible = { fg = c.blue, italic = true },
+    TabsPageHidden = { fg = mix(c.blue, bg, 0.35), italic = true },
     MiniPickBorder = { link = "FloatBorder" },
     MiniPickBorderBusy = { fg = c.yellow },
     MiniPickBorderText = { fg = c.accent, bold = true },

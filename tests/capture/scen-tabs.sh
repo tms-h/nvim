@@ -1,9 +1,11 @@
 # Sourced by shoot.sh: Thomas's tab bar of 2026-11-22, ten tabs (fe-nvim's
 # review pages beside the files they show), two tabpages, the current tab
-# fe-nvim's diff of dune-project. Shot with the bar about 159 columns wide (his
-# screenshot) and about 77 (his pane later). PROJECT_DIR should end in
-# send-subscriptions/+share+ and hold bin/dune, bin/main.ml, lib/dune and
-# lib/hyperliquid.mli, as janus's workspace does.
+# fe-nvim's diff of dune-project. Each state shows on a file and its review
+# page: bin/main.ml and its review in splits (visible), lib/dune unsaved (fe
+# pages are 'buftype' nofile, never unsaved), the rest hidden. Shot with the bar
+# about 159 columns wide (his screenshot) and about 77 (his pane later).
+# PROJECT_DIR should end in send-subscriptions/+share+ and hold bin/dune,
+# bin/main.ml, lib/dune and lib/hyperliquid.mli, as janus's workspace does.
 cat >"$OUT/tabs-setup.lua" <<EOF
 local api, root = vim.api, "$PROJ"
 local F = "janus/send-subscriptions"
@@ -30,6 +32,13 @@ local start = api.nvim_get_current_buf()
 api.nvim_win_set_buf(0, bufs[1])
 api.nvim_buf_delete(start, { force = true })
 vim.cmd("tab split | tabprevious")
+for _, b in ipairs { bufs[6], bufs[5] } do
+  vim.cmd("rightbelow vsplit")
+  api.nvim_win_set_buf(0, b)
+  vim.cmd("wincmd p")
+end
+vim.fn.bufload(bufs[7])
+api.nvim_buf_set_lines(bufs[7], 0, 0, false, { "; changed" })
 EOF
 R "execute('luafile $OUT/tabs-setup.lua')" >/dev/null
 sleep 1

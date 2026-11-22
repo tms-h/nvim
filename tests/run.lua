@@ -2774,14 +2774,11 @@ check("Tab bar: 14 tabs shrink like Chrome (current keeps its name), never wider
   expect(used <= vim.o.columns, ("tabs take %d cells, window %d: %s"):format(used, vim.o.columns, text))
 end)
 
--- Thomas's bar of 2026-11-22, "why are the buffers like this when i have so
--- much real estate space": ten tabs (fe-nvim's review pages beside the files
--- they show), two tabpages, about 159 columns. Every other tab was an icon
--- with 90 cells empty, because one shrink step a few cells short of fitting
--- fell to icons only; and each review page's name cut to the same
--- "send-su…", from its feature in "fe://review/FEATURE -- bin/dune".
-check("Tab bar: fe review pages and their files fill a 159-column bar with names, fit 77", function()
-  local tabs, feature = require "tabs", "janus/send-subscriptions"
+-- Thomas's ten tabs of 2026-11-22, current first: fe-nvim's diff of
+-- dune-project, the feature page, then bin/dune, bin/main.ml, lib/dune and
+-- lib/hyperliquid.mli, each followed by its review page; two tabpages.
+local function his_tabs()
+  local feature = "janus/send-subscriptions"
   local function page(name)
     local b = api.nvim_create_buf(true, false)
     api.nvim_buf_set_name(b, name)
@@ -2789,17 +2786,28 @@ check("Tab bar: fe review pages and their files fill a 159-column bar with names
     return b
   end
   local bufs = { page("fe://diff/" .. feature .. " -- dune-project"), page("fe://feature/" .. feature) }
-  local pages = { bufs[2] }
   for _, file in ipairs { "bin/dune", "bin/main.ml", "lib/dune", "lib/hyperliquid.mli" } do
     bufs[#bufs + 1] = vim.fn.bufadd(proj .. "/" .. file)
     vim.bo[bufs[#bufs]].buflisted = true
     bufs[#bufs + 1] = page("fe://review/" .. feature .. " -- " .. file)
-    pages[#pages + 1] = bufs[#bufs]
   end
   local a = api.nvim_get_current_buf()
   api.nvim_win_set_buf(0, bufs[1])
   api.nvim_buf_delete(a, { force = true })
   vim.cmd "tab split | tabprevious"
+  return bufs
+end
+
+-- Thomas's bar of 2026-11-22, "why are the buffers like this when i have so
+-- much real estate space": ten tabs (fe-nvim's review pages beside the files
+-- they show), two tabpages, about 159 columns. Every other tab was an icon
+-- with 90 cells empty, because one shrink step a few cells short of fitting
+-- fell to icons only; and each review page's name cut to the same
+-- "send-su…", from its feature in "fe://review/FEATURE -- bin/dune".
+check("Tab bar: fe review pages and their files fill a 159-column bar with names, fit 77", function()
+  local tabs = require "tabs"
+  local bufs = his_tabs()
+  local pages = { bufs[2], bufs[4], bufs[6], bufs[8], bufs[10] }
   local wide, wide_text, wide_names, narrow, narrow_text, narrow_names
   local ok, err = pcall(function()
     screen(159)
@@ -2829,6 +2837,51 @@ check("Tab bar: fe review pages and their files fill a 159-column bar with names
     narrow_names[bufs[2]] ~= "" and narrow_names[bufs[3]] ~= "",
     "no names next to the current tab at 77: " .. narrow_text
   )
+end)
+
+-- "ok but can u make the review ones different somehow so i can tell them
+-- apart from the file" (2026-11-22): a review page and its file read the
+-- same name ("bin/dune" twice) and differed only in the icon's colour.
+check("Tab bar: a review page and its file differ past the icon, named and icons only", function()
+  local tabs = require "tabs"
+  local bufs = his_tabs()
+  -- Each state on a pair: bin/main.ml and its review shown in splits,
+  -- lib/dune unsaved (fe pages are 'buftype' nofile, never unsaved), the
+  -- rest hidden.
+  for _, b in ipairs { bufs[6], bufs[5] } do
+    vim.cmd "rightbelow vsplit"
+    api.nvim_win_set_buf(0, b)
+    vim.cmd "wincmd p"
+  end
+  vim.fn.bufload(bufs[7])
+  api.nvim_buf_set_lines(bufs[7], 0, 0, false, { "; changed" })
+  -- One tab as drawn, less its icon (glyph and colour) and buffer numbers.
+  local function bare(raw, buf)
+    local s = raw:match("%%" .. buf .. "@v:lua%.Tabs_click@(.-)%%%d+@v:lua%.Tabs_click@")
+      or raw:match("%%" .. buf .. "@v:lua%.Tabs_click@(.-)%%#TabsFill#%%=")
+    s = (s or "")
+      :gsub("%%#MiniIcons%a+#", "")
+      :gsub("[\238\239][\128-\191][\128-\191]", "")
+      :gsub("\243[\128-\191][\128-\191][\128-\191]", "")
+    return (s:gsub("%%%d+@", "%%@"))
+  end
+  local same = {}
+  local ok, err = pcall(function()
+    for _, cols in ipairs { 159, 77 } do
+      screen(cols)
+      local raw = tabs.render()
+      for i = 3, 9, 2 do
+        local file, page = bare(raw, bufs[i]), bare(raw, bufs[i + 1])
+        if file == page then
+          same[#same + 1] = ("%d cols, %s %q"):format(cols, vim.fn.bufname(bufs[i]):match "[^/]+/[^/]+$", file)
+        end
+      end
+    end
+  end)
+  screen(200)
+  vim.cmd "only"
+  expect(ok, err)
+  expect(#same == 0, "review page drawn as its file but for the icon: " .. table.concat(same, "; "))
 end)
 
 check("Reopen puts a closed tab back in its place (Chrome)", function()

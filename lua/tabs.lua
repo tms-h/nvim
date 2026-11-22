@@ -7,8 +7,9 @@
 -- drop the other tabs' ×; when no name fits every tab, the current tab's
 -- nearest neighbours keep names and the rest show icons only; only past
 -- that does the bar scroll around the current tab (‹ ›).
--- fe-nvim's pages read like their file's tab under their own icon, with
--- their kind in front ("review bin/dune") when every page has room for it.
+-- fe-nvim's pages read like their file's tab, marked: in brackets, with the
+-- diff icon and the name in italics in the diff colour ("[▣ bin/dune]");
+-- their kind shows ("review bin/dune") when every page has room for it.
 -- Reopen (Alt/Cmd+Shift+T) puts a tab back where it was.
 local M = {}
 
@@ -199,8 +200,11 @@ local function fit(n, cap, from)
 end
 
 -- One tab's parts, looked up once per draw. `width`: its cells without the
--- name and ×: " icon", " ●N" and the gap after it. fe pages share one
--- colour: a diff icon for a file's page, git's for the feature's.
+-- name and ×: " icon", " ●N" and the gap after it. An fe page differs from
+-- its file's tab at no cell's cost: brackets in the cell before its icon and
+-- in its gap ("[▣ bin/dune]", "[▣]" as an icon only, like Vim's [Scratch]
+-- for a buffer that is no file), the diff icon (git's for the feature's
+-- page) and its name in italics in the page colour (TabsPage*).
 local function parts(buf, n, current)
   local icon, icon_hl = "", nil
   if MiniIcons then
@@ -212,6 +216,8 @@ local function parts(buf, n, current)
   end
   local visible = #vim.fn.win_findbuf(buf) > 0
   local kind = current and "Current" or visible and "Visible" or "Hidden"
+  -- fe pages are 'buftype' nofile: never modified.
+  local hl = "Tabs" .. (n.fe and "Page" or vim.bo[buf].modified and "Modified" or "") .. kind
   local err = errors(buf)
   return {
     buf = buf,
@@ -219,7 +225,8 @@ local function parts(buf, n, current)
     current = current,
     icon = icon,
     icon_hl = icon_hl,
-    hl = "Tabs" .. (vim.bo[buf].modified and "Modified" or "") .. kind,
+    hl = hl,
+    lead = n.fe and ("%#TabsPageMark#[%#" .. hl .. "#") or " ",
     err = err,
     width = 1 + vim.fn.strdisplaywidth(icon) + (err and 2 + #tostring(err) or 0) + 1,
   }
@@ -229,7 +236,7 @@ end
 local function draw(t, k, w, close)
   local name = w == 0 and "" or cut(t.n.forms[k], w)
   t.name, t.width = name, t.width + (w > 0 and w + 1 or 0) + (close and 2 or 0)
-  local s = { "%" .. t.buf .. "@v:lua.Tabs_click@%#" .. t.hl .. "# " }
+  local s = { "%" .. t.buf .. "@v:lua.Tabs_click@%#" .. t.hl .. "#" .. t.lead }
   if t.icon ~= "" then
     s[#s + 1] = "%#" .. (t.icon_hl or t.hl) .. "#" .. t.icon .. "%#" .. t.hl .. "#"
   end
@@ -243,8 +250,9 @@ local function draw(t, k, w, close)
   if close then
     s[#s + 1] = " %" .. t.buf .. "@v:lua.Tabs_close@%#TabsClose#×%T"
   end
-  -- The gap after a tab is never underlined with it.
-  s[#s + 1] = "%#TabsFill# "
+  -- The gap after a tab is never underlined with it; an fe page's closes
+  -- its brackets.
+  s[#s + 1] = t.n.fe and "%#TabsPageMark#]" or "%#TabsFill# "
   t.s = table.concat(s)
 end
 
