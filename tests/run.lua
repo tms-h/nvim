@@ -3283,6 +3283,58 @@ check("Change keys: Alt+F5 jumps to the next change, Space g s stages it, Space 
   vim.fn.delete(f)
 end)
 
+check("Change keys (Mercurial): gutter hunks, Alt+F5 jump, Space g p overlay, Space g r undo, commit clears", function()
+  if vim.fn.executable "hg" == 0 then
+    error("SKIP: hg not on PATH", 0)
+  end
+  local dir = vim.fn.tempname()
+  vim.fn.mkdir(dir, "p")
+  local function hg(...)
+    return vim.system({ "hg", ... }, { cwd = dir, text = true }):wait(10000)
+  end
+  local f = dir .. "/hunk.ml"
+  vim.fn.writefile({ "let a = 1", "let b = 2", "let c = 3", "let d = 4", "let e = 5" }, f)
+  hg("init")
+  hg("add", "hunk.ml")
+  hg("commit", "-u", "test <t@t>", "-m", "base")
+  local ok, err = pcall(function()
+    vim.cmd("edit! " .. f)
+    api.nvim_buf_set_lines(0, 1, 2, false, { "let b = 20" })
+    api.nvim_buf_set_lines(0, 4, 5, false, { "let e = 50" })
+    vim.cmd "silent write"
+    wait_until(function()
+      local d = MiniDiff.get_buf_data(0)
+      return d and d.summary.source_name == "hg" and #d.hunks == 2
+    end, 4000)
+    local d = MiniDiff.get_buf_data(0)
+    expect(d and d.summary.source_name == "hg" and #d.hunks == 2, "hg hunks: " .. vim.inspect(d and d.summary))
+    vim.fn.cursor(1, 1)
+    press("<M-F5>", 200)
+    expect(vim.fn.line "." == 2, "Alt+F5 went to line " .. vim.fn.line ".")
+    local said = table.concat(api.nvim_buf_get_lines(require("vim._core.ui2").bufs.cmd, 0, -1, false), " ")
+    expect(said:find "Change 1 of 2: 1 line changed" and not said:find "s stage", "bottom line said '" .. said .. "'")
+    press(" gp", 200)
+    expect(MiniDiff.get_buf_data(0).overlay == true, "Space g p showed no old lines")
+    press(" gp", 200)
+    vim.fn.cursor(5, 1)
+    press(" gr", 300)
+    expect(vim.fn.getline(5) == "let e = 5", "Space g r left line 5 as " .. vim.fn.getline(5))
+    vim.cmd "silent write"
+    -- Committing updates .hg/dirstate and clears the remaining gutter hunk.
+    hg("commit", "-u", "test <t@t>", "-m", "change b")
+    wait_until(function()
+      local cur = MiniDiff.get_buf_data(0)
+      return cur and #cur.hunks == 0
+    end, 4000)
+    expect(#MiniDiff.get_buf_data(0).hunks == 0, "commit did not clear hg hunks")
+  end)
+  vim.cmd "silent! bwipeout!"
+  vim.fn.delete(dir, "rf")
+  if not ok then
+    error(err, 0)
+  end
+end)
+
 check("Space f s lists the project's symbols from ocamllsp", function()
   vim.system({ "dune", "build", "@check" }, { cwd = proj }):wait(60000)
   vim.cmd "edit! b.ml"

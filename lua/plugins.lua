@@ -106,8 +106,10 @@ vim.pack.add({
 require("mini.icons").setup()
 MiniIcons.mock_nvim_web_devicons()
 require("tabs").setup() -- the tab bar (tabs.lua)
-require("mini.diff").setup {
-  view = { style = "sign", signs = { add = "▎", change = "▎", delete = "▁" } },
+local mini_diff = require "mini.diff"
+mini_diff.setup {
+  source = { require("hunks").hg_source(), mini_diff.gen_source.git() },
+  view = { style = "sign", signs = { add = " ┃", change = " ┃", delete = " ▁" } },
 }
 require("mini.pairs").setup {
   modes = { insert = true, command = false, terminal = false },
