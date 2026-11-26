@@ -470,10 +470,11 @@ function M.setup()
   end, { nargs = "?", complete = "dir", desc = "Open a folder" })
 
   -- Startup: a folder argument opens that folder. No argument opens the
-  -- folder Neovim started in when it is a project, else the project a window
+  -- project Neovim started in (its repository root), unless another window
+  -- has it open. Started outside any project, it opens the project a window
   -- last opened or closed on (M.recent: the time it was in use, not when its
-  -- session was saved) that nobody else has open. Files and stdin open as
-  -- given.
+  -- session was saved) that nobody else has open; inside tmux or herdr it
+  -- opens nothing. Files and stdin open as given.
   -- (Read now: by VimEnter a folder argument's buffer can be replaced.)
   local argv = vim.fn.argv()
   local start_dir = #argv == 1 and vim.fn.isdirectory(argv[1]) == 1 and argv[1] or nil
