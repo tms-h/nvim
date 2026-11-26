@@ -23,7 +23,6 @@ end
 function M.load()
   if not ready then
     ready = true
-    pcall(vim.api.nvim_del_user_command, "Pick")
     -- One window; Tab shows the chosen item's preview in it. The old
     -- Telescope keys: C-x split below, C-v split beside, C-q every match to
     -- the quickfix list (marking moves to Alt+X).
@@ -109,6 +108,7 @@ function M.setup()
   vim.ui.select = function(...)
     return M.load().ui_select(...)
   end
+  -- Stands in until the first use: mini.pick's setup replaces it with its own.
   vim.api.nvim_create_user_command("Pick", function(args)
     M.load()
     vim.cmd("Pick " .. args.args)

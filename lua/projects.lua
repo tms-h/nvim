@@ -46,8 +46,13 @@ local function normalize(path)
   return is_windows and path:lower() or path
 end
 
+-- A folder's path as one file name: every / \ and : becomes %.
+local function flat(dir)
+  return (dir:gsub("[/\\:]", "%%"))
+end
+
 local function session_file(dir)
-  return session_dir .. "/" .. normalize(dir):gsub("[/\\:]", "%%") .. ".vim"
+  return session_dir .. "/" .. flat(normalize(dir)) .. ".vim"
 end
 
 local function dir_of_session(file)
@@ -129,7 +134,7 @@ local function mark_used(dir)
     return
   end
   vim.fn.mkdir(used_dir, "p")
-  vim.fn.writefile({ dir }, used_dir .. "/" .. dir:gsub("[/\\:]", "%%"))
+  vim.fn.writefile({ dir }, used_dir .. "/" .. flat(dir))
 end
 
 ---Projects by when a window last had them open, newest first, as
@@ -416,7 +421,6 @@ end
 -- Reloads each loaded file that changed on disk and has no edits here (a
 -- plain `checktime` would also ask W12 about the edited ones). Skipped while
 -- Neovim waits on a prompt, a pending key or the command line.
-local reload_timer
 function M.reload_unedited()
   local mode = api.nvim_get_mode()
   if mode.blocking or mode.mode:find "^[cr]" or vim.fn.getcmdwintype() ~= "" then
@@ -442,6 +446,8 @@ function M.reload_unedited()
   end
 end
 
+local reload_timer
+
 function M.setup()
   local group = api.nvim_create_augroup("Projects", { clear = true })
   api.nvim_create_autocmd({ "VimEnter", "DirChanged" }, { group = group, callback = record_open })
@@ -464,10 +470,11 @@ function M.setup()
   end, { nargs = "?", complete = "dir", desc = "Open a folder" })
 
   -- Startup: a folder argument opens that folder. No argument opens the
-  -- folder Neovim started in when it is a project, else the project a window
+  -- project Neovim started in (its repository root), unless another window
+  -- has it open. Started outside any project, it opens the project a window
   -- last opened or closed on (M.recent: the time it was in use, not when its
-  -- session was saved) that nobody else has open. Files and stdin open as
-  -- given.
+  -- session was saved) that nobody else has open; inside tmux or herdr it
+  -- opens nothing. Files and stdin open as given.
   -- (Read now: by VimEnter a folder argument's buffer can be replaced.)
   local argv = vim.fn.argv()
   local start_dir = #argv == 1 and vim.fn.isdirectory(argv[1]) == 1 and argv[1] or nil
