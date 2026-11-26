@@ -46,8 +46,13 @@ local function normalize(path)
   return is_windows and path:lower() or path
 end
 
+-- A folder's path as one file name: every / \ and : becomes %.
+local function flat(dir)
+  return (dir:gsub("[/\\:]", "%%"))
+end
+
 local function session_file(dir)
-  return session_dir .. "/" .. normalize(dir):gsub("[/\\:]", "%%") .. ".vim"
+  return session_dir .. "/" .. flat(normalize(dir)) .. ".vim"
 end
 
 local function dir_of_session(file)
@@ -129,7 +134,7 @@ local function mark_used(dir)
     return
   end
   vim.fn.mkdir(used_dir, "p")
-  vim.fn.writefile({ dir }, used_dir .. "/" .. dir:gsub("[/\\:]", "%%"))
+  vim.fn.writefile({ dir }, used_dir .. "/" .. flat(dir))
 end
 
 ---Projects by when a window last had them open, newest first, as
@@ -416,7 +421,6 @@ end
 -- Reloads each loaded file that changed on disk and has no edits here (a
 -- plain `checktime` would also ask W12 about the edited ones). Skipped while
 -- Neovim waits on a prompt, a pending key or the command line.
-local reload_timer
 function M.reload_unedited()
   local mode = api.nvim_get_mode()
   if mode.blocking or mode.mode:find "^[cr]" or vim.fn.getcmdwintype() ~= "" then
@@ -441,6 +445,8 @@ function M.reload_unedited()
     end
   end
 end
+
+local reload_timer
 
 function M.setup()
   local group = api.nvim_create_augroup("Projects", { clear = true })
