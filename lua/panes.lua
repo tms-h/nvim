@@ -182,11 +182,12 @@ function M.swap(dir)
   api.nvim_set_current_win(target)
 end
 
----Leave a zoom before opening a pane. The zoom is a throwaway tab: a pane
----opened in it would vanish on unzoom, its job still running out of reach.
+---Leave a split zoom before opening a pane. The zoom is a throwaway tab: a
+---pane opened in it would vanish on unzoom, its job still running out of
+---reach. The tmux/herdr pane stays as it is.
 function M.leave_zoom()
   if M.zoomed() then
-    M.zoom()
+    M.zoom_split()
   end
 end
 
@@ -327,9 +328,12 @@ function M.mux_zoomed()
   return false
 end
 
----Zoom: the pane alone fills the window; the same key brings the layout
----back exactly. The zoom is a throwaway tab page, so nothing is resized.
-function M.zoom()
+---Space z: zoom the focused split inside Neovim, alone in the window; the
+---same key brings the layout back exactly. The zoom is a throwaway tab page,
+---so nothing is resized, and the tmux/herdr pane is left as it is. With one
+---pane (maybe beside the tree) there is nothing to zoom: one line says so,
+---unless `quiet` (Alt+F, which zooms the whole pane instead).
+function M.zoom_split(quiet)
   local origin = M.zoomed() and vim.t.zoom_origin
   if origin then
     -- What the zoomed pane shows now (it may have switched tabs), even if
@@ -353,22 +357,42 @@ function M.zoom()
     end
     return
   end
-  -- The tmux/herdr pane Neovim is in is zoomed: unzoom it, even with splits
-  -- open, or Alt+F would zoom a split and the pane could never come back.
-  if M.mux_zoomed() then
-    zoom_mux_pane()
-    return
-  end
   local win = api.nvim_get_current_win()
   if not is_pane(win) or #vim.tbl_filter(is_pane, panes()) < 2 then
-    -- Nothing to zoom inside Neovim (one pane, maybe beside the tree): zoom
-    -- its multiplexer pane. Hiding the tree is Alt+B's job.
-    zoom_mux_pane()
+    if not quiet then
+      local why = is_pane(win) and "Only one pane: nothing to zoom" or "The tree never zooms"
+      api.nvim_echo({ { why } }, false, {})
+    end
     return
   end
   vim.cmd "tab split"
   vim.t.zoom_origin = win
   vim.t.zoom_win = api.nvim_get_current_win()
+end
+
+---Alt+F: fill the terminal. Inside tmux or herdr that zooms the multiplexer
+---pane, and with 2+ splits the focused split inside Neovim too (Space z's
+---zoom), both at once; the same key undoes both. From any zoom (Space z's, or
+---the pane zoomed from herdr or tmux itself) Alt+F goes back to the normal
+---layout. Before, Alt+F zoomed only the split when there were 2+, so the key
+---did a different thing depending on how many splits were open (2026-11-27).
+---Outside a multiplexer (Neovide, a plain terminal) the window is Neovim's
+---whole screen already: Alt+F is Space z's zoom, silent with one pane.
+function M.zoom()
+  if not util.in_mux then
+    return M.zoom_split(true)
+  end
+  local split, pane = M.zoomed(), M.mux_zoomed()
+  if split then
+    M.zoom_split()
+  end
+  if pane then
+    zoom_mux_pane()
+  end
+  if not (split or pane) then
+    M.zoom_split(true)
+    zoom_mux_pane()
+  end
 end
 
 local function parent_of(win, node)

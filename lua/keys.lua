@@ -23,12 +23,13 @@
 --   <C-Arrows> (move the divider: brief); <C-PageUp/Down> (file tabs, as in
 --   Chrome); Visual < > (keep the selection); Space (leader only); K in OCaml
 --   (the full type, lsp.lua); gt in OCaml (wrap in a thunk, bcc32's key;
---   tab pages here only hold an Alt+F zoom, ocaml.lua).
+--   tab pages here only hold an Alt+F or Space z zoom, ocaml.lua).
 -- VS Code keys not taken, with what they would have stolen: Ctrl+T (symbol
 -- in workspace: Vim's tag-back) and Alt+T (new tab) -> Space f s; Ctrl+K
 -- Ctrl+Alt+S / Ctrl+K Ctrl+R (stage / revert change: Ctrl+K is focus up) ->
 -- Space g s / Space g r. Cmd+= / Cmd+- / Cmd+0 (Mac zoom) -> Ctrl, as on
--- Linux: Alt/Cmd+= / - resize panes, Omarchy's Super+= / Super+-.
+-- Linux: Alt/Cmd+= / - resize panes, Omarchy's Super+= / Super+-. Zoom the
+-- split alone: Space z, not Alt+Z, which on the Mac is Cmd+Z (undo).
 local map = vim.keymap.set
 local util = require "util"
 local super = util.chord
@@ -90,7 +91,11 @@ if not in_mux then
   -- Ctrl+` (Ctrl on the Mac too, as in VS Code): the terminal panel at the bottom.
   map(ALL, "<C-`>", pane "toggle_panel", { expr = true, desc = "Toggle the bottom terminal panel" })
 end
-map(ALL, super "f", pane "zoom", { expr = true, desc = "Zoom pane (toggle)" })
+-- Alt+F fills the terminal: inside tmux or herdr the pane zooms, and with 2+
+-- splits the focused split too; Space z zooms just the split inside Neovim
+-- (panes.zoom, panes.zoom_split).
+map(ALL, super "f", pane "zoom", { expr = true, desc = "Zoom pane to fill the terminal (toggle)" })
+map({ "n", "x" }, "<leader>z", pane "zoom_split", { expr = true, desc = "Zoom split inside Neovim (toggle)" })
 map(ALL, super "j", pane "flip", { expr = true, desc = "Flip split direction" })
 map(ALL, super "w", call "require('panes').close()", { expr = true, desc = "Close what has focus" })
 -- Quit the editor, like Cmd+Q quits an app (asks about unsaved files). In tmux

@@ -234,7 +234,7 @@ end)
 check("stray keys in an editor: unmapped leader and Alt keys do nothing", function()
   local tick = vim.b.changedtick
   local before = floats()
-  for _, k in ipairs { "<leader>z", "<leader>q", super "y", super "u", super "x", super "d", super "g", super "S-x" } do
+  for _, k in ipairs { "<leader>y", "<leader>q", super "y", super "u", super "x", super "d", super "g", super "S-x" } do
     press(k .. "<Esc>", 150)
   end
   press("i", 50)
@@ -794,6 +794,84 @@ check("Alt+F zooms a pane and brings the layout back", function()
   expect(#wins() == 1, "zoom shows " .. #wins() .. " panes")
   press(super "f", 200)
   expect(vim.deep_equal(vim.fn.winlayout(), layout), "layout changed after unzoom")
+end)
+
+check("Space z zooms the split alone and back, from Normal and Visual; one pane stays put", function()
+  vim.cmd "only | vsplit b.ml"
+  local layout = vim.fn.winlayout()
+  press(" z", 300)
+  expect(#wins() == 1 and #api.nvim_list_tabpages() == 2, "Space z shows " .. #wins() .. " panes")
+  press(" z", 300)
+  expect(#api.nvim_list_tabpages() == 1 and vim.deep_equal(vim.fn.winlayout(), layout), "layout changed after unzoom")
+  press("v", 50)
+  press(" z", 300)
+  expect(#wins() == 1 and mode() == "n", "from Visual: " .. #wins() .. " panes, mode " .. mode())
+  press(" z", 300)
+  expect(vim.deep_equal(vim.fn.winlayout(), layout), "layout changed after the Visual unzoom")
+  vim.cmd "only"
+  local before = floats()
+  press(" z", 300)
+  expect(#api.nvim_list_tabpages() == 1 and floats() == before, "one pane: Space z opened a tab or a float")
+end)
+
+-- Inside herdr (or tmux) Alt+F fills the terminal: with splits it zooms the
+-- split and the herdr pane together. herdr itself is stubbed out: vim.system
+-- only counts the zoom toggles, so the live herdr is never reached.
+check("Alt+F inside herdr: split and pane zoom together, any zoom goes back, Space z leaves the pane", function()
+  local util, panes = require "util", require "panes"
+  local saved = { util.in_mux, util.in_herdr, util.in_tmux, panes.mux_zoomed, vim.system }
+  local pane_zoomed, calls, other = false, 0, {}
+  util.in_mux, util.in_herdr, util.in_tmux = true, true, false
+  panes.mux_zoomed = function()
+    return pane_zoomed
+  end
+  vim.system = function(argv, ...)
+    if argv[1] == "herdr" then
+      if table.concat(argv, " ") == "herdr pane zoom --current --toggle" then
+        calls, pane_zoomed = calls + 1, not pane_zoomed
+      else
+        other[#other + 1] = table.concat(argv, " ")
+      end
+      return
+    end
+    return saved[5](argv, ...)
+  end
+  local ok, err = pcall(function()
+    vim.cmd "only | vsplit b.ml"
+    local layout = vim.fn.winlayout()
+    local function back(what)
+      expect(
+        #api.nvim_list_tabpages() == 1 and vim.deep_equal(vim.fn.winlayout(), layout),
+        what .. ": the layout did not come back"
+      )
+    end
+    press(super "f", 200)
+    expect(#wins() == 1 and pane_zoomed, ("Alt+F with splits: %d panes, pane zoomed %s"):format(#wins(), pane_zoomed))
+    press(super "f", 200)
+    expect(calls == 2 and not pane_zoomed, "second Alt+F left the pane zoomed")
+    back "second Alt+F"
+    -- The pane zoomed from herdr itself: Alt+F unzooms it, no split zoom.
+    pane_zoomed = true
+    press(super "f", 200)
+    expect(not pane_zoomed, "Alt+F left herdr's own zoom on")
+    back "Alt+F from herdr's zoom"
+    -- Space z: the split alone, the pane untouched; Alt+F goes back.
+    press(" z", 300)
+    expect(#wins() == 1 and calls == 3, ("Space z: %d panes, %d pane zooms"):format(#wins(), calls))
+    press(super "f", 200)
+    expect(calls == 3, "Alt+F from Space z's zoom zoomed the pane")
+    back "Alt+F from Space z"
+    -- One pane: the herdr pane zooms, as before.
+    vim.cmd "only"
+    press(super "f", 200)
+    expect(pane_zoomed and calls == 4 and #api.nvim_list_tabpages() == 1, "one pane: Alt+F did not zoom the pane alone")
+    press(super "f", 200)
+    expect(not pane_zoomed and calls == 5, "one pane: the second Alt+F did not unzoom")
+    expect(#other == 0, "other herdr calls: " .. table.concat(other, "; "))
+  end)
+  util.in_mux, util.in_herdr, util.in_tmux, panes.mux_zoomed, vim.system = unpack(saved)
+  vim.cmd "silent! tabonly | only"
+  expect(ok, err)
 end)
 
 check("Alt+= / Alt+- widen / narrow a split, Alt+Shift+= / Alt+Shift+- make it taller / shorter", function()

@@ -348,7 +348,7 @@ function M.setup(buf)
   map("<leader>op", function()
     M.promote(buf)
   end, "dune promote this file")
-  -- gt: stock "next tab page", which here only reaches an Alt+F zoom.
+  -- gt: stock "next tab page", which here only reaches an Alt+F or Space z zoom.
   local function thunk(motion)
     return function()
       vim.o.operatorfunc = "v:lua.require'ocaml'.wrap_thunk"
