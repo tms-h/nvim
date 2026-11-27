@@ -861,12 +861,31 @@ check("Alt+F inside herdr: split and pane zoom together, any zoom goes back, Spa
     press(super "f", 200)
     expect(calls == 3, "Alt+F from Space z's zoom zoomed the pane")
     back "Alt+F from Space z"
+    -- One editor beside the tree: Alt+F zooms the editor (the tree hides)
+    -- and the herdr pane; the second Alt+F brings both back.
+    vim.cmd "only"
+    press(super "b", 400)
+    expect(tree_win(), "no tree")
+    vim.cmd "wincmd l"
+    local with_tree = vim.fn.winlayout()
+    press(super "f", 200)
+    expect(
+      #wins() == 1 and not tree_win() and pane_zoomed and calls == 4,
+      ("Alt+F beside the tree: %d panes, pane zoomed %s"):format(#wins(), pane_zoomed)
+    )
+    press(super "f", 200)
+    expect(not pane_zoomed and calls == 5, "beside the tree: the second Alt+F left the pane zoomed")
+    expect(
+      #api.nvim_list_tabpages() == 1 and vim.deep_equal(vim.fn.winlayout(), with_tree),
+      "beside the tree: the tree and editor did not come back"
+    )
+    require("nvim-tree.api").tree.close()
     -- One pane: the herdr pane zooms, as before.
     vim.cmd "only"
     press(super "f", 200)
-    expect(pane_zoomed and calls == 4 and #api.nvim_list_tabpages() == 1, "one pane: Alt+F did not zoom the pane alone")
+    expect(pane_zoomed and calls == 6 and #api.nvim_list_tabpages() == 1, "one pane: Alt+F did not zoom the pane alone")
     press(super "f", 200)
-    expect(not pane_zoomed and calls == 5, "one pane: the second Alt+F did not unzoom")
+    expect(not pane_zoomed and calls == 7, "one pane: the second Alt+F did not unzoom")
     expect(#other == 0, "other herdr calls: " .. table.concat(other, "; "))
   end)
   util.in_mux, util.in_herdr, util.in_tmux, panes.mux_zoomed, vim.system = unpack(saved)
@@ -903,19 +922,58 @@ check("Alt+= / Alt+- widen / narrow a split, Alt+Shift+= / Alt+Shift+- make it t
   expect(vim.o.cmdheight == cmdheight, "cmdheight changed")
 end)
 
-check("Alt+F beside the tree with one editor hides nothing: the zoom goes to tmux/herdr", function()
+-- "zoom doesnt work to zoom in when tree. it says only one pane when tree is
+-- clearly another panel" (2026-11-27): the tree counts as something beside
+-- the editor, so one editor beside it zooms; the tree itself never does.
+check("Space z / Alt+F beside the tree zoom the editor alone and bring the tree back", function()
   vim.cmd "only"
-  vim.cmd "edit! a.ml"
+  vim.cmd "edit! b.ml"
   press(super "b", 400)
   if not tree_win() then
     press(super "b", 400)
   end
   expect(tree_win(), "no tree")
   press("<C-l>", 200)
-  press(super "f", 200)
-  expect(#api.nvim_list_tabpages() == 1, "Neovim zoomed the editor and hid the tree")
-  expect(tree_win(), "the tree is gone")
-  press(super "b", 300)
+  expect(not tree_focused(), "focus stayed in the tree")
+  local file = api.nvim_get_current_win()
+  api.nvim_win_set_cursor(file, { 5, 4 })
+  local layout, view = vim.fn.winlayout(), vim.fn.winsaveview()
+  local echo, said = api.nvim_echo, {}
+  api.nvim_echo = function(chunks, ...)
+    said[#said + 1] = chunks[1] and chunks[1][1] or ""
+    return echo(chunks, ...)
+  end
+  local ok, err = pcall(function()
+    for _, key in ipairs { " z", super "f" } do
+      press(key, 300)
+      expect(
+        #api.nvim_list_tabpages() == 2 and #wins() == 1 and name_of(wins()[1]) == "b.ml",
+        ("%s beside the tree: %d tabs, %d panes"):format(key, #api.nvim_list_tabpages(), #wins())
+      )
+      press(key, 300)
+      expect(
+        #api.nvim_list_tabpages() == 1 and vim.deep_equal(vim.fn.winlayout(), layout),
+        key .. ": the tree and file did not come back"
+      )
+      expect(
+        api.nvim_get_current_win() == file and vim.deep_equal(vim.fn.winsaveview(), view),
+        key .. ": focus, cursor or view moved"
+      )
+    end
+    expect(#said == 0, "zooming said: " .. table.concat(said, "; "))
+    api.nvim_set_current_win(tree_win())
+    press(" z", 300)
+    expect(#api.nvim_list_tabpages() == 1, "the tree zoomed")
+    expect(said[#said] == "The tree never zooms", "from the tree: " .. tostring(said[#said]))
+    require("nvim-tree.api").tree.close()
+    vim.cmd "only"
+    press(" z", 300)
+    expect(#api.nvim_list_tabpages() == 1, "one pane zoomed")
+    expect(said[#said] == "Only one pane: nothing to zoom", "one pane: " .. tostring(said[#said]))
+  end)
+  api.nvim_echo = echo
+  vim.cmd "silent! tabonly"
+  expect(ok, err)
 end)
 
 check("Alt+J flips the split direction", function()

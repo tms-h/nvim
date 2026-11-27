@@ -330,9 +330,11 @@ end
 
 ---Space z: zoom the focused split inside Neovim, alone in the window; the
 ---same key brings the layout back exactly. The zoom is a throwaway tab page,
----so nothing is resized, and the tmux/herdr pane is left as it is. With one
----pane (maybe beside the tree) there is nothing to zoom: one line says so,
----unless `quiet` (Alt+F, which zooms the whole pane instead).
+---so nothing is resized, and the tmux/herdr pane is left as it is. Anything
+---else in view counts, the tree too: one editor beside the tree zooms and the
+---tree hides until the unzoom ("zoom doesnt work ... when tree", 2026-11-27).
+---The tree itself never zooms, and a pane alone in the window has nothing to
+---zoom: one line says so, unless `quiet` (Alt+F, which zooms the whole pane).
 function M.zoom_split(quiet)
   local origin = M.zoomed() and vim.t.zoom_origin
   if origin then
@@ -358,7 +360,7 @@ function M.zoom_split(quiet)
     return
   end
   local win = api.nvim_get_current_win()
-  if not is_pane(win) or #vim.tbl_filter(is_pane, panes()) < 2 then
+  if not is_pane(win) or #panes() < 2 then
     if not quiet then
       local why = is_pane(win) and "Only one pane: nothing to zoom" or "The tree never zooms"
       api.nvim_echo({ { why } }, false, {})
@@ -371,13 +373,14 @@ function M.zoom_split(quiet)
 end
 
 ---Alt+F: fill the terminal. Inside tmux or herdr that zooms the multiplexer
----pane, and with 2+ splits the focused split inside Neovim too (Space z's
----zoom), both at once; the same key undoes both. From any zoom (Space z's, or
----the pane zoomed from herdr or tmux itself) Alt+F goes back to the normal
----layout. Before, Alt+F zoomed only the split when there were 2+, so the key
----did a different thing depending on how many splits were open (2026-11-27).
----Outside a multiplexer (Neovide, a plain terminal) the window is Neovim's
----whole screen already: Alt+F is Space z's zoom, silent with one pane.
+---pane, and the focused split inside Neovim too when anything is beside it
+---(another split or the tree: Space z's zoom), both at once; the same key
+---undoes both. From any zoom (Space z's, or the pane zoomed from herdr or
+---tmux itself) Alt+F goes back to the normal layout. Before, Alt+F zoomed
+---only the split when there were 2+, so the key did a different thing
+---depending on how many splits were open (2026-11-27). Outside a multiplexer
+---(Neovide, a plain terminal) the window is Neovim's whole screen already:
+---Alt+F is Space z's zoom, silent with one pane alone.
 function M.zoom()
   if not util.in_mux then
     return M.zoom_split(true)

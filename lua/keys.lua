@@ -91,9 +91,9 @@ if not in_mux then
   -- Ctrl+` (Ctrl on the Mac too, as in VS Code): the terminal panel at the bottom.
   map(ALL, "<C-`>", pane "toggle_panel", { expr = true, desc = "Toggle the bottom terminal panel" })
 end
--- Alt+F fills the terminal: inside tmux or herdr the pane zooms, and with 2+
--- splits the focused split too; Space z zooms just the split inside Neovim
--- (panes.zoom, panes.zoom_split).
+-- Alt+F fills the terminal: inside tmux or herdr the pane zooms, and with
+-- another split or the tree beside it the focused split too; Space z zooms
+-- just the split inside Neovim, hiding the tree (panes.zoom, panes.zoom_split).
 map(ALL, super "f", pane "zoom", { expr = true, desc = "Zoom pane to fill the terminal (toggle)" })
 map({ "n", "x" }, "<leader>z", pane "zoom_split", { expr = true, desc = "Zoom split inside Neovim (toggle)" })
 map(ALL, super "j", pane "flip", { expr = true, desc = "Flip split direction" })
