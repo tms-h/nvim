@@ -79,6 +79,10 @@ o.list = true
 o.listchars = "tab:» ,trail:·,nbsp:␣"
 -- Markup never hides words: every character in the file is drawn.
 o.conceallevel = 0
+-- Folds follow the syntax tree (every function, match and module), so the
+-- stock z keys (za, zM, zR) work everywhere; files still open unfolded.
+o.foldmethod = "expr"
+o.foldexpr = "v:lua.vim.treesitter.foldexpr()"
 o.foldlevelstart = 99
 o.shortmess = o.shortmess .. "IcC"
 -- One thin line between panes, the same glyph at every joint.
