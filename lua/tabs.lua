@@ -232,10 +232,15 @@ local function parts(buf, n, current)
   }
 end
 
+-- Tab `t`'s cells with a name of `w` cells (0: none) and × if `close`.
+local function cells(t, w, close)
+  return t.width + (w > 0 and w + 1 or 0) + (close and 2 or 0)
+end
+
 -- Draw tab `t` with its name `k` in `w` cells (0: none), × if `close`.
 local function draw(t, k, w, close)
   local name = w == 0 and "" or cut(t.n.forms[k], w)
-  t.name, t.width = name, t.width + (w > 0 and w + 1 or 0) + (close and 2 or 0)
+  t.name, t.width = name, cells(t, w, close)
   local s = { "%" .. t.buf .. "@v:lua.Tabs_click@%#" .. t.hl .. "#" .. t.lead }
   if t.icon ~= "" then
     s[#s + 1] = "%#" .. (t.icon_hl or t.hl) .. "#" .. t.icon .. "%#" .. t.hl .. "#"
@@ -283,7 +288,7 @@ function M.render()
       ci = j
       -- Never wider than the bar with ‹ › beside it.
       t.k, t.w = fit(t.n, math.min(NAME_MAX, room - t.width - 5), t.n.plain)
-      budget = budget - (t.width + (t.w > 0 and t.w + 1 or 0) + 2)
+      budget = budget - cells(t, t.w, true)
     end
   end
   -- The other tabs by nearness to the current one, the right side first
@@ -304,7 +309,7 @@ function M.render()
     for _, t in ipairs(tabs) do
       if not t.current then
         local w = t.near <= named and select(2, fit(t.n, cap, t.n.plain)) or 0
-        sum = sum + t.width + (w > 0 and w + 1 or 0) + (close and 2 or 0)
+        sum = sum + cells(t, w, close)
       end
     end
     return sum
