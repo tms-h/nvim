@@ -1,8 +1,9 @@
 -- One status line for the whole window (laststatus=3): words on the surface,
 -- no blocks. Left: the mode as coloured text, macro recording, goose's vibe
 -- level and pending writes, the file (the folder when the tree is focused).
--- Right: language-server progress, diagnostics, git changes, branch,
--- WakaTime's time today, position.
+-- Right: a dune watch run's state (ocaml.lua's M.watch: "dune building",
+-- "dune passed", "dune 2 errors"), language-server progress, diagnostics,
+-- git changes, branch, WakaTime's time today, position.
 local M = {}
 
 local api = vim.api
@@ -137,6 +138,16 @@ function M.render()
   end
   parts[#parts + 1] = file_part()
   local right = {}
+  -- The dune -w pane's last word (ocaml.lua sets it from dune's output and
+  -- redraws), so it shows here even when that pane is out of sight.
+  local watch = package.loaded.ocaml and package.loaded.ocaml.watch
+  if watch == "building" then
+    right[#right + 1] = "%#StatusLineDim#dune building%*"
+  elseif watch == "passed" then
+    right[#right + 1] = "%#DiagnosticOk#dune passed%*"
+  elseif watch then
+    right[#right + 1] = "%#DiagnosticError#dune " .. watch .. (watch == 1 and " error" or " errors") .. "%*"
+  end
   local progress = vim.lsp.status()
   if progress ~= "" then
     right[#right + 1] = "%#StatusLineDim#" .. escape(progress:sub(1, 40)) .. "%*"

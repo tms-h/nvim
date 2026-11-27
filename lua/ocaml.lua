@@ -7,6 +7,8 @@
 --   <leader>ow  dune test -w, this folder <leader>op  dune promote, this file only
 --   <leader>os  list the snippets (Tab previews, Enter types the trigger)
 --   gt{motion} / gt on a selection / gtt   wrap in (fun () -> ...)
+-- While a `-w` run is going, the status line's right side shows what dune
+-- last said (M.watch): "dune building", "dune passed", "dune N errors".
 local M = {}
 
 local api = vim.api
@@ -99,6 +101,42 @@ end
 
 local dune_buf -- the terminal of the last dune run
 
+---The `-w` run's state for the status line (statusline.lua): nil when none
+---is going, else "building", "passed" or dune's error count. Set from the
+---job's output, so rendering the status line reads only this.
+M.watch = nil
+
+-- What dune -w prints, as the terminal gets it: a screen clear and "Done:
+-- 87% (7/8, 1 left)" while it builds, then "Success, waiting for filesystem
+-- changes..." or "Had 2 errors, waiting for filesystem changes..." (dune
+-- 3.23), "Success" and "Had 2 errors" coloured. After an error it can print
+-- Success and then Had 1 error, so the last one in the output wins.
+local WATCH_SAYS = {
+  { "\27%[2J", "building" },
+  { "Done: %d", "building" },
+  { "Success, waiting for filesystem changes", "passed" },
+  { "Had (%d+) errors?, waiting for filesystem changes" },
+}
+
+---The state the last of dune's watch messages in `text` gives, or nil.
+local function watch_state(text)
+  local state, at = nil, 0
+  for _, says in ipairs(WATCH_SAYS) do
+    local init = 1
+    while true do
+      local s, e, n = text:find(says[1], init)
+      if not s then
+        break
+      end
+      if s > at then
+        state, at = says[2] or tonumber(n), s
+      end
+      init = e + 1
+    end
+  end
+  return state
+end
+
 ---Run dune in a terminal pane below; `q` there closes it.
 function M.dune(buf, args)
   local dune = tools.find "dune"
@@ -127,8 +165,37 @@ function M.dune(buf, args)
   if old and api.nvim_buf_is_valid(old) then
     pcall(api.nvim_buf_delete, old, { force = true })
   end
-  vim.fn.jobstart(vim.list_extend({ dune }, args), { term = true, cwd = root(buf) })
-  dune_buf = api.nvim_get_current_buf()
+  local term = api.nvim_get_current_buf()
+  local watching = vim.tbl_contains(args, "-w")
+  M.watch = watching and "building" or nil
+  vim.cmd.redrawstatus()
+  local tail = "" -- the end of the last output: a message can span two
+  vim.fn.jobstart(vim.list_extend({ dune }, args), {
+    term = true,
+    cwd = root(buf),
+    on_stdout = watching and function(_, data)
+      if term ~= dune_buf then
+        return
+      end
+      -- Without colour codes: dune colours Success and Had N errors.
+      local text = (tail .. table.concat(data, "\n")):gsub("\27%[[%d;]*m", "")
+      tail = text:sub(-80)
+      local state = watch_state(text)
+      if state and state ~= M.watch then
+        M.watch = state
+        vim.cmd.redrawstatus()
+      end
+    end or nil,
+    -- Stopped, or its pane closed (q wipes the buffer, which ends the job).
+    -- A run that replaced this one already set its own state.
+    on_exit = function()
+      if term == dune_buf and M.watch then
+        M.watch = nil
+        vim.cmd.redrawstatus()
+      end
+    end,
+  })
+  dune_buf = term
   vim.bo[dune_buf].buflisted = false
   -- dune reads no keys, so q can close the pane while it runs too.
   vim.keymap.set({ "n", "t" }, "q", "<Cmd>bwipeout!<CR>", { buffer = dune_buf, desc = "Close dune" })
